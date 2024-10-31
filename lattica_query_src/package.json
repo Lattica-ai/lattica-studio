@@ -1,7 +1,14 @@
 {
-  "name": "lattica-query-client",
+  "name": "@Lattica-ai/lattica-query-client",
   "version": "1.0.0",
   "description": "A client for lattica image queries",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/Lattica-ai/lattica-query-client.git"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

@@ -40,13 +40,12 @@ describe('LatticaQueryClient', () => {
 
     describe('encrypt', () => {
         it('should encrypt image successfully', async () => {
-            const result = await client.encrypt(mockImage);
-            expect(result).toBe(true);
+            await expect(client.encrypt(mockImage)).resolves.not.toThrow();
         });
 
         it('should store the image internally', async () => {
             await client.encrypt(mockImage);
-            expect(client.image).toBe(mockImage);
+            expect((client as any).image).toBe(mockImage);
         });
 
         it('should throw error if image is null', async () => {
@@ -66,8 +65,7 @@ describe('LatticaQueryClient', () => {
     describe('apply_query', () => {
         it('should apply query successfully', async () => {
             await client.encrypt(mockImage);
-            const result = await client.apply_query();
-            expect(result).toBe(true);
+            await expect(client.apply_query()).resolves.not.toThrow();
         });
 
         it('should throw error if image is not encrypted first', async () => {
@@ -90,6 +88,12 @@ describe('LatticaQueryClient', () => {
             await expect(client.decrypt())
                 .rejects
                 .toThrow('Query must be applied before decryption');
+        });
+
+        it('should throw error if image is not encrypted', async () => {
+            await expect(client.decrypt())
+                .rejects
+                .toThrow('Query must be applied first');
         });
     });
 });

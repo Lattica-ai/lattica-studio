@@ -4,8 +4,20 @@ A TypeScript client for performing lattica queries on images.
 
 ## Installation
 
+1. Create a GitHub Personal Access Token with `read:packages` permission:
+   - Go to GitHub Settings → Developer Settings → Personal Access Tokens → Tokens (classic)
+   - Generate new token
+   - Select `read:packages` scope
+   - Copy the token
+
+2. Create or edit `.npmrc` in your project root:
+```plaintext
+@Lattica-ai:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=YOUR_GITHUB_PAT
+```
+3. Install the package:
 ```bash
-npm install lattica-query-client
+npm install @Lattica-ai/lattica-query-client
 ```
 
 ## Usage
@@ -36,4 +48,6 @@ Applies the query to the encrypted image.
 
 ### `decrypt(): Promise<HTMLImageElement>`
 Decrypts the processed image and returns it.
+
+
 
