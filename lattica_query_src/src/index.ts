@@ -1,6 +1,6 @@
 export class LatticaQueryClient {
     private readonly jwt: string;
-    private image: string;
+    private image: string | null = null;
     private initialized: boolean = false;
 
     constructor(jwt: string) {
@@ -54,7 +54,7 @@ export class LatticaQueryClient {
         // return convertMatrixToImage(decriptedOutput)
 
         await this.delay();
-        return this.image;
+        return this.image as string;
     }
 
     // todo: remove after WASM toolkit is integrated!
