@@ -27,10 +27,11 @@ import { LatticaQueryClient } from 'lattica-query-client';
 
 const client = new LatticaQueryClient('your-jwt-token');
 
-async function processImage(image: HTMLImageElement) {
-    await client.encrypt(image);
-    await client.apply_query();
-    const result = await client.decrypt();
+async function processImage(encodedImage: string) {
+    await client.init();
+    const encryptedImage = await client.encrypt(encodedImage);
+    const queryResult = await client.apply_query(encryptedImage);
+    const result = await client.decrypt(queryResult);
     return result;
 }
 ```
@@ -40,14 +41,15 @@ async function processImage(image: HTMLImageElement) {
 ### `constructor(jwt: string)`
 Creates a new LatticaQueryClient instance with the provided JWT token.
 
-### `encrypt(image: HTMLImageElement): Promise<boolean>`
-Encrypts the provided image.
+### `init(): Promise<void>`
+Initializes the client. Must be called before any other methods.
 
-### `apply_query(): Promise<boolean>`
+### `encrypt(encodedImage: string): Promise<Uint8Array>`
+Encrypts the provided encoded image.
+
+### `apply_query(encryptedInput: Uint8Array): Promise<Uint8Array>`
 Applies the query to the encrypted image.
 
-### `decrypt(): Promise<HTMLImageElement>`
+### `decrypt(encryptedResult: Uint8Array): Promise<string>`
 Decrypts the processed image and returns it.
-
-
-
+```
