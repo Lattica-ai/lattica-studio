@@ -1,45 +1,56 @@
 import { Tensor } from "./utils";
-import * as fs from "fs";
 
 export const generateKey = (
-  serialized_homseq: Buffer,
-  serialized_context: Buffer,
-): { secretKey: [Buffer, Buffer]; evaluationKey: Buffer } => {
+  serialized_homseq: Uint8Array,
+  serialized_context: Uint8Array,
+): { secretKey: [Uint8Array, Uint8Array]; evaluationKey: Uint8Array } => {
   return {
-    secretKey: [Buffer.from([3, 2, 1]), Buffer.from([31, 21, 11])],
-    evaluationKey: fs.readFileSync("mock_data/my_pk.lpk"),
-  };
+    secretKey: [
+      Uint8Array.from([1, 2, 3]),
+      Uint8Array.from([4, 5, 6]),
+    ],
+    evaluationKey: Uint8Array.from([7, 8, 9]),
+  }
+  // return {
+  //   secretKey: [
+  //     fs.readFileSync("mock_data/my_sk1"),
+  //     fs.readFileSync("mock_data/my_sk2"),
+  //   ],
+  //   evaluationKey: fs.readFileSync("mock_data/my_pk.lpk"),
+  // };
 };
 
-export const encrypt = (
-  serialized_context: Buffer | null,
-  serialized_sk: [Buffer, Buffer] | null,
-  serialized_pt: Buffer,
+export const encrypt = async (  // TODO: remove async
+  serialized_context: Uint8Array | null,
+  serialized_sk: [Uint8Array, Uint8Array] | null,
+  serialized_pt: Uint8Array,
   pack_for_transmission: boolean = false,
-): Buffer => {
-  return Buffer.from([10, 20, 30]);
+): Promise<Uint8Array> => {
+  const mockCt = await fetch("mock_data/ser_ct1");
+  return new Uint8Array(await mockCt.arrayBuffer());
 };
 
 export const decrypt = (
-  context: Buffer | null,
-  secretKey: [Buffer, Buffer] | null,
-  encryptedResult: Buffer,
-): Buffer => {
-  return Buffer.from([15, 25, 35]);
+  context: Uint8Array | null,
+  secretKey: [Uint8Array, Uint8Array] | null,
+  encryptedResult: Uint8Array,
+): Uint8Array => {
+  return Uint8Array.from([15, 25, 35]);
 };
 
 export const apply_client_block = (
   serialized_block_proto: Uint8Array,
-  serialized_context: Buffer,
-  serialized_pt: Buffer,
-): Buffer => {
-  return Buffer.from([1, 2, 3]);
+  serialized_context: Uint8Array,
+  serialized_pt: Uint8Array,
+): Uint8Array => {
+  return Uint8Array.from([1, 2, 3]);
 };
 
-export const dumps_proto_tensor = (tensor: Tensor): Buffer => {
-  return Buffer.from([1, 2, 3]);
+export const dumps_proto_tensor = (tensor: Tensor): Uint8Array => {
+  return new Uint8Array([1, 2, 3]);
+  // return fs.readFileSync("mock_data/ser_pt_initial");
 };
 
-export const load_proto_tensor = (serialized_pt: Buffer): Tensor => {
+export const load_proto_tensor = (serialized_pt: Uint8Array): Tensor => {
   return [123, 234, 345];
 };

@@ -1,4 +1,6 @@
-import axios from "axios";
+const axios = require("axios");
+const {BE_URL, MOCK_BE} = require("./config");
+
 type WorkerResponse = string | Record<string, string>;
 
 const sendHttpRequest = async (
@@ -15,7 +17,7 @@ const sendHttpRequest = async (
   };
   try {
     const response = await axios.post(
-      `${process.env.BE_URL}/do_action`,
+      `${BE_URL}/do_action`,
       reqData,
       {
         headers: {
@@ -62,34 +64,60 @@ const resampleResult = async (
   return await sendHttpRequest(jwt, "get_action_result", { executionId });
 };
 
-const base64ToBuffer = (base64: string): Buffer => {
-  return Buffer.from(base64, "base64");
+const base64ToBytes = (base64: string): Uint8Array => {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
 };
+
+const bytesToBase64 = (uint8Array: Uint8Array): string => {
+  const binaryString = String.fromCharCode.apply(null, uint8Array);
+  return btoa(binaryString);
+}
 
 export const get_user_init_data = async (
   jwt: string,
-): Promise<{ serializedContext: Buffer; serializedHomseq: Buffer }> => {
-  const response = await sendHttpRequest(jwt, "get_user_init_data");
+): Promise<{ serializedContext: Uint8Array; serializedHomseq: Uint8Array }> => {
+  console.log(MOCK_BE);
+  if (MOCK_BE) {
+    const mockApiContext = await fetch("mock_data/api_context");
+    const mockClientHomseq = await fetch("mock_data/client_hom_seq");
+    return {
+      serializedContext: new Uint8Array(await mockApiContext.arrayBuffer()),
+      serializedHomseq: new Uint8Array(await mockClientHomseq.arrayBuffer()),
+    }
+  }
+  const response = await sendHttpRequest(jwt, "get_user_init_data") as Record<string, string>;
   return {
-    serializedContext: base64ToBuffer(response.context_proto_str),
-    serializedHomseq: base64ToBuffer(response.homseq_proto_str),
+    serializedContext: base64ToBytes(response.context_proto_str),
+    serializedHomseq: base64ToBytes(response.homseq_proto_str),
   };
 };
 
 export const preprocessEk = async (jwt: string): Promise<void> => {
+  if (MOCK_BE) {
+    return;
+  }
   await sendHttpRequest(jwt, "preprocess_pk");
 };
 
 export const apply_hom_pipeline = async (
   jwt: string,
-  serialized_ct: Buffer,
+  serialized_ct: Uint8Array,
   block_index: number,
   return_new_state: boolean = false,
-): Promise<Buffer> => {
+): Promise<Uint8Array> => {
+  if (MOCK_BE) {
+    const mockCtRes = await fetch("mock_data/ct_res");
+    return new Uint8Array(await mockCtRes.arrayBuffer());
+  }
   const response = await sendHttpRequest(jwt, "apply_hom_pipeline", {
-    ct_proto_str: serialized_ct.toString("base64"),
+    ct_proto_str: bytesToBase64(serialized_ct),
     block_index,
     return_new_state,
   });
-  return base64ToBuffer(response);
+  return base64ToBytes(response as string);
 };

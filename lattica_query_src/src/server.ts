@@ -1,6 +1,6 @@
-import * as fs from "fs";
 import axios from "axios";
 import * as devUtils from "./dev_utils";
+const {BE_URL} = require("./config");
 
 const sendHttpRequest = async (
   jwt: string,
@@ -10,7 +10,7 @@ const sendHttpRequest = async (
   try {
     const options = {
       method: "POST",
-      url: `${process.env.BE_URL}${requestName}`,
+      url: `${BE_URL}${requestName}`,
       data: reqParams,
       headers: {
         "Content-Type": "application/json",
@@ -33,13 +33,12 @@ const sendHttpRequest = async (
 };
 
 const uploadFile = async (
-  filePath: string,
+  data: Uint8Array,
   uploadUrl: string,
 ): Promise<void> => {
+  // TODO: const blob = new Blob([data], { type: 'application/octet-stream' });
   try {
-    const fileBuffer = fs.readFileSync(filePath);
-
-    const response = await axios.put(uploadUrl, fileBuffer, {
+    const response = await axios.put(uploadUrl, data, {
       headers: {
         "Content-Type": "application/octet-stream",
       },
@@ -53,15 +52,17 @@ const uploadFile = async (
 
 export const uploadEk = async (
   jwt: string,
-  ekFilePath: string,
+  ek: Uint8Array,
 ): Promise<void> => {
   console.log("Uploading evaluation key");
   const uploadUrl = await sendHttpRequest(jwt, "/token/get_pk_upload_url");
   console.log("Upload URL:", uploadUrl);
-  await uploadFile(ekFilePath, uploadUrl);
+  await uploadFile(ek, uploadUrl);
   console.log("Evaluation key uploaded");
-  // TODO: for DEV
-  devUtils.mockUploadFile("pks", ekFilePath, uploadUrl);
-  console.log("Evaluation key uploaded to localhost");
+
+  // in local dev mode:
+  // await devUtils.mockUploadFile("pks", ekFilePath, uploadUrl);
+  // console.log("Evaluation key uploaded to localhost");
+
   return uploadUrl;
 };
