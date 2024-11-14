@@ -20,13 +20,12 @@ const sendHttpRequest = async (
 
     const response = await axios(options);
 
-    if (response.status === 200 && response.data && !response.data.error) {
-      return response.data.result;
+    if (response.data.error) {
+      throw new Error(
+          `FAILED ${requestName} with error: ${response.data.error}`,
+          );
     }
-
-    throw new Error(
-      `FAILED ${requestName} with error: ${response.data?.error || "Unknown error"}`,
-    );
+    return response.data.result;
   } catch (error: any) {
     throw new Error(`FAILED ${requestName} with error: ${error.message}`);
   }

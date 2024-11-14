@@ -1,17 +1,6 @@
-// import * as worker_api from "./worker_api";
-const worker_api = require("./worker_api");
-// import * as toolkit from "./toolkit_mock";
-const toolkit = require("./toolkit_mock");
-// import {QueryClientBlock} from "./protos/hom_op_pb";
-const {QueryClientBlock} = require("./protos/hom_op_pb");
-// import initWasmModule from './cpp_sdk.js';
-// import kaka from './cpp_sdk.js';
-
-// kaka().then(()=>{console.log("Wasm module initialized")});
-// initWasmModule().then(Module => {
-//   const byteVector = new Module.VectorUint8();
-//   console.log(byteVector);
-// })
+import * as worker_api from "./worker_api";
+import * as toolkit from "./toolkit_mock";
+// const {QueryClientBlock} = require("./protos/hom_op_pb");
 
 export type Tensor = number | Tensor[];
 
@@ -109,7 +98,7 @@ export const runInferenceDemo = async (
       serialized_pt,
     );
 
-    serialized_ct = toolkit.encrypt(context, secretKey, serialized_pt, true);
+    serialized_ct = await toolkit.encrypt(context, secretKey, serialized_pt, true);
     serialized_ct_res = await worker_api.apply_hom_pipeline(
       jwt,
       serialized_ct,

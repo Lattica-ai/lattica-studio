@@ -5,7 +5,6 @@ const {Tensor, runInferenceDemo} = require("./utils");
 const {QueryClientSequentialHomOp, QueryClientBlock} = require("./protos/hom_op_pb");
 const {MOCK_BE} = require("./config");
 
-import * as xxx from './xxx';
 // import Module from './cpp_sdk.js';
 //
 // Module.onRuntimeInitialized = function () {
@@ -91,7 +90,7 @@ class LatticaQueryClient {
       );
     }
 
-    encryptedInput = toolkit.encrypt(
+    encryptedInput = await toolkit.encrypt(
       this.serializedContext,
       this.secretKey,
       serialized_pt,
@@ -151,7 +150,7 @@ async function processImage(pt: typeof Tensor) {
 }
 
 const client = new LatticaQueryClient(
-  "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IkZTRzBSMmVuWFYzZXJSR0pMaFFidSJ9.eyJ0b2tlbklkIjoiMGU2NGEwNmEtYmZkNC00MTY2LWJiZDktOTkzYmI1MWMyZGNjIiwiaXNzIjoiaHR0cHM6Ly9kZXYtZjVrZ3Iwa25yd2pvYWF3MS51cy5hdXRoMC5jb20vIiwic3ViIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3ZAY2xpZW50cyIsImF1ZCI6Imh0dHBzOi8vbXlhcGkvYXBpIiwiaWF0IjoxNzMwODM5NTY1LCJleHAiOjE3MzM0MzE1NjUsInNjb3BlIjoidXNlciBkZWZhdWx0IiwiZ3R5IjoiY2xpZW50LWNyZWRlbnRpYWxzIiwiYXpwIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3YiLCJwZXJtaXNzaW9ucyI6WyJ1c2VyIiwiZGVmYXVsdCJdfQ.6grZW1Qek8lG8ciDEQ7d0MjmStuNYbVymzWp1Kbcl8TIxL8HlQE6FJNFKx0mOQlzwZuirzm-achQoHp2Uhn9lcBJ00vWWDmC0j7PqugYFo2PegVBr58xp8cuCxueAlgbZbCOZoqmZ61PHHVEJsd_THWOu6GNTLdTxy7SbKB8W756uofVK-hyFlP3DbP2-bWuzWI6QuwijnfFbOsRGd-U_zYJ_TVcasjLetbEpPWiHaxxOoBdRTDdPuvgINbfiGyBZcZySG5cGsqKAJpvcSR_KPlya1dJwz6qBn1-P061EKn3VWWG7tEm3JJaKnOnQI6VOE1G0cYwcHqKsexmgjM7EA",
+  "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IkZTRzBSMmVuWFYzZXJSR0pMaFFidSJ9.eyJ0b2tlbklkIjoiZjBiYjY1YzctMTM0ZS00MmEzLTkwZTktMjM5M2NmMDM3OGM0IiwiaXNzIjoiaHR0cHM6Ly9kZXYtZjVrZ3Iwa25yd2pvYWF3MS51cy5hdXRoMC5jb20vIiwic3ViIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3ZAY2xpZW50cyIsImF1ZCI6Imh0dHBzOi8vbXlhcGkvYXBpIiwiaWF0IjoxNzMxNTc3NjUxLCJleHAiOjE3MzQxNjk2NTEsInNjb3BlIjoidXNlciBkZWZhdWx0IiwiZ3R5IjoiY2xpZW50LWNyZWRlbnRpYWxzIiwiYXpwIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3YiLCJwZXJtaXNzaW9ucyI6WyJ1c2VyIiwiZGVmYXVsdCJdfQ.njJTM9yPWygz-wt8mOJXsRF3Q9BAtHXwCmKYBKAs0Hgf-92PplBChE8OzOC1QrriuW5AJPlhEArE27b1xT_oQ2pKfykxAgfaBjQb-KQJ4gclFjHXu2FIHAkmm-CHqjtOEWmc4E8o-7ToVkJEFdpRUZkKSjXOrPM9zYfohGVgeGN9sLLOpJbSYF-6pq7-HkVO4GZjwOhWNMHxEcnemSB3rwly0R0Hqf6OzKA-FIKGwYdmumOVDxZ5Drih6IZaBHNC04Qa3xyhHFo36MR2YPr4AWLVGeui32qR6aQv3Q5X5UdhjMy5Ijg4ja67E0EO3nvS4qkvBSunBSNJ6_XZkD_q7w",
 );
 console.log("Client created:", client);
 
