@@ -1,8 +1,7 @@
 export class LatticaQueryClient {
     private readonly jwt: string;
-    private image: HTMLImageElement | null = null;
+    private image: string | null = null;
     private initialized: boolean = false;
-    private queryApplied: boolean = false;
 
     constructor(jwt: string) {
         if (!jwt) throw new Error('JWT token is required');
@@ -25,37 +24,37 @@ export class LatticaQueryClient {
         await this.delay();
     }
 
-    async encrypt(image: HTMLImageElement): Promise<void> {
+    async encrypt(encodedImage: string): Promise<Uint8Array> {
         if (!this.initialized) throw new Error('Client must be initialized first');
-        if (!image) throw new Error('Image is required');
+        if (!encodedImage) throw new Error('Image is required');
 
         // const matrix = convertImageToMatrix(image)
 
         // this.encryptedInput = toolkit.encrypt(matrix)
 
-        this.image = image; // todo: remove after WASM integration
+        this.image = encodedImage; // todo: remove after WASM integration
         await this.delay();
+        return new Uint8Array([1, 2, 3]);
     }
 
-    async apply_query(): Promise<void> {
-        if (!this.image) throw new Error('Image must be encrypted first');
+    async apply_query(encryptedInput: Uint8Array): Promise<Uint8Array> {
+        if (!this.initialized) throw new Error('Client must be initialized first');
 
         // this.encryptedOutput = homUtils.runInference(this.context, this.secretKey, this.encryptedInput, this.homseq)
 
         await this.delay();
-        this.queryApplied = true;
+        return new Uint8Array([4, 5, 6]);
     }
 
-    async decrypt(): Promise<HTMLImageElement> {
-        if (!this.image) throw new Error('Query must be applied first');
-        if (!this.queryApplied) throw new Error('Query must be applied before decryption');
+    async decrypt(encryptedResult: Uint8Array): Promise<string> {
+        if (!this.initialized) throw new Error('Client must be initialized first');
 
         // const decriptedOutput = toolkit.decrypt(this.secretKey, this.encryptedOutput)
 
         // return convertMatrixToImage(decriptedOutput)
 
         await this.delay();
-        return this.image;
+        return this.image as string;
     }
 
     // todo: remove after WASM toolkit is integrated!
