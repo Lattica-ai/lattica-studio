@@ -1,12 +1,12 @@
-import * as path from "path";
-
-const _DEV_STORAGE_BASE = path.join(path.dirname(process.cwd()), "tmp_storage");
-
-const extractFileNameFromUploadUrl = (uploadUrl: string): string => {
-  // Get 36 characters that end with ?
-  const endIndex = uploadUrl.indexOf("?");
-  return uploadUrl.substring(endIndex - 36, endIndex);
-};
+// import * as path from "path";
+//
+// const _DEV_STORAGE_BASE = path.join(path.dirname(process.cwd()), "tmp_storage");
+//
+// const extractFileNameFromUploadUrl = (uploadUrl: string): string => {
+//   // Get 36 characters that end with ?
+//   const endIndex = uploadUrl.indexOf("?");
+//   return uploadUrl.substring(endIndex - 36, endIndex);
+// };
 
 // export const mockUploadFile = async (
 //   folder: string,

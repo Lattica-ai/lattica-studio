@@ -1,5 +1,4 @@
 import axios from "axios";
-import * as devUtils from "./dev_utils";
 const {BE_URL} = require("./config");
 
 const sendHttpRequest = async (

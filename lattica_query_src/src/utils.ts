@@ -1,8 +1,68 @@
 import * as worker_api from "./worker_api";
-import * as toolkit from "./toolkit_mock";
-// const {QueryClientBlock} = require("./protos/hom_op_pb");
+import * as toolkit from "./toolkit_wrapper";
+import {DataType} from "./protos/generic_pb";
+const {QueryClientBlock} = require("./protos/hom_op_pb");
 
 export type Tensor = number | Tensor[];
+
+export const getTensorShape = (tensor: Tensor): number[] => {
+    if (typeof tensor === "number") {
+        return [];
+    }
+    return [tensor.length, ...getTensorShape(tensor[0])];
+}
+
+export const getTensorStrides = (shape: number[]): number[] => {
+    const strides = Array(shape.length).fill(1);
+    for (let i = shape.length - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    return strides;
+}
+
+export const flattenTensor = (tensor: Tensor): number[] => {
+    if (typeof tensor === "number") {
+        return [tensor]; // Base case: a single number.
+    }
+    return tensor.reduce<number[]>((acc, value) => acc.concat(flattenTensor(value)), []);
+}
+
+export const dataToTensor = (data, dtype) => {
+    const buffer = data.slice().buffer;  // Copy the data to a new buffer
+    switch (dtype) {
+        case DataType.DOUBLE:
+            return new Float64Array(buffer);
+        default:
+            throw new Error(`Unsupported dtype: ${dtype}`);
+    }
+};
+
+export const reshapeWithStrides = (flatArray, shape, strides) => {
+  // Create a function to access the elements in the flattened array using strides
+  function getElement(indices) {
+    let index = 0;
+    for (let i = 0; i < indices.length; i++) {
+      index += indices[i] * strides[i];
+    }
+    return flatArray[index];
+  }
+
+  // Recursively create the multi-dimensional array based on shape and strides
+  function createMultiDimensionalArray(dimIndex = 0, indices = []) {
+    if (dimIndex === shape.length) {
+      return getElement(indices);
+    }
+
+    let result = [];
+    for (let i = 0; i < shape[dimIndex]; i++) {
+      indices[dimIndex] = i;
+      result.push(createMultiDimensionalArray(dimIndex + 1, indices));
+    }
+    return result;
+  }
+
+  return createMultiDimensionalArray();
+}
 
 export const imageToMatrix = (
   image: HTMLImageElement,
@@ -37,37 +97,6 @@ export const imageToMatrix = (
   });
 };
 
-// export const jsToWasm = (uintArray: Uint8Array) => {
-//     const byteVector = new Module.VectorUint8();
-//     uintArray.forEach(byte => byteVector.push_back(byte));
-//     return byteVector;
-// }
-
-// function wasmToJs(byteVector: Module.VectorUint8) {
-//     const uintArray = new Uint8Array(byteVector.size());
-//     for (let i = 0; i < byteVector.size(); i++) {
-//         uintArray[i] = byteVector.get(i);
-//     }
-//     return uintArray;
-// }
-
-// function processInputBytes() {
-//     console.log("Processing input bytes...");
-//     const inputBytes = new Uint8Array([10, 4, 2, 1, 4, 1, 18, 4, 4, 1, 1, 1, 26, 64, 65, 43, 0, 0, 0, 0, 0, 0, 209, 9, 0, 0, 0, 0, 0, 0, 102, 112, 0, 0, 0, 0, 0, 0, 177, 122, 0, 0, 0, 0, 0, 0, 65, 43, 0, 0, 0, 0, 0, 0, 48, 150, 0, 0, 0, 0, 0, 0, 155, 47, 0, 0, 0, 0, 0, 0, 80, 37, 0, 0, 0, 0, 0, 0, 32, 3]);
-//     const byteVector = jsToWasm(inputBytes);
-//     const outputPair = Module.process_bytes(byteVector);
-//
-//     const outputVector1 = wasmToJs(outputPair.first);
-//     const outputVector2 = wasmToJs(outputPair.second);
-//     console.log("Output Bytes Vector 1:", outputVector1);
-//     console.log("Output Bytes Vector 2:", outputVector2);
-//
-//     // Clean up to prevent memory leaks
-//     byteVector.delete();
-//     outputPair.first.delete();
-//     outputPair.second.delete();
-// }
-
 // assume we get and return encrypted: first client block (if exists) was applied, and last client block (will be applied)- are not in the clientBlocks list
 export const runInferenceDemo = async (
   jwt: string,
@@ -88,7 +117,7 @@ export const runInferenceDemo = async (
     return serialized_ct_res;
   }
 
-  let serialized_pt = toolkit.decrypt(context, secretKey, serialized_ct_res);
+  let serialized_pt = toolkit.dec(context, secretKey, serialized_ct_res);
 
   for (const block_proto of clientBlocks) {
     console.log("Applying client operators");
@@ -98,13 +127,15 @@ export const runInferenceDemo = async (
       serialized_pt,
     );
 
-    serialized_ct = await toolkit.encrypt(context, secretKey, serialized_pt, true);
+    serialized_ct = toolkit.enc(context, secretKey, serialized_pt, true);
     serialized_ct_res = await worker_api.apply_hom_pipeline(
       jwt,
       serialized_ct,
       block_proto.getBlockIndex() + 1,
     );
   }
+
+  return serialized_ct_res;
 };
 
 // export const runInference = async (

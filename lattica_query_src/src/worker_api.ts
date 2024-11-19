@@ -1,3 +1,6 @@
+import {Tensor} from "./utils";
+import * as toolkit from "./toolkit_wrapper";
+
 const axios = require("axios");
 const {BE_URL, MOCK_BE} = require("./config");
 
@@ -81,7 +84,7 @@ const bytesToBase64 = (uint8Array: Uint8Array): string => {
 export const get_user_init_data = async (
   jwt: string,
 ): Promise<{ serializedContext: Uint8Array; serializedHomseq: Uint8Array }> => {
-  console.log(MOCK_BE);
+  console.log('MOCK_BE:', MOCK_BE);
   if (MOCK_BE) {
     const mockApiContext = await fetch("mock_data/api_context");
     const mockClientHomseq = await fetch("mock_data/client_hom_seq");
@@ -121,3 +124,10 @@ export const apply_hom_pipeline = async (
   });
   return base64ToBytes(response as string);
 };
+
+export const apply_clear = async (jwt: string, pt: Tensor) => {
+  const response = await sendHttpRequest(jwt, "apply_clear", {
+    pt_proto_str: bytesToBase64(toolkit.dumps_proto_tensor(pt)),
+  });
+  return toolkit.load_proto_tensor(base64ToBytes(response as string));
+}
