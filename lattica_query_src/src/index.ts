@@ -1,51 +1,53 @@
 import * as server from "./server";
 import * as worker_api from "./worker_api";
-import {getTensorShape} from "./utils";
+import { getTensorShape } from "./utils";
 import * as toolkit from "./toolkit_wrapper";
-import './wasm/cpp_sdk.js';
+import "./wasm/cpp_sdk.js";
 
-import {Tensor, runInferenceDemo} from "./utils";
-import {QueryClientSequentialHomOp, QueryClientBlock} from "./protos/hom_op_pb";
-import {MOCK_BE} from "./config";
-console.log('MOCK_BE:', MOCK_BE);
+import { Tensor, runInferenceDemo } from "./utils";
+import {
+  QueryClientSequentialHomOp,
+  QueryClientBlock,
+} from "./protos/hom_op_pb";
+import { MOCK_BE } from "./config";
+console.log("MOCK_BE:", MOCK_BE);
 
 export {};
 declare global {
-    var Module: any;  // You can replace 'any' with your specific module interface
+  var Module: any;
 }
 
 async function initWasm() {
-    try {
-        // Wait for the module to be fully initialized
-        await new Promise<void>((resolve) => {
-            // If module is already initialized
-            if (Module && Module.ready) {
-                resolve();
-                return;
-            }
+  try {
+    // Wait for the module to be fully initialized
+    await new Promise<void>((resolve) => {
+      // If module is already initialized
+      if (Module && Module.ready) {
+        resolve();
+        return;
+      }
 
-            // If not, wait for initialization
-            if (!Module) {
-                window.Module = {};
-            }
+      // If not, wait for initialization
+      if (!Module) {
+        window.Module = {};
+      }
 
-            Module.onRuntimeInitialized = () => {
-                resolve();
-            };
-        });
+      Module.onRuntimeInitialized = () => {
+        resolve();
+      };
+    });
 
-        // Now you can use the module
-        console.log('WASM Module is ready!');
-    } catch (error) {
-        console.error('Failed to load WASM module:', error);
-    }
+    // Now you can use the module
+    console.log("WASM Module is ready!");
+  } catch (error) {
+    console.error("Failed to load WASM module:", error);
+  }
 }
 
 class LatticaQueryClient {
   private readonly jwt: string;
   private initialized: boolean = false;
   private serializedContext: Uint8Array | null = null;
-  private serializedHomseq: Uint8Array | null = null;
   private clientBlocks: QueryClientBlock[] = [];
   private secretKey: [Uint8Array, Uint8Array] | null = null;
   private applyBlockBeforeEncryption: boolean = false;
@@ -63,12 +65,11 @@ class LatticaQueryClient {
 
     const initData = await worker_api.get_user_init_data(this.jwt);
     this.serializedContext = initData.serializedContext;
-    this.serializedHomseq = initData.serializedHomseq;
 
     this.clientBlocks = QueryClientSequentialHomOp.deserializeBinary(
-      this.serializedHomseq,
+      initData.serializedHomseq,
     ).getClientBlocksList();
-    console.log('number of client blocks:', this.clientBlocks.length);
+    console.log("number of client blocks:", this.clientBlocks.length);
 
     // check if need to apply client block before encryption
     this.applyBlockBeforeEncryption =
@@ -88,7 +89,7 @@ class LatticaQueryClient {
     // TODO: we can apply serializeBinary() to all remaining blocks in clientBlocks list, to save time runInference
 
     const [sk, skCoefs, evaluationKey] = toolkit.generate_key(
-      this.serializedHomseq,
+      initData.serializedHomseq,
       this.serializedContext,
     );
 
@@ -116,10 +117,10 @@ class LatticaQueryClient {
     }
 
     return toolkit.enc(
-        this.serializedContext,
-        this.secretKey,
-        serialized_pt,
-        true,
+      this.serializedContext,
+      this.secretKey,
+      serialized_pt,
+      true,
     );
   }
 
@@ -127,12 +128,12 @@ class LatticaQueryClient {
     if (!this.initialized) throw new Error("Client must be initialized first");
 
     return await runInferenceDemo(
-        this.jwt,
-        this.serializedContext,
-        this.secretKey,
-        encryptedInput,
-        this.clientBlocks,
-        this.applyBlockBeforeEncryption ? 1 : 0,
+      this.jwt,
+      this.serializedContext,
+      this.secretKey,
+      encryptedInput,
+      this.clientBlocks,
+      this.applyBlockBeforeEncryption ? 1 : 0,
     );
   }
 
@@ -168,7 +169,7 @@ async function processImage(pt: Tensor) {
   console.log("Decrypted.");
 
   const pt_expected = await worker_api.apply_clear(jwt, pt);
-  console.log('Apply Clear finished');
+  console.log("Apply Clear finished");
 
   console.log('result shape:', getTensorShape(pt_res), 'expected shape:', getTensorShape(pt_expected));
   console.log('result:', pt_res);
@@ -183,7 +184,7 @@ console.log("Client created");
 
 const pt = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,97,222,253,253,128,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,252,252,252,252,253,194,65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,222,252,252,252,252,253,252,202,70,38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,227,66,45,169,252,252,252,232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,79,0,0,13,211,252,252,252,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,231,255,253,69,0,0,3,170,253,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,209,253,252,90,0,0,118,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,234,184,184,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,211,252,252,252,252,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,252,252,252,253,178,168,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,116,0,0,81,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,38,240,252,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,151,252,252,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,170,253,253,23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,218,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,221,35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
 for (let i = 0; i < pt.length; i++) {
-    pt[i] /= 255;
+  pt[i] /= 255;
 }
 
 processImage(pt).then(() => {
