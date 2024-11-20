@@ -1,40 +1,43 @@
 import * as worker_api from "./worker_api";
 import * as toolkit from "./toolkit_wrapper";
-import {DataType} from "./protos/generic_pb";
-import {QueryClientBlock} from "./protos/hom_op_pb";
+import { DataType } from "./protos/generic_pb";
+import { QueryClientBlock } from "./protos/hom_op_pb";
 
 export type Tensor = number | Tensor[];
 
 export const getTensorShape = (tensor: Tensor): number[] => {
-    if (typeof tensor === "number") {
-        return [];
-    }
-    return [tensor.length, ...getTensorShape(tensor[0])];
-}
+  if (typeof tensor === "number") {
+    return [];
+  }
+  return [tensor.length, ...getTensorShape(tensor[0])];
+};
 
 export const getTensorStrides = (shape: number[]): number[] => {
-    const strides = Array(shape.length).fill(1);
-    for (let i = shape.length - 2; i >= 0; i--) {
-        strides[i] = shape[i + 1] * strides[i + 1];
-    }
-    return strides;
-}
+  const strides = Array(shape.length).fill(1);
+  for (let i = shape.length - 2; i >= 0; i--) {
+    strides[i] = shape[i + 1] * strides[i + 1];
+  }
+  return strides;
+};
 
 export const flattenTensor = (tensor: Tensor): number[] => {
-    if (typeof tensor === "number") {
-        return [tensor]; // Base case: a single number.
-    }
-    return tensor.reduce<number[]>((acc, value) => acc.concat(flattenTensor(value)), []);
-}
+  if (typeof tensor === "number") {
+    return [tensor]; // Base case: a single number.
+  }
+  return tensor.reduce<number[]>(
+    (acc, value) => acc.concat(flattenTensor(value)),
+    [],
+  );
+};
 
 export const dataToTensor = (data, dtype) => {
-    const buffer = data.slice().buffer;  // Copy the data to a new buffer
-    switch (dtype) {
-        case DataType.DOUBLE:
-            return new Float64Array(buffer);
-        default:
-            throw new Error(`Unsupported dtype: ${dtype}`);
-    }
+  const buffer = data.slice().buffer; // Copy the data to a new buffer
+  switch (dtype) {
+    case DataType.DOUBLE:
+      return new Float64Array(buffer);
+    default:
+      throw new Error(`Unsupported dtype: ${dtype}`);
+  }
 };
 
 export const reshapeWithStrides = (flatArray, shape, strides) => {
@@ -62,7 +65,7 @@ export const reshapeWithStrides = (flatArray, shape, strides) => {
   }
 
   return createMultiDimensionalArray();
-}
+};
 
 export const imageToMatrix = (
   image: HTMLImageElement,
