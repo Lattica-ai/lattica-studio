@@ -1,5 +1,6 @@
 const server = require("./server");
 const worker_api = require("./worker_api");
+import {getTensorShape} from "./utils";
 import * as toolkit from "./toolkit_wrapper";
 import './wasm/cpp_sdk.js';
 
@@ -173,6 +174,12 @@ async function processImage(pt: typeof Tensor) {
   console.log(ct_res.length);
   const pt_res = await client.decrypt(ct_res);
   console.log("Decrypted:");
+
+  const pt_expected = await worker_api.apply_clear(jwt, pt);
+  console.log('result shape', getTensorShape(pt_res));
+  console.log('expected shape', getTensorShape(pt_expected));
+  console.log('expected:', pt_expected);
+
   return pt_res;
 }
 
@@ -195,10 +202,6 @@ for (let i = 0; i < pt.length; i++) {
     pt[i] /= 255;
 }
 console.log(pt.reduce((sum, value) => sum + value, 0));
-
-// worker_api.apply_clear(jwt, pt).then((pt_res) => {
-//     console.log("APPLY CLEAR RESULT:", pt_res);
-// });
 
 processImage(pt).then((pt_res) => {
   console.log("Result:", pt_res);
