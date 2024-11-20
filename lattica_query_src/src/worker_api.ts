@@ -1,7 +1,7 @@
-import {Tensor} from "./utils";
+import { Tensor } from "./utils";
 import * as toolkit from "./toolkit_wrapper";
 import axios from "axios";
-import {BE_URL, MOCK_BE} from "./config";
+import { BE_URL, MOCK_BE } from "./config";
 
 type WorkerResponse = string | Record<string, string>;
 
@@ -18,16 +18,12 @@ const sendHttpRequest = async (
     },
   };
   try {
-    const response = await axios.post(
-      `${BE_URL}/do_action`,
-      reqData,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`,
-        },
+    const response = await axios.post(`${BE_URL}/do_action`, reqData, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
       },
-    );
+    });
 
     const responseJson = response.data;
     console.log(`${actionName}: ${responseJson.status}`);
@@ -78,7 +74,7 @@ const base64ToBytes = (base64: string): Uint8Array => {
 const bytesToBase64 = (uint8Array: Uint8Array): string => {
   const binaryString = String.fromCharCode.apply(null, uint8Array);
   return btoa(binaryString);
-}
+};
 
 export const get_user_init_data = async (
   jwt: string,
@@ -89,9 +85,12 @@ export const get_user_init_data = async (
     return {
       serializedContext: new Uint8Array(await mockApiContext.arrayBuffer()),
       serializedHomseq: new Uint8Array(await mockClientHomseq.arrayBuffer()),
-    }
+    };
   }
-  const response = await sendHttpRequest(jwt, "get_user_init_data") as Record<string, string>;
+  const response = (await sendHttpRequest(jwt, "get_user_init_data")) as Record<
+    string,
+    string
+  >;
   return {
     serializedContext: base64ToBytes(response.context_proto_str),
     serializedHomseq: base64ToBytes(response.homseq_proto_str),
@@ -128,4 +127,4 @@ export const apply_clear = async (jwt: string, pt: Tensor) => {
     pt_proto_str: bytesToBase64(toolkit.dumps_proto_tensor(pt)),
   });
   return toolkit.load_proto_tensor(base64ToBytes(response as string));
-}
+};
