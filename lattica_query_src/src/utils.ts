@@ -1,7 +1,7 @@
 import * as worker_api from "./worker_api";
 import * as toolkit from "./toolkit_wrapper";
 import {DataType} from "./protos/generic_pb";
-const {QueryClientBlock} = require("./protos/hom_op_pb");
+import {QueryClientBlock} from "./protos/hom_op_pb";
 
 export type Tensor = number | Tensor[];
 
@@ -103,7 +103,7 @@ export const runInferenceDemo = async (
   context: Uint8Array,
   secretKey: [Uint8Array, Uint8Array],
   serialized_ct: Uint8Array,
-  clientBlocks: typeof QueryClientBlock[],
+  clientBlocks: QueryClientBlock[],
   firstBlockToRun: number,
 ): Promise<Uint8Array> => {
   let serialized_ct_res = await worker_api.apply_hom_pipeline(
@@ -111,7 +111,6 @@ export const runInferenceDemo = async (
     serialized_ct,
     firstBlockToRun,
   );
-  console.log(serialized_ct_res);
   if (clientBlocks.length == 0) {
     // just apply once and return
     return serialized_ct_res;

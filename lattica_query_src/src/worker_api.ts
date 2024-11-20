@@ -1,8 +1,7 @@
 import {Tensor} from "./utils";
 import * as toolkit from "./toolkit_wrapper";
-
-const axios = require("axios");
-const {BE_URL, MOCK_BE} = require("./config");
+import axios from "axios";
+import {BE_URL, MOCK_BE} from "./config";
 
 type WorkerResponse = string | Record<string, string>;
 
@@ -84,7 +83,6 @@ const bytesToBase64 = (uint8Array: Uint8Array): string => {
 export const get_user_init_data = async (
   jwt: string,
 ): Promise<{ serializedContext: Uint8Array; serializedHomseq: Uint8Array }> => {
-  console.log('MOCK_BE:', MOCK_BE);
   if (MOCK_BE) {
     const mockApiContext = await fetch("mock_data/api_context");
     const mockClientHomseq = await fetch("mock_data/client_hom_seq");

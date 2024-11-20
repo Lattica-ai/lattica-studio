@@ -18,11 +18,8 @@ export const wasmToJs = (byteVector: typeof Module.VectorUint8): Uint8Array => {
 
 export const dumps_proto_tensor = (pt: Tensor): Uint8Array => {
     const shape = getTensorShape(pt);
-    console.log("Shape:", shape);
     const strides = getTensorStrides(shape);
-    console.log("Strides:", strides);
     const binaryData = new Uint8Array(new Float64Array(flattenTensor(pt)).buffer);
-    console.log("Binary data:", binaryData.length);
 
     const proto = new TensorHolder();
     proto.setDtype(DataType.DOUBLE); // TODO: always double for now

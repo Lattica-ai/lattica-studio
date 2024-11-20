@@ -1,12 +1,13 @@
-const server = require("./server");
-const worker_api = require("./worker_api");
+import * as server from "./server";
+import * as worker_api from "./worker_api";
 import {getTensorShape} from "./utils";
 import * as toolkit from "./toolkit_wrapper";
 import './wasm/cpp_sdk.js';
 
-const {Tensor, runInferenceDemo} = require("./utils");
-const {QueryClientSequentialHomOp, QueryClientBlock} = require("./protos/hom_op_pb");
-const {MOCK_BE} = require("./config");
+import {Tensor, runInferenceDemo} from "./utils";
+import {QueryClientSequentialHomOp, QueryClientBlock} from "./protos/hom_op_pb";
+import {MOCK_BE} from "./config";
+console.log('MOCK_BE:', MOCK_BE);
 
 export {};
 declare global {
@@ -45,7 +46,7 @@ class LatticaQueryClient {
   private initialized: boolean = false;
   private serializedContext: Uint8Array | null = null;
   private serializedHomseq: Uint8Array | null = null;
-  private clientBlocks: typeof QueryClientBlock[] = [];
+  private clientBlocks: QueryClientBlock[] = [];
   private secretKey: [Uint8Array, Uint8Array] | null = null;
   private applyBlockBeforeEncryption: boolean = false;
   private firstClientBlock: Uint8Array | undefined = undefined;
@@ -63,13 +64,11 @@ class LatticaQueryClient {
     const initData = await worker_api.get_user_init_data(this.jwt);
     this.serializedContext = initData.serializedContext;
     this.serializedHomseq = initData.serializedHomseq;
-    console.log('serializedContext len:', this.serializedContext.length);
-    console.log('serializedHomseq len:', this.serializedHomseq.length);
 
     this.clientBlocks = QueryClientSequentialHomOp.deserializeBinary(
       this.serializedHomseq,
     ).getClientBlocksList();
-    console.log('clientBlocks len:', this.clientBlocks.length);
+    console.log('number of client blocks:', this.clientBlocks.length);
 
     // check if need to apply client block before encryption
     this.applyBlockBeforeEncryption =
@@ -92,9 +91,7 @@ class LatticaQueryClient {
       this.serializedHomseq,
       this.serializedContext,
     );
-    console.log('sk len:', sk.length);
-    console.log('skCoefs len:', skCoefs.length);
-    console.log('evaluationKey len:', evaluationKey.length);
+
     this.secretKey = [sk, skCoefs];
 
     if (!MOCK_BE) {
@@ -105,7 +102,7 @@ class LatticaQueryClient {
     this.initialized = true;
   }
 
-  async encrypt(pt: typeof Tensor): Promise<Uint8Array> {
+  async encrypt(pt: Tensor): Promise<Uint8Array> {
     if (!this.initialized) throw new Error("Client must be initialized first");
 
     let serialized_pt = toolkit.dumps_proto_tensor(pt);
@@ -129,20 +126,17 @@ class LatticaQueryClient {
   async apply_query(encryptedInput: Uint8Array): Promise<Uint8Array> {
     if (!this.initialized) throw new Error("Client must be initialized first");
 
-    const encryptedOutput = await runInferenceDemo(
-      this.jwt,
-      this.serializedContext,
-      this.secretKey,
-      encryptedInput,
-      this.clientBlocks,
-      this.applyBlockBeforeEncryption ? 1 : 0,
+    return await runInferenceDemo(
+        this.jwt,
+        this.serializedContext,
+        this.secretKey,
+        encryptedInput,
+        this.clientBlocks,
+        this.applyBlockBeforeEncryption ? 1 : 0,
     );
-    console.log("apply finished");
-
-    return encryptedOutput;
   }
 
-  async decrypt(encryptedResult: Uint8Array): Promise<typeof Tensor> {
+  async decrypt(encryptedResult: Uint8Array): Promise<Tensor> {
     if (!this.initialized) throw new Error("Client must be initialized first");
     let decryptedOutput = toolkit.dec(
       this.serializedContext,
@@ -163,21 +157,21 @@ class LatticaQueryClient {
   }
 }
 
-async function processImage(pt: typeof Tensor) {
+async function processImage(pt: Tensor) {
   await client.init();
-  console.log("Client initialized:");
+  console.log("Client initialized.");
   const ct = await client.encrypt(pt);
-  console.log("Encrypted:");
+  console.log("Encrypted.");
   const ct_res = await client.apply_query(ct);
-  console.log("Query result:");
-  console.log(ct_res);
-  console.log(ct_res.length);
+  console.log("Query finished.");
   const pt_res = await client.decrypt(ct_res);
-  console.log("Decrypted:");
+  console.log("Decrypted.");
 
   const pt_expected = await worker_api.apply_clear(jwt, pt);
-  console.log('result shape', getTensorShape(pt_res));
-  console.log('expected shape', getTensorShape(pt_expected));
+  console.log('Apply Clear finished');
+
+  console.log('result shape:', getTensorShape(pt_res), 'expected shape:', getTensorShape(pt_expected));
+  console.log('result:', pt_res);
   console.log('expected:', pt_expected);
 
   return pt_res;
@@ -187,22 +181,11 @@ const jwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IkZTRzBSMmVuWFYzZXJSR0p
 const client = new LatticaQueryClient(jwt);
 console.log("Client created");
 
-// const pt = [
-//   [
-//     [1, 2],
-//     [3, 4],
-//   ],
-//   [
-//     [5, 6],
-//     [7, 8],
-//   ],
-// ];
-const pt = new Float64Array([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,97,222,253,253,128,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,252,252,252,252,253,194,65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,222,252,252,252,252,253,252,202,70,38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,227,66,45,169,252,252,252,232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,79,0,0,13,211,252,252,252,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,231,255,253,69,0,0,3,170,253,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,209,253,252,90,0,0,118,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,234,184,184,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,211,252,252,252,252,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,252,252,252,253,178,168,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,116,0,0,81,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,38,240,252,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,151,252,252,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,170,253,253,23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,218,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,221,35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]);
+const pt = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,97,222,253,253,128,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,252,252,252,252,253,194,65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,222,252,252,252,252,253,252,202,70,38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,227,66,45,169,252,252,252,232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,79,0,0,13,211,252,252,252,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,231,255,253,69,0,0,3,170,253,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,209,253,252,90,0,0,118,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,234,184,184,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,211,252,252,252,252,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,252,252,252,253,178,168,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,116,0,0,81,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,38,240,252,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,151,252,252,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,170,253,253,23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,218,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,221,35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
 for (let i = 0; i < pt.length; i++) {
     pt[i] /= 255;
 }
-console.log(pt.reduce((sum, value) => sum + value, 0));
 
-processImage(pt).then((pt_res) => {
-  console.log("Result:", pt_res);
+processImage(pt).then(() => {
+  console.log("FINISHED");
 });

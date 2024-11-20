@@ -1,5 +1,6 @@
 import axios from "axios";
-const {BE_URL} = require("./config");
+import {BE_URL} from "./config";
+
 
 const sendHttpRequest = async (
   jwt: string,
