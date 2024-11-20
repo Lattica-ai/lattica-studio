@@ -1,6 +1,5 @@
 import axios from "axios";
-import {BE_URL} from "./config";
-
+import { BE_URL } from "./config";
 
 const sendHttpRequest = async (
   jwt: string,
@@ -22,8 +21,8 @@ const sendHttpRequest = async (
 
     if (response.data.error) {
       throw new Error(
-          `FAILED ${requestName} with error: ${response.data.error}`,
-          );
+        `FAILED ${requestName} with error: ${response.data.error}`,
+      );
     }
     return response.data.result;
   } catch (error: any) {
@@ -49,10 +48,7 @@ const uploadFile = async (
   }
 };
 
-export const uploadEk = async (
-  jwt: string,
-  ek: Uint8Array,
-): Promise<void> => {
+export const uploadEk = async (jwt: string, ek: Uint8Array): Promise<void> => {
   console.log("Uploading evaluation key");
   const uploadUrl = await sendHttpRequest(jwt, "/token/get_pk_upload_url");
   console.log("Upload URL:", uploadUrl);
