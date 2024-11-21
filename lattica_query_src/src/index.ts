@@ -58,7 +58,8 @@ export class LatticaQueryClient {
     }
 
     // todo: remove after WASM toolkit is integrated!
-    private delay(ms: number = 300): Promise<void> {
+    private delay(): Promise<void> {
+        const ms = Math.floor(Math.random() * (5000 - 2000 + 1)) + 2000;
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
