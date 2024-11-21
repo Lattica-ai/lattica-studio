@@ -159,14 +159,19 @@ class LatticaQueryClient {
 }
 
 async function processImage(pt: Tensor) {
+  console.time("Offline phase");
   await client.init();
   console.log("Client initialized.");
+  console.timeEnd("Offline phase");
+
+  console.time("Online phase");
   const ct = await client.encrypt(pt);
   console.log("Encrypted.");
   const ct_res = await client.apply_query(ct);
   console.log("Query finished.");
   const pt_res = await client.decrypt(ct_res);
   console.log("Decrypted.");
+  console.timeEnd("Online phase");
 
   const pt_expected = await worker_api.apply_clear(jwt, pt);
   console.log("Apply Clear finished");
