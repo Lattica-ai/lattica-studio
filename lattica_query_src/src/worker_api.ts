@@ -1,7 +1,7 @@
 import { Tensor } from "./utils";
 import * as toolkit from "./toolkit_wrapper";
 import axios from "axios";
-import { BE_URL, MOCK_BE } from "./config";
+import { BE_URL } from "./config";
 
 type WorkerResponse = string | Record<string, string>;
 
@@ -79,14 +79,6 @@ const bytesToBase64 = (uint8Array: Uint8Array): string => {
 export const get_user_init_data = async (
   jwt: string,
 ): Promise<{ serializedContext: Uint8Array; serializedHomseq: Uint8Array }> => {
-  if (MOCK_BE) {
-    const mockApiContext = await fetch("mock_data/api_context");
-    const mockClientHomseq = await fetch("mock_data/client_hom_seq");
-    return {
-      serializedContext: new Uint8Array(await mockApiContext.arrayBuffer()),
-      serializedHomseq: new Uint8Array(await mockClientHomseq.arrayBuffer()),
-    };
-  }
   const response = (await sendHttpRequest(jwt, "get_user_init_data")) as Record<
     string,
     string
@@ -98,9 +90,6 @@ export const get_user_init_data = async (
 };
 
 export const preprocessEk = async (jwt: string): Promise<void> => {
-  if (MOCK_BE) {
-    return;
-  }
   await sendHttpRequest(jwt, "preprocess_pk");
 };
 
@@ -110,10 +99,6 @@ export const apply_hom_pipeline = async (
   block_index: number,
   return_new_state: boolean = false,
 ): Promise<Uint8Array> => {
-  if (MOCK_BE) {
-    const mockCtRes = await fetch("mock_data/ct_res");
-    return new Uint8Array(await mockCtRes.arrayBuffer());
-  }
   const response = await sendHttpRequest(jwt, "apply_hom_pipeline", {
     ct_proto_str: bytesToBase64(serialized_ct),
     block_index,

@@ -9,8 +9,6 @@ import {
   QueryClientSequentialHomOp,
   QueryClientBlock,
 } from "./protos/hom_op_pb";
-import { MOCK_BE } from "./config";
-console.log("MOCK_BE:", MOCK_BE);
 
 export {};
 declare global {
@@ -95,10 +93,8 @@ class LatticaQueryClient {
 
     this.secretKey = [sk, skCoefs];
 
-    if (!MOCK_BE) {
-      await server.uploadEk(this.jwt, evaluationKey);
-      await worker_api.preprocessEk(this.jwt);
-    }
+    await server.uploadEk(this.jwt, evaluationKey);
+    await worker_api.preprocessEk(this.jwt);
 
     this.initialized = true;
   }
