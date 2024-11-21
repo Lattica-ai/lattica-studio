@@ -8,7 +8,7 @@ module.exports = {
     path: path.resolve(__dirname, 'dist'),
   },
   resolve: {
-    extensions: ['.ts', '.js', '.wasm'], // Resolve TypeScript and JavaScript files
+    extensions: ['.ts', '.js'], // Resolve TypeScript and JavaScript files
     fallback: {
       "crypto": false,
       "fs": false,
@@ -21,10 +21,6 @@ module.exports = {
         test: /\.ts$/,
         use: 'ts-loader',
         exclude: /node_modules/,
-      },
-      {
-        test: /\.wasm$/,
-        type: 'webassembly/async', // load WASM asynchronously
       },
     ],
   },
