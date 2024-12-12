@@ -93,6 +93,8 @@ class LatticaQueryClient {
 
     this.secretKey = [sk, skCoefs];
 
+    console.log("PK size:", evaluationKey.length);
+
     await server.uploadEk(this.jwt, evaluationKey);
     await worker_api.preprocessEk(this.jwt);
 
@@ -154,40 +156,41 @@ class LatticaQueryClient {
   }
 }
 
-async function processImage(pt: Tensor) {
-  console.time("Offline phase");
-  await client.init();
-  console.log("Client initialized.");
-  console.timeEnd("Offline phase");
-
-  console.time("Online phase");
-  const ct = await client.encrypt(pt);
-  console.log("Encrypted.");
-  const ct_res = await client.apply_query(ct);
-  console.log("Query finished.");
-  const pt_res = await client.decrypt(ct_res);
-  console.log("Decrypted.");
-  console.timeEnd("Online phase");
-
-  const pt_expected = await worker_api.apply_clear(jwt, pt);
-  console.log("Apply Clear finished");
-
-  console.log('result shape:', getTensorShape(pt_res), 'expected shape:', getTensorShape(pt_expected));
-  console.log('result:', pt_res);
-  console.log('expected:', pt_expected);
-
-  return pt_res;
-}
-
-const jwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IkZTRzBSMmVuWFYzZXJSR0pMaFFidSJ9.eyJ0b2tlbklkIjoiZjBiYjY1YzctMTM0ZS00MmEzLTkwZTktMjM5M2NmMDM3OGM0IiwiaXNzIjoiaHR0cHM6Ly9kZXYtZjVrZ3Iwa25yd2pvYWF3MS51cy5hdXRoMC5jb20vIiwic3ViIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3ZAY2xpZW50cyIsImF1ZCI6Imh0dHBzOi8vbXlhcGkvYXBpIiwiaWF0IjoxNzMxNTc3NjUxLCJleHAiOjE3MzQxNjk2NTEsInNjb3BlIjoidXNlciBkZWZhdWx0IiwiZ3R5IjoiY2xpZW50LWNyZWRlbnRpYWxzIiwiYXpwIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3YiLCJwZXJtaXNzaW9ucyI6WyJ1c2VyIiwiZGVmYXVsdCJdfQ.njJTM9yPWygz-wt8mOJXsRF3Q9BAtHXwCmKYBKAs0Hgf-92PplBChE8OzOC1QrriuW5AJPlhEArE27b1xT_oQ2pKfykxAgfaBjQb-KQJ4gclFjHXu2FIHAkmm-CHqjtOEWmc4E8o-7ToVkJEFdpRUZkKSjXOrPM9zYfohGVgeGN9sLLOpJbSYF-6pq7-HkVO4GZjwOhWNMHxEcnemSB3rwly0R0Hqf6OzKA-FIKGwYdmumOVDxZ5Drih6IZaBHNC04Qa3xyhHFo36MR2YPr4AWLVGeui32qR6aQv3Q5X5UdhjMy5Ijg4ja67E0EO3nvS4qkvBSunBSNJ6_XZkD_q7w";
-const client = new LatticaQueryClient(jwt);
-console.log("Client created");
-
-const pt = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,97,222,253,253,128,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,252,252,252,252,253,194,65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,222,252,252,252,252,253,252,202,70,38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,227,66,45,169,252,252,252,232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,79,0,0,13,211,252,252,252,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,231,255,253,69,0,0,3,170,253,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,209,253,252,90,0,0,118,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,234,184,184,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,211,252,252,252,252,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,252,252,252,253,178,168,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,116,0,0,81,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,38,240,252,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,151,252,252,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,170,253,253,23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,218,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,221,35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
-for (let i = 0; i < pt.length; i++) {
-  pt[i] /= 255;
-}
-
-processImage(pt).then(() => {
-  console.log("FINISHED");
-});
+// async function processImage(pt: Tensor) {
+//   console.time("Offline phase");
+//   await client.init();
+//   console.log("Client initialized.");
+//   console.timeEnd("Offline phase");
+//
+//   console.time("Online phase");
+//   const ct = await client.encrypt(pt);
+//   console.log("Encrypted.");
+//   const ct_res = await client.apply_query(ct);
+//   console.log("Query finished.");
+//   const pt_res = await client.decrypt(ct_res);
+//   console.log("Decrypted.");
+//   console.timeEnd("Online phase");
+//
+//   const pt_expected = await worker_api.apply_clear(jwt, pt);
+//   console.log("Apply Clear finished");
+//
+//   console.log('result shape:', getTensorShape(pt_res), 'expected shape:', getTensorShape(pt_expected));
+//   console.log('result:', pt_res);
+//   console.log('expected:', pt_expected);
+//
+//   return pt_res;
+// }
+//
+// const jwt = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IkZTRzBSMmVuWFYzZXJSR0pMaFFidSJ9.eyJ0b2tlbklkIjoiNWUyNmEwNzAtNWQxOC00ZWE2LThiZGItODc5NjYwNmRiN2NiIiwiaXNzIjoiaHR0cHM6Ly9kZXYtZjVrZ3Iwa25yd2pvYWF3MS51cy5hdXRoMC5jb20vIiwic3ViIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3ZAY2xpZW50cyIsImF1ZCI6Imh0dHBzOi8vbXlhcGkvYXBpIiwiaWF0IjoxNzM0MDIwMTQxLCJleHAiOjE3MzY2MTIxNDEsInNjb3BlIjoidXNlciBkZWZhdWx0IiwiZ3R5IjoiY2xpZW50LWNyZWRlbnRpYWxzIiwiYXpwIjoiUFFJUVVpN24zbUpqSnBNdmFKRkQzQ09kTzRwMzVCc3YiLCJwZXJtaXNzaW9ucyI6WyJ1c2VyIiwiZGVmYXVsdCJdfQ.GQz-nENvI_kGESL895dircH8G4ATYeXDKoBhB_4D8FEy2lyhTKqWlSecydJJohRLKEoI2AVyWJb6hG2tXkLJnqWuyYcHun7-bSF9oqmIRthRyblWaam-9jJlfvEm7V8BmlsRVj4JceggV05y-Ty3---faxxaoKTIryx9OFuePzUFJJFy1gjfM_hfDDV_alxPYBU07fh309b8g2rgilaD11-0hL55igMtkNItMBU5poRdHCxAokrM6zdxXodMDxfImr483VS-Dt9_MwH9283IbVi54dDBDtvzBEMIoenky8lgfG79C3aK2g5pH1xFwfN_p1nKWAktqbeg4fGl2wLdUQ";
+//
+// const client = new LatticaQueryClient(jwt);
+// console.log("Client created");
+//
+// const pt = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,97,222,253,253,128,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,252,252,252,252,253,194,65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,222,252,252,252,252,253,252,202,70,38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,227,66,45,169,252,252,252,232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,79,0,0,13,211,252,252,252,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,231,255,253,69,0,0,3,170,253,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,209,253,252,90,0,0,118,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,253,252,234,184,184,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,211,252,252,252,252,253,252,252,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,252,252,252,253,178,168,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,116,0,0,81,253,253,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,184,252,252,32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,38,240,252,210,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,151,252,252,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,170,253,253,23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,252,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,252,252,218,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,23,158,221,35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+// for (let i = 0; i < pt.length; i++) {
+//   pt[i] /= 255;
+// }
+//
+// processImage(pt).then(() => {
+//   console.log("FINISHED");
+// });
