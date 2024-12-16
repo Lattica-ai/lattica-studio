@@ -1,4 +1,4 @@
-import { DataType } from "./protos/generic_pb";
+import { DataType } from "./serialization/generic";
 
 export type Tensor = number | Tensor[];
 
@@ -27,7 +27,7 @@ export const flattenTensor = (tensor: Tensor): number[] => {
   );
 };
 
-export const dataToTensor = (data, dtype) => {
+export const dataToTensor = (data: Uint8Array, dtype: DataType) => {
   const buffer = data.slice().buffer; // Copy the data to a new buffer
   switch (dtype) {
     case DataType.DOUBLE:
@@ -37,9 +37,9 @@ export const dataToTensor = (data, dtype) => {
   }
 };
 
-export const reshapeWithStrides = (flatArray, shape, strides) => {
+export const reshapeWithStrides = (flatArray: Float64Array, shape: number[], strides: number[]) => {
   // Create a function to access the elements in the flattened array using strides
-  function getElement(indices) {
+  function getElement(indices: number[]): number {
     let index = 0;
     for (let i = 0; i < indices.length; i++) {
       index += indices[i] * strides[i];
@@ -48,7 +48,7 @@ export const reshapeWithStrides = (flatArray, shape, strides) => {
   }
 
   // Recursively create the multi-dimensional array based on shape and strides
-  function createMultiDimensionalArray(dimIndex = 0, indices = []) {
+  function createMultiDimensionalArray(dimIndex = 0, indices: number[] = []): Tensor {
     if (dimIndex === shape.length) {
       return getElement(indices);
     }

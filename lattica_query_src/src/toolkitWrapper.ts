@@ -6,7 +6,7 @@ import {
   dataToTensor,
   reshapeWithStrides,
 } from "./tensorUtils";
-import { DataType, TensorHolder } from "./protos/generic_pb";
+import {DataType, TensorHolder} from "./serialization/generic";
 
 export const jsToWasm = (uintArray: Uint8Array): typeof Module.VectorUint8 => {
   const byteVector = new Module.VectorUint8();
@@ -27,22 +27,23 @@ export const dumps_proto_tensor = (pt: Tensor): Uint8Array => {
   const strides = getTensorStrides(shape);
   const binaryData = new Uint8Array(new Float64Array(flattenTensor(pt)).buffer);
 
-  const proto = new TensorHolder();
-  proto.setDtype(DataType.DOUBLE); // TODO: always double for now
-  proto.setSizesList(shape);
-  proto.setStridesList(strides);
-  proto.setData(binaryData);
+  const proto = TensorHolder.create({
+    dtype: DataType.DOUBLE,  // TODO: always double for now
+    sizes: shape,
+    strides: strides,
+    data: binaryData
+  });
 
-  return proto.serializeBinary();
+  return TensorHolder.encode(proto).finish();
 };
 
 export const load_proto_tensor = (serialized_pt: Uint8Array): Tensor => {
-  const tensorProto = TensorHolder.deserializeBinary(serialized_pt);
-  const tensor = dataToTensor(tensorProto.getData(), tensorProto.getDtype());
+  const tensorProto = TensorHolder.decode(serialized_pt);
+  const tensor = dataToTensor(tensorProto.data, tensorProto.dtype);
   return reshapeWithStrides(
     tensor,
-    tensorProto.getSizesList(),
-    tensorProto.getStridesList(),
+    tensorProto.sizes,
+    tensorProto.strides
   );
 };
 
@@ -154,7 +155,7 @@ export const decrypt = (
 export const generateKey = (
   serialized_homseq: Uint8Array,
   serialized_context: Uint8Array,
-) => {
+): Uint8Array[] => {
   console.log("Generating key...");
   const wasm_serialized_homseq = jsToWasm(serialized_homseq);
   const wasm_serialized_context = jsToWasm(serialized_context);

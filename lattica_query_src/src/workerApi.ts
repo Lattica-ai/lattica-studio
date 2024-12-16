@@ -3,6 +3,10 @@ import * as toolkit from "./toolkitWrapper";
 
 type WorkerResponse = string | Record<string, string>;
 
+interface ApiError extends AxiosError<{
+  error?: string;
+}> {}
+
 const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
@@ -17,7 +21,7 @@ const sendHttpRequest = async (
     },
   };
 
-  const response = await fetch(`${beUrl}/do_action`, {
+  const response = await fetch(`${beUrl}/api/do_action`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -57,7 +61,7 @@ const resampleResult = async (
 
   if (!executionId) {
     // TODO: prevent worker from returning executionId = 0
-    return null;
+    return "";
   }
 
   await new Promise((resolve) => setTimeout(resolve, 1000)); // Sleep for 1 second
@@ -75,7 +79,7 @@ const base64ToBytes = (base64: string): Uint8Array => {
 };
 
 const bytesToBase64 = (uint8Array: Uint8Array): string => {
-  const binaryString = String.fromCharCode.apply(null, uint8Array);
+  const binaryString = String.fromCharCode.apply(null, Array.from(uint8Array));
   return btoa(binaryString);
 };
 
