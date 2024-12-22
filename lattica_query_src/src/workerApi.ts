@@ -1,12 +1,11 @@
-import { Tensor } from "./utils";
-import * as toolkit from "./toolkit_wrapper";
-import axios from "axios";
-import { BE_URL } from "./config";
+import { Tensor } from "./tensorUtils";
+import * as toolkit from "./toolkitWrapper";
 
 type WorkerResponse = string | Record<string, string>;
 
 const sendHttpRequest = async (
   jwt: string,
+  beUrl: string,
   actionName: string,
   actionParams: Record<string, any> | null = null,
   withPolling: boolean = true,
@@ -17,36 +16,40 @@ const sendHttpRequest = async (
       params: actionParams || {},
     },
   };
-  try {
-    const response = await axios.post(`${BE_URL}/do_action`, reqData, {
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${jwt}`,
-      },
-    });
 
-    const responseJson = response.data;
-    console.log(`${actionName}: ${responseJson.status}`);
+  const response = await fetch(`${beUrl}/do_action`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt}`,
+    },
+    body: JSON.stringify(reqData),
+  });
 
-    if (responseJson.status === "Running" && withPolling) {
-      return resampleResult(jwt, responseJson.executionId);
-    }
-
-    if (responseJson.action_result) {
-      if (responseJson.action_result.error) {
-        throw new Error(responseJson.action_result.error); // worker error
-      }
-      return responseJson.action_result.result;
-    }
-  } catch (error) {
+  if (!response.ok) {
+    const errorText = await response.text();
     throw new Error(
-      `FAILED api/${actionName} with error: ${error.response.data.error}`,
+        `FAILED api/${actionName} with error: ${errorText}`,
     );
+  }
+  const responseJson = await response.json();
+  console.log(`${actionName}: ${responseJson.status}`);
+
+  if (responseJson.status === "RUNNING" && withPolling) {
+    return resampleResult(jwt, beUrl, responseJson.executionId);
+  }
+
+  if (responseJson.action_result) {
+    if (responseJson.action_result.error) {
+      throw new Error(responseJson.action_result.error); // worker error
+    }
+    return responseJson.action_result.result;
   }
 };
 
 const resampleResult = async (
   jwt: string,
+  beUrl: string,
   executionId: string,
 ): Promise<WorkerResponse> => {
   // Query the status of a previously triggered action.
@@ -59,7 +62,7 @@ const resampleResult = async (
 
   await new Promise((resolve) => setTimeout(resolve, 1000)); // Sleep for 1 second
 
-  return await sendHttpRequest(jwt, "get_action_result", { executionId });
+  return await sendHttpRequest(jwt, beUrl, "get_action_result", { executionId });
 };
 
 const base64ToBytes = (base64: string): Uint8Array => {
@@ -78,8 +81,9 @@ const bytesToBase64 = (uint8Array: Uint8Array): string => {
 
 export const get_user_init_data = async (
   jwt: string,
+  beUrl: string,
 ): Promise<{ serializedContext: Uint8Array; serializedHomseq: Uint8Array }> => {
-  const response = (await sendHttpRequest(jwt, "get_user_init_data")) as Record<
+  const response = (await sendHttpRequest(jwt, beUrl, "get_user_init_data")) as Record<
     string,
     string
   >;
@@ -89,17 +93,18 @@ export const get_user_init_data = async (
   };
 };
 
-export const preprocessEk = async (jwt: string): Promise<void> => {
-  await sendHttpRequest(jwt, "preprocess_pk");
+export const preprocessEk = async (jwt: string, beUrl: string): Promise<void> => {
+  await sendHttpRequest(jwt, beUrl, "preprocess_pk");
 };
 
 export const apply_hom_pipeline = async (
   jwt: string,
+  beUrl: string,
   serialized_ct: Uint8Array,
   block_index: number,
   return_new_state: boolean = false,
 ): Promise<Uint8Array> => {
-  const response = await sendHttpRequest(jwt, "apply_hom_pipeline", {
+  const response = await sendHttpRequest(jwt, beUrl, "apply_hom_pipeline", {
     ct_proto_str: bytesToBase64(serialized_ct),
     block_index,
     return_new_state,
@@ -107,8 +112,8 @@ export const apply_hom_pipeline = async (
   return base64ToBytes(response as string);
 };
 
-export const apply_clear = async (jwt: string, pt: Tensor) => {
-  const response = await sendHttpRequest(jwt, "apply_clear", {
+export const apply_clear = async (jwt: string, beUrl: string, pt: Tensor) => {
+  const response = await sendHttpRequest(jwt, beUrl, "apply_clear", {
     pt_proto_str: bytesToBase64(toolkit.dumps_proto_tensor(pt)),
   });
   return toolkit.load_proto_tensor(base64ToBytes(response as string));

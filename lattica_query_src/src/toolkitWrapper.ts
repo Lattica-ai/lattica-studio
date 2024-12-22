@@ -5,9 +5,8 @@ import {
   flattenTensor,
   dataToTensor,
   reshapeWithStrides,
-} from "./utils";
+} from "./tensorUtils";
 import { DataType, TensorHolder } from "./protos/generic_pb";
-import fs from "fs";
 
 export const jsToWasm = (uintArray: Uint8Array): typeof Module.VectorUint8 => {
   const byteVector = new Module.VectorUint8();
@@ -51,7 +50,7 @@ const freeMemory = (wasmObjects: (typeof Module.VectorUint8)[]): void => {
   wasmObjects.forEach((obj) => obj.delete());
 };
 
-export const apply_client_block = (
+export const applyClientBlock = (
   serialized_block: Uint8Array,
   serialized_context: Uint8Array,
   serialized_pt: Uint8Array,
@@ -60,109 +59,130 @@ export const apply_client_block = (
   const wasm_serialized_block = jsToWasm(serialized_block);
   const wasm_serialized_context = jsToWasm(serialized_context);
   const wasm_serialized_pt = jsToWasm(serialized_pt);
-  const result_wasm = Module.apply_client_block(
-    wasm_serialized_block,
-    wasm_serialized_context,
-    wasm_serialized_pt,
-  );
-  const result = wasmToJs(result_wasm);
 
-  // Clean up to prevent memory leaks
-  freeMemory([
-    wasm_serialized_block,
-    wasm_serialized_context,
-    wasm_serialized_pt,
-    result_wasm,
-  ]);
+  let result: Uint8Array;
+  let result_wasm: typeof Module.VectorUint8;
+
+  try {
+    result_wasm = Module.apply_client_block(
+      wasm_serialized_block,
+      wasm_serialized_context,
+      wasm_serialized_pt,
+    );
+    result = wasmToJs(result_wasm);
+  } finally {
+    // Ensure memory is always freed
+    freeMemory([
+      wasm_serialized_block,
+      wasm_serialized_context,
+      wasm_serialized_pt,
+      result_wasm,
+    ]);
+  }
 
   return result;
 };
 
-export const enc = (
+export const encrypt = (
   serialized_context: Uint8Array,
   serialized_sk: [Uint8Array, Uint8Array],
   serialized_pt: Uint8Array,
   pack_for_transmission: boolean = false,
 ) => {
   console.log("Encrypting...");
-
   const wasm_serialized_context = jsToWasm(serialized_context);
   const wasm_serialized_sk = jsToWasm(serialized_sk[0]);
   const wasm_serialized_pt = jsToWasm(serialized_pt);
-  const result_wasm = Module.enc(
-    wasm_serialized_context,
-    wasm_serialized_sk,
-    wasm_serialized_pt,
-    true,
-  );
-  const result = wasmToJs(result_wasm);
 
-  // Clean up to prevent memory leaks
-  freeMemory([
-    wasm_serialized_context,
-    wasm_serialized_sk,
-    wasm_serialized_pt,
-    result_wasm,
-  ]);
+  let result: Uint8Array;
+  let result_wasm: typeof Module.VectorUint8;
+
+  try {
+    result_wasm = Module.enc(
+        wasm_serialized_context,
+        wasm_serialized_sk,
+        wasm_serialized_pt,
+        pack_for_transmission,
+    );
+    result = wasmToJs(result_wasm);
+  } finally {
+    // Clean up to prevent memory leaks
+    freeMemory([
+      wasm_serialized_context,
+      wasm_serialized_sk,
+      wasm_serialized_pt,
+      result_wasm,
+    ]);
+  }
 
   return result;
 };
 
-export const dec = (
+export const decrypt = (
   serialized_context: Uint8Array,
   serialized_sk: [Uint8Array, Uint8Array],
   serialized_ct: Uint8Array,
 ) => {
   console.log("Decrypting...");
   const wasm_serialized_context = jsToWasm(serialized_context);
-  const wasm_serialized_sk_1 = jsToWasm(serialized_sk[1]);
+  const wasm_serialized_sk = jsToWasm(serialized_sk[1]);
   const wasm_serialized_ct = jsToWasm(serialized_ct);
 
-  const result_wasm = Module.dec(
-    wasm_serialized_context,
-    wasm_serialized_sk_1,
-    wasm_serialized_ct,
-  );
-  const result = wasmToJs(result_wasm);
+  let result: Uint8Array;
+  let result_wasm: typeof Module.VectorUint8;
 
-  // Clean up to prevent memory leaks
-  freeMemory([
-    wasm_serialized_context,
-    wasm_serialized_sk_1,
-    wasm_serialized_ct,
-    result_wasm,
-  ]);
+  try {
+    result_wasm = Module.dec(
+        wasm_serialized_context,
+        wasm_serialized_sk,
+        wasm_serialized_ct,
+    );
+    result = wasmToJs(result_wasm);
+  } finally {
+    // Clean up to prevent memory leaks
+    freeMemory([
+      wasm_serialized_context,
+      wasm_serialized_sk,
+      wasm_serialized_ct,
+      result_wasm,
+    ]);
+  }
 
   return result;
 };
 
-export const generate_key = (
+export const generateKey = (
   serialized_homseq: Uint8Array,
   serialized_context: Uint8Array,
 ) => {
   console.log("Generating key...");
-
   const wasm_serialized_homseq = jsToWasm(serialized_homseq);
   const wasm_serialized_context = jsToWasm(serialized_context);
-  const result_wasm = Module.generate_key(
-    wasm_serialized_homseq,
-    wasm_serialized_context,
-  );
 
-  const result = [
-    wasmToJs(result_wasm.sk),
-    wasmToJs(result_wasm.sk_coefs),
-    wasmToJs(result_wasm.pk),
-  ];
+  let result: Uint8Array[];
+  let result_wasm: typeof Module.VectorUint8;
 
-  // Clean up to prevent memory leaks
-  freeMemory([
-    wasm_serialized_homseq,
-    wasm_serialized_context,
-    result_wasm.sk,
-    result_wasm.sk_coefs,
-    result_wasm.pk,
-  ]);
+  try {
+    result_wasm = Module.generate_key(
+        wasm_serialized_homseq,
+        wasm_serialized_context,
+    );
+
+    result = [
+      wasmToJs(result_wasm.sk),
+      wasmToJs(result_wasm.sk_coefs),
+      wasmToJs(result_wasm.pk),
+    ];
+  } finally {
+    // Clean up to prevent memory leaks
+    freeMemory([
+      wasm_serialized_homseq,
+      wasm_serialized_context,
+      result_wasm.sk,
+      result_wasm.sk_coefs,
+      result_wasm.pk,
+    ]);
+  }
 
   return result;
 };
