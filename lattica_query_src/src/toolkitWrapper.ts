@@ -6,7 +6,7 @@ import {
   dataToTensor,
   reshapeWithStrides,
 } from "./tensorUtils";
-import {DataType, TensorHolder} from "./serialization/generic";
+import { DataType, TensorHolder } from "./serialization/generic";
 
 export const jsToWasm = (uintArray: Uint8Array): typeof Module.VectorUint8 => {
   const byteVector = new Module.VectorUint8();
@@ -28,10 +28,10 @@ export const dumps_proto_tensor = (pt: Tensor): Uint8Array => {
   const binaryData = new Uint8Array(new Float64Array(flattenTensor(pt)).buffer);
 
   const proto = TensorHolder.create({
-    dtype: DataType.DOUBLE,  // TODO: always double for now
+    dtype: DataType.DOUBLE, // TODO: always double for now
     sizes: shape,
     strides: strides,
-    data: binaryData
+    data: binaryData,
   });
 
   return TensorHolder.encode(proto).finish();
@@ -40,11 +40,7 @@ export const dumps_proto_tensor = (pt: Tensor): Uint8Array => {
 export const load_proto_tensor = (serialized_pt: Uint8Array): Tensor => {
   const tensorProto = TensorHolder.decode(serialized_pt);
   const tensor = dataToTensor(tensorProto.data, tensorProto.dtype);
-  return reshapeWithStrides(
-    tensor,
-    tensorProto.sizes,
-    tensorProto.strides
-  );
+  return reshapeWithStrides(tensor, tensorProto.sizes, tensorProto.strides);
 };
 
 const freeMemory = (wasmObjects: (typeof Module.VectorUint8)[]): void => {
@@ -100,10 +96,10 @@ export const encrypt = (
 
   try {
     result_wasm = Module.enc(
-        wasm_serialized_context,
-        wasm_serialized_sk,
-        wasm_serialized_pt,
-        pack_for_transmission,
+      wasm_serialized_context,
+      wasm_serialized_sk,
+      wasm_serialized_pt,
+      pack_for_transmission,
     );
     result = wasmToJs(result_wasm);
   } finally {
@@ -134,9 +130,9 @@ export const decrypt = (
 
   try {
     result_wasm = Module.dec(
-        wasm_serialized_context,
-        wasm_serialized_sk,
-        wasm_serialized_ct,
+      wasm_serialized_context,
+      wasm_serialized_sk,
+      wasm_serialized_ct,
     );
     result = wasmToJs(result_wasm);
   } finally {
@@ -165,8 +161,8 @@ export const generateKey = (
 
   try {
     result_wasm = Module.generate_key(
-        wasm_serialized_homseq,
-        wasm_serialized_context,
+      wasm_serialized_homseq,
+      wasm_serialized_context,
     );
 
     result = [

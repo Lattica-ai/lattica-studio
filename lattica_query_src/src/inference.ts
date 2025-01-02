@@ -1,6 +1,6 @@
 import * as worker_api from "./workerApi";
 import * as toolkit from "./toolkitWrapper";
-import { QueryClientBlock } from "./protos/hom_op_pb";
+import { QueryClientBlock } from "./serialization/hom_op";
 
 // assume we get and return encrypted: first client block (if exists) was applied, and last client block (will be applied)- are not in the clientBlocks list
 export const runInferenceDemo = async (
@@ -23,7 +23,7 @@ export const runInferenceDemo = async (
     let serialized_pt = toolkit.decrypt(context, secretKey, serialized_ct_res);
 
     serialized_pt = toolkit.applyClientBlock(
-      block_proto.serializeBinary(),
+      QueryClientBlock.encode(block_proto).finish(),
       context,
       serialized_pt,
     );
@@ -34,7 +34,7 @@ export const runInferenceDemo = async (
       jwt,
       beUrl,
       serialized_ct,
-      block_proto.getBlockIndex() + 1,
+      block_proto.blockIndex + 1,
     );
   }
 

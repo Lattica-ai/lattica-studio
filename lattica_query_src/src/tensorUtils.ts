@@ -37,7 +37,11 @@ export const dataToTensor = (data: Uint8Array, dtype: DataType) => {
   }
 };
 
-export const reshapeWithStrides = (flatArray: Float64Array, shape: number[], strides: number[]) => {
+export const reshapeWithStrides = (
+  flatArray: Float64Array,
+  shape: number[],
+  strides: number[],
+) => {
   // Create a function to access the elements in the flattened array using strides
   function getElement(indices: number[]): number {
     let index = 0;
@@ -48,7 +52,10 @@ export const reshapeWithStrides = (flatArray: Float64Array, shape: number[], str
   }
 
   // Recursively create the multi-dimensional array based on shape and strides
-  function createMultiDimensionalArray(dimIndex = 0, indices: number[] = []): Tensor {
+  function createMultiDimensionalArray(
+    dimIndex = 0,
+    indices: number[] = [],
+  ): Tensor {
     if (dimIndex === shape.length) {
       return getElement(indices);
     }
@@ -64,35 +71,65 @@ export const reshapeWithStrides = (flatArray: Float64Array, shape: number[], str
   return createMultiDimensionalArray();
 };
 
-// export const imageToMatrix = (
-//   image: HTMLImageElement,
-// ): Promise<number[][][]> => {
-//   return new Promise((resolve, reject) => {
-//     const canvas = document.createElement("canvas");
-//     canvas.width = image.width;
-//     canvas.height = image.height;
-//     const ctx = canvas.getContext("2d");
-//
-//     if (!ctx) {
-//       reject("Unable to create 2D context");
-//       return;
-//     }
-//
-//     ctx.drawImage(image, 0, 0, image.width, image.height);
-//     const { data, width, height } = ctx.getImageData(
-//       0,
-//       0,
-//       image.width,
-//       image.height,
-//     );
-//
-//     const matrix = Array.from({ length: height }, (_, y) =>
-//       Array.from({ length: width }, (_, x) => {
-//         const index = (y * width + x) * 4;
-//         return [data[index], data[index + 1], data[index + 2], data[index + 3]];
-//       }),
-//     );
-//
-//     resolve(matrix);
-//   });
-// };
+/**
+ * Converts a Base64 image data URL to an RGBA matrix.
+ * @param base64 - The Base64 image data URL.
+ * @param grayScale - Whether the image is in grayscale.
+ * @param scaling - The scaling factor to divide the pixel values by.
+ * @returns A promise resolving to a 2D array representing the RGBA matrix.
+ */
+export async function imageToTensor(
+  base64: string,
+  grayScale: boolean = false,
+  scaling: number = 1,
+): Promise<Tensor> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.src = base64;
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("Failed to get canvas context."));
+        return;
+      }
+
+      // Draw the image onto the canvas.
+      context.drawImage(img, 0, 0);
+
+      // Extract image data.
+      const imageData = context.getImageData(0, 0, img.width, img.height);
+      const rgbaMatrix = [];
+      const { width, height, data } = imageData;
+      const normalizedData = new Float64Array(data.length);
+      for (let i = 0; i < data.length; i++) {
+        normalizedData[i] = data[i] / scaling;
+      }
+
+      for (let y = 0; y < height; y++) {
+        const row: number[][] = [];
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          if (grayScale) {
+            row.push([normalizedData[idx]]);
+          } else {
+            row.push([
+              normalizedData[idx],
+              normalizedData[idx + 1],
+              normalizedData[idx + 2],
+            ]);
+          }
+        }
+        rgbaMatrix.push(row);
+      }
+
+      resolve(rgbaMatrix);
+    };
+
+    img.onerror = (err) => reject(new Error(`Failed to load image: ${err}`));
+  });
+}

@@ -3,9 +3,9 @@ import * as toolkit from "./toolkitWrapper";
 
 type WorkerResponse = string | Record<string, string>;
 
-interface ApiError extends AxiosError<{
-  error?: string;
-}> {}
+// interface ApiError extends AxiosError<{
+//   error?: string;
+// }> {}
 
 const sendHttpRequest = async (
   jwt: string,
@@ -32,9 +32,7 @@ const sendHttpRequest = async (
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
-        `FAILED api/${actionName} with error: ${errorText}`,
-    );
+    throw new Error(`FAILED api/${actionName} with error: ${errorText}`);
   }
   const responseJson = await response.json();
   console.log(`${actionName}: ${responseJson.status}`);
@@ -66,7 +64,9 @@ const resampleResult = async (
 
   await new Promise((resolve) => setTimeout(resolve, 1000)); // Sleep for 1 second
 
-  return await sendHttpRequest(jwt, beUrl, "get_action_result", { executionId });
+  return await sendHttpRequest(jwt, beUrl, "get_action_result", {
+    executionId,
+  });
 };
 
 const base64ToBytes = (base64: string): Uint8Array => {
@@ -87,17 +87,21 @@ export const get_user_init_data = async (
   jwt: string,
   beUrl: string,
 ): Promise<{ serializedContext: Uint8Array; serializedHomseq: Uint8Array }> => {
-  const response = (await sendHttpRequest(jwt, beUrl, "get_user_init_data")) as Record<
-    string,
-    string
-  >;
+  const response = (await sendHttpRequest(
+    jwt,
+    beUrl,
+    "get_user_init_data",
+  )) as Record<string, string>;
   return {
     serializedContext: base64ToBytes(response.context_proto_str),
     serializedHomseq: base64ToBytes(response.homseq_proto_str),
   };
 };
 
-export const preprocessEk = async (jwt: string, beUrl: string): Promise<void> => {
+export const preprocessEk = async (
+  jwt: string,
+  beUrl: string,
+): Promise<void> => {
   await sendHttpRequest(jwt, beUrl, "preprocess_pk");
 };
 

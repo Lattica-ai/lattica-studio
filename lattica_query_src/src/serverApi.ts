@@ -29,7 +29,7 @@ const uploadFile = async (
   data: Uint8Array,
   uploadUrl: string,
 ): Promise<void> => {
-  const blob = new Blob([data], {type: "application/octet-stream"});
+  const blob = new Blob([data], { type: "application/octet-stream" });
 
   const response = await fetch(uploadUrl, {
     method: "PUT",
@@ -40,21 +40,35 @@ const uploadFile = async (
   });
 
   if (!response.ok) {
-    throw new Error(`Error uploading file: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Error uploading file: ${response.status} ${response.statusText}`,
+    );
   }
 
   console.log("File uploaded successfully");
 };
 
-const alertUploadComplete = async (jwt: string, beUrl: string, s3Key: string): Promise<void> => {
-    console.log("Alerting upload completion");
-    await sendHttpRequest(jwt, beUrl, "/api/files/upload_complete", { s3Key });
-    console.log("Upload completion alerted");
-}
+const alertUploadComplete = async (
+  jwt: string,
+  beUrl: string,
+  s3Key: string,
+): Promise<void> => {
+  console.log("Alerting upload completion");
+  await sendHttpRequest(jwt, beUrl, "/api/files/upload_complete", { s3Key });
+  console.log("Upload completion alerted");
+};
 
-export const uploadEk = async (jwt: string, beUrl: string, ek: Uint8Array): Promise<string> => {
+export const uploadEk = async (
+  jwt: string,
+  beUrl: string,
+  ek: Uint8Array,
+): Promise<string> => {
   console.log("Uploading evaluation key");
-  const {s3Url, s3Key} = await sendHttpRequest(jwt, beUrl, "/api/token/get_pk_upload_url");
+  const { s3Url, s3Key } = await sendHttpRequest(
+    jwt,
+    beUrl,
+    "/api/token/get_pk_upload_url",
+  );
   console.log("Upload URL:", s3Url);
   console.log(s3Key);
   await uploadFile(ek, s3Url);
