@@ -3,10 +3,6 @@ import * as toolkit from "./toolkitWrapper";
 
 type WorkerResponse = string | Record<string, string>;
 
-// interface ApiError extends AxiosError<{
-//   error?: string;
-// }> {}
-
 const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
