@@ -198,7 +198,7 @@ export class LatticaQueryClient {
 
 export class LatticaQueryClientLocalDev extends LatticaQueryClient {
   constructor(jwt: string) {
-    super(jwt, "http://localhost:8080");
+    super(jwt, "http://localhost:3040");
   }
 
   async init(): Promise<void> {
