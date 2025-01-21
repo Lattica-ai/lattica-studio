@@ -1,7 +1,12 @@
 import * as serverApi from "./serverApi";
 import * as workerApi from "./workerApi";
-import { Tensor, getTensorShape, imageToTensor } from "./tensorUtils";
-export { imageToTensor }; // Re-export for frontend
+import {
+  Tensor,
+  getTensorShape,
+  imageToTensor,
+  tensorToImage,
+} from "./tensorUtils";
+export { imageToTensor, tensorToImage }; // Re-export for frontend
 import * as toolkit from "./toolkitWrapper";
 
 import { runInferenceDemo } from "./inference";
@@ -198,7 +203,7 @@ export class LatticaQueryClient {
 
 export class LatticaQueryClientLocalDev extends LatticaQueryClient {
   constructor(jwt: string) {
-    super(jwt, "http://localhost:3040");
+    super(jwt, "http://localhost:3050");
   }
 
   async init(): Promise<void> {

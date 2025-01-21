@@ -2,7 +2,12 @@ import { defineConfig } from "tsup";
 import { copyFile, mkdir } from "fs/promises";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/example.ts"],
+  entry: [
+    "src/index.ts",
+    "src/examples/mnist_fc.ts",
+    "src/examples/sharpen.ts",
+    "src/examples/im2tensor.ts",
+  ],
   format: ["esm", "cjs"],
   dts: true,
   clean: true,

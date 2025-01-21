@@ -60,7 +60,7 @@ export const reshapeWithStrides = (
       return getElement(indices);
     }
 
-    let result = [];
+    const result = [];
     for (let i = 0; i < shape[dimIndex]; i++) {
       indices[dimIndex] = i;
       result.push(createMultiDimensionalArray(dimIndex + 1, indices));
@@ -76,12 +76,12 @@ export const reshapeWithStrides = (
  * @param base64 - The Base64 image data URL.
  * @param grayScale - Whether the image is in grayscale.
  * @param scaling - The scaling factor to divide the pixel values by.
- * @returns A promise resolving to a 2D array representing the RGBA matrix.
+ * @returns A promise resolving to a 3D array representing image in (C,H,W) format
  */
 export async function imageToTensor(
   base64: string,
   grayScale: boolean = false,
-  scaling: number = 1,
+  scaling: number = 255,
 ): Promise<Tensor> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -103,33 +103,86 @@ export async function imageToTensor(
 
       // Extract image data.
       const imageData = context.getImageData(0, 0, img.width, img.height);
-      const rgbaMatrix = [];
       const { width, height, data } = imageData;
-      const normalizedData = new Float64Array(data.length);
-      for (let i = 0; i < data.length; i++) {
-        normalizedData[i] = data[i] / scaling;
-      }
+
+      const channels = grayScale ? 1 : 3;
+      const tensor: number[][][] = Array.from({ length: channels }, () =>
+        Array.from({ length: height }, () => Array(width).fill(0)),
+      );
 
       for (let y = 0; y < height; y++) {
-        const row: number[][] = [];
         for (let x = 0; x < width; x++) {
-          const idx = (y * width + x) * 4;
+          const idx = (y * width + x) * 4; // RGBA data index
           if (grayScale) {
-            row.push([normalizedData[idx]]);
+            tensor[0][y][x] = data[idx] / scaling; // just take the first channel
           } else {
-            row.push([
-              normalizedData[idx],
-              normalizedData[idx + 1],
-              normalizedData[idx + 2],
-            ]);
+            tensor[0][y][x] = data[idx] / scaling;
+            tensor[1][y][x] = data[idx + 1] / scaling;
+            tensor[2][y][x] = data[idx + 2] / scaling;
           }
         }
-        rgbaMatrix.push(row);
       }
 
-      resolve(rgbaMatrix);
+      resolve(tensor);
     };
 
     img.onerror = (err) => reject(new Error(`Failed to load image: ${err}`));
   });
+}
+
+/**
+ * Converts a 3D array representing image in (C,H,W) format, to a Base64 image data URL.
+ * @param tensor - The 3D array representing the image in (C,H,W) format.
+ * @param scaling - The scaling factor to multiply the pixel values by.
+ * @constructor - The Base64 image data URL.
+ */
+export async function tensorToImage(
+  tensor: Tensor,
+  scaling: number = 255,
+): Promise<string> {
+  const shape = getTensorShape(tensor);
+  if (shape.length !== 3) {
+    throw new Error("Invalid tensor shape. Expected 3D tensor.");
+  }
+  const [channels, width, height] = shape;
+  if (channels !== 3 && channels !== 1) {
+    throw new Error("Invalid number of channels. Expected 1 or 3.");
+  }
+
+  const arr = tensor as number[][][];
+
+  // Flatten the 3D array into a 1D Uint8ClampedArray
+  const imageData = new Uint8ClampedArray(width * height * 4); // RGBA format
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const pixelIndex = (y * width + x) * 4;
+      imageData[pixelIndex] = arr[0][y][x] * scaling;
+      if (channels === 1) {
+        // repeat the same value for all channels
+        imageData[pixelIndex + 1] = imageData[pixelIndex];
+        imageData[pixelIndex + 2] = imageData[pixelIndex];
+      } else {
+        imageData[pixelIndex + 1] = arr[1][y][x] * scaling;
+        imageData[pixelIndex + 2] = arr[2][y][x] * scaling;
+      }
+      imageData[pixelIndex + 3] = 255; // Alpha channel (opaque)
+    }
+  }
+
+  // Create a canvas
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Failed to get 2D context");
+  }
+
+  // Create ImageData and put it on the canvas
+  const imgData = new ImageData(imageData, width, height);
+  ctx.putImageData(imgData, 0, 0);
+
+  // Convert canvas to Base64 Data URL
+  return canvas.toDataURL("image/png");
 }
