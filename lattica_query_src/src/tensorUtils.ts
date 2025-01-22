@@ -75,12 +75,16 @@ export const reshapeWithStrides = (
  * Converts a Base64 image data URL to an RGBA matrix.
  * @param base64 - The Base64 image data URL.
  * @param grayScale - Whether the image is in grayscale.
+ * @param targetWidth
+ * @param targetHeight
  * @param scaling - The scaling factor to divide the pixel values by.
  * @returns A promise resolving to a 3D array representing image in (C,H,W) format
  */
 export async function imageToTensor(
   base64: string,
   grayScale: boolean = false,
+  targetWidth?: number,
+  targetHeight?: number,
   scaling: number = 255,
 ): Promise<Tensor> {
   return new Promise((resolve, reject) => {
@@ -88,9 +92,21 @@ export async function imageToTensor(
     img.src = base64;
 
     img.onload = () => {
+      const width = targetWidth ? targetWidth : img.width;
+      const height = targetHeight ? targetHeight : img.height;
+
+      console.log(
+        "Resize image:",
+        img.width,
+        img.height,
+        " => ",
+        width,
+        height,
+      );
+
       const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
+      canvas.width = width;
+      canvas.height = height;
 
       const context = canvas.getContext("2d");
       if (!context) {
@@ -99,11 +115,11 @@ export async function imageToTensor(
       }
 
       // Draw the image onto the canvas.
-      context.drawImage(img, 0, 0);
+      context.drawImage(img, 0, 0, width, height);
 
       // Extract image data.
-      const imageData = context.getImageData(0, 0, img.width, img.height);
-      const { width, height, data } = imageData;
+      const imageData = context.getImageData(0, 0, width, height);
+      const { data } = imageData;
 
       const channels = grayScale ? 1 : 3;
       const tensor: number[][][] = Array.from({ length: channels }, () =>
