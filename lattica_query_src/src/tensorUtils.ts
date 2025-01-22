@@ -160,7 +160,7 @@ export async function tensorToImage(
   if (shape.length !== 3) {
     throw new Error("Invalid tensor shape. Expected 3D tensor.");
   }
-  const [channels, width, height] = shape;
+  const [channels, height, width] = shape;
   if (channels !== 3 && channels !== 1) {
     throw new Error("Invalid number of channels. Expected 1 or 3.");
   }
