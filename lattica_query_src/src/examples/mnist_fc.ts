@@ -43,10 +43,8 @@ const image =
 
   const ct = await client.encrypt(pt);
   console.log("Encrypted.");
-  console.time("Run query");
   const ct_res = await client.apply_query(ct);
   console.log("Query finished.");
-  console.timeEnd("Run query");
   const pt_res = await client.decrypt(ct_res);
   console.log("Decrypted.");
   console.timeEnd("Online phase");
