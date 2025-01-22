@@ -29,9 +29,27 @@ export const triggerEvkCopy = async (
   }
 };
 
-export const fetchLocalFile = async (filePath: string): Promise<Uint8Array> => {
+export const fetchLocalBinaryFile = async (
+  filePath: string,
+): Promise<Uint8Array> => {
   const data = await fetch(filePath);
   return new Uint8Array(await data.arrayBuffer());
+};
+
+export const fetchLocalImageAsDataUrl = async (
+  filePath: string,
+): Promise<string> => {
+  const response = await fetch(filePath);
+
+  const blob = await response.blob();
+
+  // Convert Blob to Base64 Data URL
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Error reading blob as Data URL."));
+    reader.readAsDataURL(blob);
+  });
 };
 
 export function displayImage(data: string, title?: string, width?: number) {
