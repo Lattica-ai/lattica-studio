@@ -1,4 +1,0 @@
-To add a new example:
-- create ts file in src/examples/<eg>.ts
-- add to tsup.config.ts an new entry src/examples/<eg>.ts
-- to run the example, change the script path in RunExample.html to dist/examples/<eg>.js

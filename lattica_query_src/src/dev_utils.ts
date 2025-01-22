@@ -51,6 +51,7 @@ export function displayImage(data: string, title?: string, width?: number) {
   document.body.appendChild(container); // Add the container to the body
 }
 
+// TODO: Add dim param, and make input a tensor with arbitrary dimensions
 export function argmax(arr: number[]): number {
   if (arr.length === 0) return -1;
 
