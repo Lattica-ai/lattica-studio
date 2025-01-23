@@ -75,7 +75,13 @@ const base64ToBytes = (base64: string): Uint8Array => {
 };
 
 const bytesToBase64 = (uint8Array: Uint8Array): string => {
-  const binaryString = String.fromCharCode.apply(null, Array.from(uint8Array));
+  const chunkSize = 0x8000; // Process 32 KB chunks to avoid call stack issues
+  let binaryString = "";
+
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.subarray(i, i + chunkSize);
+    binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+  }
   return btoa(binaryString);
 };
 
