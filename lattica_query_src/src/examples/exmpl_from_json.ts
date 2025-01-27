@@ -2,7 +2,7 @@ import {initWasm} from "../index";
 
 import * as toolkit from "../toolkitWrapper";
 
-async function loadDictFromFile(url: any) {
+async function _loadDictFromFile(url: any) {
     const response = await fetch(url);
     const dict = await response.json();
 
@@ -26,9 +26,9 @@ async function loadDictFromFile(url: any) {
     return dict;
 }
 
-export async function demo_apply_client_block() {
+async function _demo_apply_client_block() {
     console.log("Loading dictionary from file...");
-    const dict = await loadDictFromFile('./src/examples/data/apply_client_block.json');
+    const dict = await _loadDictFromFile('./src/examples/data/apply_client_block.json');
     console.log("Dictionary loaded:", dict);
     const result: any  = await toolkit.applyClientBlock(
         dict['serialized_block'],
@@ -42,9 +42,9 @@ export async function demo_apply_client_block() {
         throw new Error("Result does not match expected");
 }
 
-export async function demo_enc() {
+async function _demo_enc() {
     console.log("Loading dictionary from file...");
-    const dict = await loadDictFromFile('./src/examples/data/enc.json');
+    const dict = await _loadDictFromFile('./src/examples/data/enc.json');
     console.log("Dictionary loaded:", dict);
     const result: any  = await toolkit.encrypt(
         dict['serialized_context'],
@@ -60,9 +60,9 @@ export async function demo_enc() {
         throw new Error("Result does not match expected");
 }
 
-export async function demo_dec() {
+async function _demo_dec() {
     console.log("Loading dictionary from file...");
-    const dict = await loadDictFromFile('./src/examples/data/dec.json');
+    const dict = await _loadDictFromFile('./src/examples/data/dec.json');
     console.log("Dictionary loaded:", dict);
     const result: any  = await toolkit.decrypt(
         dict['serialized_context'],
@@ -76,9 +76,9 @@ export async function demo_dec() {
         throw new Error("Result does not match expected");
 }
 
-export async function demo_generate_key() {
+async function _demo_generate_key() {
     console.log("Loading dictionary from file...");
-    const dict = await loadDictFromFile('./src/examples/data/generate_key.json');
+    const dict = await _loadDictFromFile('./src/examples/data/generate_key.json');
     console.log("Dictionary loaded:", dict);
     const result: any  = await toolkit.generateKey(
         dict['serialized_homseq'],
@@ -99,8 +99,8 @@ export async function demo_generate_key() {
 
 (async () => {
       await initWasm();
-      await demo_apply_client_block();
-      await demo_enc();
-      await demo_dec();
-      // await demo_generate_key();
+      await _demo_apply_client_block();
+      await _demo_enc();
+      await _demo_dec();
+      // await _demo_generate_key();
 })();
