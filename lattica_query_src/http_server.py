@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+from http.server import HTTPServer, SimpleHTTPRequestHandler, test
+import sys
+
+class CORSRequestHandler (SimpleHTTPRequestHandler):
+    def end_headers (self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cross-Origin-Opener-Policy', 'same-origin')
+        self.send_header('Cross-Origin-Embedder-Policy', 'require-corp')
+        SimpleHTTPRequestHandler.end_headers(self)
+
+if __name__ == '__main__':
+    port = 5643
+    print(f'Starting server at http://localhost:{port}/RunExample.html')
+    test(CORSRequestHandler, HTTPServer, port=int(sys.argv[1]) if len(sys.argv) > 1 else port)

@@ -19,49 +19,25 @@ import { triggerEvkCopy } from "./dev_utils";
 
 declare global {
   interface Window {
-    Module: any;
+    workerManager: WasmWorkerManager;
   }
-  var Module: any;
+  var workerManager: WasmWorkerManager;
 }
+
+import { WasmWorkerManager } from './wasm/wasm_worker_manager';
 
 let initPromise: Promise<void> | null = null;
 
-async function initWasm() {
+export async function initWasm() {
   if (initPromise) {
     return initPromise;
   }
-
   console.log("Starting WASM initialization...");
-
   initPromise = (async () => {
-    try {
-      // Import the Module factory function
-      // @ts-ignore
-      const moduleFactory = await import("../dist/wasm/cpp_sdk.js");
-
-      const wasmUrl = import.meta.url
-        ? new URL("../dist/wasm/cpp_sdk.wasm", import.meta.url).href
-        : "../dist/wasm/cpp_sdk.wasm";
-
-      // Create and initialize the module
-      const module = await moduleFactory.default({
-        locateFile: () => wasmUrl,
-        onRuntimeInitialized: () => {
-          console.log("WASM runtime initialized");
-        },
-      });
-
-      // Store it globally if needed
-      window.Module = module;
-
-      return module;
-    } catch (error) {
-      console.error("Failed to initialize WASM module:", error);
-      initPromise = null;
-      throw error;
-    }
+    const workerManager = new WasmWorkerManager();
+    await workerManager.initWorker();
+    window.workerManager = workerManager;
   })();
-
   return initPromise;
 }
 
@@ -116,8 +92,8 @@ export class LatticaQueryClient {
     return serializedHomseq;
   }
 
-  protected generateKey(serializedHomseq: Uint8Array): Uint8Array {
-    const [sk, skCoefs, evaluationKey] = toolkit.generateKey(
+  protected async generateKey(serializedHomseq: Uint8Array) {
+    const [sk, skCoefs, evaluationKey] = await toolkit.generateKey(
       serializedHomseq,
       this.serializedContext!,
     );
@@ -134,7 +110,7 @@ export class LatticaQueryClient {
 
     const serializedHomseq = await this.getClientData();
 
-    const evaluationKey = this.generateKey(serializedHomseq);
+    const evaluationKey = await this.generateKey(serializedHomseq);
 
     await serverApi.uploadEk(this.jwt, this.beUrl, evaluationKey);
 
@@ -151,14 +127,14 @@ export class LatticaQueryClient {
     let serialized_pt = toolkit.dumps_proto_tensor(pt);
     // check if need to apply first client block
     if (this.applyBlockBeforeEncryption) {
-      serialized_pt = toolkit.applyClientBlock(
+      serialized_pt = await toolkit.applyClientBlock(
         this.firstClientBlock!,
         this.serializedContext!,
         serialized_pt,
       );
     }
 
-    return toolkit.encrypt(
+    return await toolkit.encrypt(
       this.serializedContext!,
       this.secretKey!,
       serialized_pt,
@@ -182,7 +158,7 @@ export class LatticaQueryClient {
 
   async decrypt(encryptedResult: Uint8Array): Promise<Tensor> {
     if (!this.initialized) throw new Error("Client must be initialized first");
-    let decryptedOutput = toolkit.decrypt(
+    let decryptedOutput = await toolkit.decrypt(
       this.serializedContext!,
       this.secretKey!,
       encryptedResult,
@@ -190,7 +166,7 @@ export class LatticaQueryClient {
 
     // check if last block is on client
     if (this.applyBlockAfterDecryption) {
-      decryptedOutput = toolkit.applyClientBlock(
+      decryptedOutput = await toolkit.applyClientBlock(
         this.lastClientBlock!,
         this.serializedContext!,
         decryptedOutput,
@@ -211,7 +187,7 @@ export class LatticaQueryClientLocalDev extends LatticaQueryClient {
 
     const serializedHomseq = await this.getClientData();
 
-    const evaluationKey = this.generateKey(serializedHomseq);
+    const evaluationKey = await this.generateKey(serializedHomseq);
 
     const s3Key = await serverApi.uploadEk(this.jwt, this.beUrl, evaluationKey);
 
