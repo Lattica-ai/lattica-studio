@@ -16,30 +16,7 @@ import {
 } from "./serialization/hom_op";
 
 import { triggerEvkCopy } from "./dev_utils";
-
-declare global {
-  interface Window {
-    workerManager: WasmWorkerManager;
-  }
-  var workerManager: WasmWorkerManager;
-}
-
-import { WasmWorkerManager } from './wasm/wasm_worker_manager';
-
-let initPromise: Promise<void> | null = null;
-
-export async function initWasm() {
-  if (initPromise) {
-    return initPromise;
-  }
-  console.log("Starting WASM initialization...");
-  initPromise = (async () => {
-    const workerManager = new WasmWorkerManager();
-    await workerManager.initWorker();
-    window.workerManager = workerManager;
-  })();
-  return initPromise;
-}
+import {initWasm} from "./wasm/wasm_worker_manager";
 
 export class LatticaQueryClient {
   public readonly jwt: string;

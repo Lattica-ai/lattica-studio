@@ -7,6 +7,7 @@ import {
   reshapeWithStrides,
 } from "./tensorUtils";
 import { DataType, TensorHolder } from "./serialization/generic";
+import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
 
 export const dumps_proto_tensor = (pt: Tensor): Uint8Array => {
   const shape = getTensorShape(pt);
@@ -36,7 +37,7 @@ export const applyClientBlock = (
   serialized_pt: Uint8Array,
 ) => {
   console.log("Applying client block...");
-  return workerManager.callWorker("apply_client_block", {
+  return workerManagerSingleton.callWorker("apply_client_block", {
     block: serialized_block,
     context: serialized_context,
     pt: serialized_pt
@@ -50,7 +51,7 @@ export const encrypt = (
   pack_for_transmission: boolean = false,
 ) => {
   console.log("Encrypting...");
-  return workerManager.callWorker("enc", {
+  return workerManagerSingleton.callWorker("enc", {
     context: serialized_context,
     sk: serialized_sk[0],
     pt: serialized_pt,
@@ -64,7 +65,7 @@ export const decrypt = (
   serialized_ct: Uint8Array,
 ) => {
   console.log("Decrypting...");
-  return workerManager.callWorker("dec", {
+  return workerManagerSingleton.callWorker("dec", {
     context: serialized_context,
     sk: serialized_sk[1],
     ct: serialized_ct
@@ -76,7 +77,7 @@ export const generateKey = (
     serialized_context: Uint8Array,
     ) => {
     console.log("Generating key...");
-    return workerManager.callWorker("generate_key", {
+    return workerManagerSingleton.callWorker("generate_key", {
         homseq: serialized_homseq,
         context: serialized_context
     });

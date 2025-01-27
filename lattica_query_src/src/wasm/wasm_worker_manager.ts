@@ -61,3 +61,16 @@ export class WasmWorkerManager {
     this.worker!.terminate();
   }
 }
+
+let initPromise: Promise<void> | null = null;
+export let workerManagerSingleton: WasmWorkerManager = new WasmWorkerManager();
+export async function initWasm() {
+  if (initPromise) {
+    return initPromise;
+  }
+  console.log("Starting WASM initialization...");
+  initPromise = (async () => {
+    await workerManagerSingleton.initWorker();
+  })();
+  return initPromise;
+}

@@ -1,4 +1,4 @@
-import {initWasm} from "../index";
+import {initWasm} from "../wasm/wasm_worker_manager";
 
 import * as toolkit from "../toolkitWrapper";
 
