@@ -102,5 +102,5 @@ export async function demo_generate_key() {
       await demo_apply_client_block();
       await demo_enc();
       await demo_dec();
-      await demo_generate_key();
+      // await demo_generate_key();
 })();
