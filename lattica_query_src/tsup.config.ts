@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 import { copyFile, mkdir } from "fs/promises";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/examples/exmpl_from_json.ts",],
+  entry: ["src/index.ts"],
   format: ["esm", "cjs"],
   dts: true,
   clean: true,
