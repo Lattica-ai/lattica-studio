@@ -30,55 +30,54 @@ export const load_proto_tensor = (serialized_pt: Uint8Array): Tensor => {
   return reshapeWithStrides(tensor, tensorProto.sizes, tensorProto.strides);
 };
 
-
-export const applyClientBlock = (
+export const applyClientBlock = async (
   serialized_block: Uint8Array,
   serialized_context: Uint8Array,
   serialized_pt: Uint8Array,
 ) => {
   console.log("Applying client block...");
-  return workerManagerSingleton.callWorker("apply_client_block", {
+  return await workerManagerSingleton.callWorker("apply_client_block", {
     block: serialized_block,
     context: serialized_context,
-    pt: serialized_pt
+    pt: serialized_pt,
   });
 };
 
-export const encrypt = (
+export const encrypt = async (
   serialized_context: Uint8Array,
   serialized_sk: [Uint8Array, Uint8Array],
   serialized_pt: Uint8Array,
   pack_for_transmission: boolean = false,
 ) => {
   console.log("Encrypting...");
-  return workerManagerSingleton.callWorker("enc", {
+  return await workerManagerSingleton.callWorker("enc", {
     context: serialized_context,
     sk: serialized_sk[0],
     pt: serialized_pt,
-    pack_for_transmission
+    pack_for_transmission,
   });
 };
 
-export const decrypt = (
+export const decrypt = async (
   serialized_context: Uint8Array,
   serialized_sk: [Uint8Array, Uint8Array],
   serialized_ct: Uint8Array,
 ) => {
   console.log("Decrypting...");
-  return workerManagerSingleton.callWorker("dec", {
+  return await workerManagerSingleton.callWorker("dec", {
     context: serialized_context,
     sk: serialized_sk[1],
-    ct: serialized_ct
+    ct: serialized_ct,
   });
 };
 
-export const generateKey = (
-    serialized_homseq: Uint8Array,
-    serialized_context: Uint8Array,
-    ) => {
-    console.log("Generating key...");
-    return workerManagerSingleton.callWorker("generate_key", {
-        homseq: serialized_homseq,
-        context: serialized_context
-    });
+export const generateKey = async (
+  serialized_homseq: Uint8Array,
+  serialized_context: Uint8Array,
+) => {
+  console.log("Generating key...");
+  return await workerManagerSingleton.callWorker("generate_key", {
+    homseq: serialized_homseq,
+    context: serialized_context,
+  });
 };

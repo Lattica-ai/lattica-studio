@@ -13,10 +13,13 @@ if (RUN_LOCAL) {
 } else {
   client = new LatticaQueryClient(
     jwt,
-    "https://api-alb-509680522.eu-central-1.elb.amazonaws.com", // old-dev env
+    // "https://api-alb-509680522.eu-central-1.elb.amazonaws.com", // old-dev env
+    "https://gini.api.b543.lattica.dev",
   );
   console.log("Client created");
 }
+
+const MODEL_INPUT_SIZE = 100;
 
 // cat: 150x150
 const grayScale = false;
@@ -35,7 +38,12 @@ const imagePath = "./src/examples/data/cat_150x150.png";
   let imgData;
   if (typeof image === "string") {
     imgData = image;
-    pt = await imageToTensor(image, grayScale, 100, 100);
+    pt = await imageToTensor(
+      image,
+      grayScale,
+      MODEL_INPUT_SIZE,
+      MODEL_INPUT_SIZE,
+    );
     console.log("Image converted to tensor:", getTensorShape(pt));
   } else {
     imgData = await tensorToImage(image);
