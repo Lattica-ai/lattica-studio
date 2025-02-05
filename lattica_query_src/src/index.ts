@@ -16,7 +16,7 @@ import {
 } from "./serialization/hom_op";
 
 import { triggerEvkCopy } from "./dev_utils";
-import {initWasm} from "./wasm/wasm_worker_manager";
+import { initWasm } from "./wasm/wasm_worker_manager";
 
 export class LatticaQueryClient {
   public readonly jwt: string;
@@ -166,14 +166,18 @@ export class LatticaQueryClientLocalDev extends LatticaQueryClient {
 
     const evaluationKey = await this.generateKey(serializedHomseq);
 
-    const s3Key = await serverApi.uploadEk(this.jwt, this.beUrl, evaluationKey);
+    const { s3Key } = await serverApi.sendHttpRequest(
+      this.jwt,
+      this.beUrl,
+      "/api/token/get_pk_upload_url",
+    );
+    console.log(s3Key);
+    await serverApi.alertUploadComplete(this.jwt, this.beUrl, s3Key); // fake alert to change status of EVK
 
     // This is the only difference from the parent class
     await triggerEvkCopy(this.jwt, this.beUrl, evaluationKey, s3Key);
 
-    const pk_fileName = s3Key.split("/").pop();
-    if (!pk_fileName) throw new Error("Invalid S3 key");
-    await workerApi.preprocessEk(this.jwt, this.beUrl, pk_fileName);
+    await workerApi.preprocessEk(this.jwt, this.beUrl);
 
     this.initialized = true;
   }
