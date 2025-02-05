@@ -171,7 +171,9 @@ export class LatticaQueryClientLocalDev extends LatticaQueryClient {
     // This is the only difference from the parent class
     await triggerEvkCopy(this.jwt, this.beUrl, evaluationKey, s3Key);
 
-    await workerApi.preprocessEk(this.jwt, this.beUrl);
+    const pk_fileName = s3Key.split("/").pop();
+    if (!pk_fileName) throw new Error("Invalid S3 key");
+    await workerApi.preprocessEk(this.jwt, this.beUrl, pk_fileName);
 
     this.initialized = true;
   }

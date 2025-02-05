@@ -103,8 +103,9 @@ export const get_user_init_data = async (
 export const preprocessEk = async (
   jwt: string,
   beUrl: string,
+  pk_filename: string
 ): Promise<void> => {
-  await sendHttpRequest(jwt, beUrl, "preprocess_pk");
+  await sendHttpRequest(jwt, beUrl, "preprocess_pk", {pk_filename});
 };
 
 export const apply_hom_pipeline = async (
