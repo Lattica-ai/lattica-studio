@@ -14,20 +14,22 @@ export class WasmWorkerManager {
 
   async initWorker() {
     return new Promise((resolve, reject) => {
-      this.worker = new Worker('src/wasm/wasm_worker.js');
+      const workerUrl = import.meta.url
+        ? new URL("../dist/wasm/wasm_worker.js", import.meta.url).href
+        : "../dist/wasm/wasm_worker.js";
+      this.worker = new Worker(workerUrl);
 
       const handleInitMessage = (event: MessageEvent) => {
         if (event.data === "loaded_wasm_module") {
           console.log("WasmWorker initialized successfully");
           resolve(undefined);
-        }
-        else {
+        } else {
           console.error("WasmWorker init error", event.data);
           reject(event.data);
         }
-        this.worker!.removeEventListener('message', handleInitMessage);
+        this.worker!.removeEventListener("message", handleInitMessage);
       };
-      this.worker.addEventListener('message', handleInitMessage);
+      this.worker.addEventListener("message", handleInitMessage);
     });
   }
 
@@ -46,11 +48,11 @@ export class WasmWorkerManager {
         }
 
         // Clean up the event listener
-        this.worker!.removeEventListener('message', handleMessage);
+        this.worker!.removeEventListener("message", handleMessage);
       };
 
       // Add the message listener
-      this.worker!.addEventListener('message', handleMessage);
+      this.worker!.addEventListener("message", handleMessage);
 
       // Post the message to the worker
       this.worker!.postMessage(message);
