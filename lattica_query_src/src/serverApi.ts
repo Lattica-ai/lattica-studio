@@ -1,4 +1,4 @@
-const sendHttpRequest = async (
+export const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
   requestName: string,
@@ -48,7 +48,7 @@ const uploadFile = async (
   console.log("File uploaded successfully");
 };
 
-const alertUploadComplete = async (
+export const alertUploadComplete = async (
   jwt: string,
   beUrl: string,
   s3Key: string,

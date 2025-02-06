@@ -14,5 +14,6 @@ export default defineConfig({
     // Copy WASM files maintaining the directory structure
     await copyFile("src/wasm/cpp_sdk.wasm", "dist/wasm/cpp_sdk.wasm");
     await copyFile("src/wasm/cpp_sdk.js", "dist/wasm/cpp_sdk.js");
+    await copyFile("src/wasm/wasm_worker.js", "dist/wasm/wasm_worker.js");
   },
 });

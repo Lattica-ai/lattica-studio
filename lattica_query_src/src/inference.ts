@@ -20,15 +20,15 @@ export const runInferenceDemo = async (
   );
 
   for (const block_proto of clientBlocks) {
-    let serialized_pt = toolkit.decrypt(context, secretKey, serialized_ct_res);
+    let serialized_pt = await toolkit.decrypt(context, secretKey, serialized_ct_res);
 
-    serialized_pt = toolkit.applyClientBlock(
+    serialized_pt = await toolkit.applyClientBlock(
       QueryClientBlock.encode(block_proto).finish(),
       context,
       serialized_pt,
     );
 
-    serialized_ct = toolkit.encrypt(context, secretKey, serialized_pt, true);
+    serialized_ct = await toolkit.encrypt(context, secretKey, serialized_pt, true);
 
     serialized_ct_res = await worker_api.apply_hom_pipeline(
       jwt,
@@ -58,19 +58,19 @@ export const runInferenceDemo = async (
 //   let serialized_ct;
 //   let serialized_ct_res;
 //   if (isBeFirst) {
-//     serialized_ct = toolkit.encrypt(context, secretKey, serialized_pt, true);
+//     serialized_ct = await toolkit.encrypt(context, secretKey, serialized_pt, true);
 //     serialized_ct_res = await worker_api.apply_hom_pipeline(
 //       jwt,
 //       serialized_ct,
 //       0,
 //     );
-//     serialized_pt = toolkit.decrypt(context, secretKey, serialized_ct_res);
+//     serialized_pt = await toolkit.decrypt(context, secretKey, serialized_ct_res);
 //   }
 //
 //   for (const block_proto of clientBlocks) {
 //     console.log("Applying client operators");
 //     const serialized_block_proto = block_proto.serializeBinary();
-//     serialized_pt = toolkit.apply_client_block(
+//     serialized_pt = await toolkit.apply_client_block(
 //       serialized_block_proto,
 //       context,
 //       serialized_pt,
@@ -79,7 +79,7 @@ export const runInferenceDemo = async (
 //       break;
 //     }
 //
-//     const serialized_ct = toolkit.encrypt(
+//     const serialized_ct = await toolkit.encrypt(
 //       context,
 //       secretKey,
 //       serialized_pt,
@@ -90,7 +90,7 @@ export const runInferenceDemo = async (
 //       serialized_ct,
 //       block_proto.getBlockIndex() + 1,
 //     );
-//     serialized_pt = toolkit.decrypt(context, secretKey, serialized_ct_res);
+//     serialized_pt = await toolkit.decrypt(context, secretKey, serialized_ct_res);
 //   }
 //   return toolkit.load_proto_tensor(serialized_pt);
 // };
