@@ -31,21 +31,16 @@ export class WasmWorkerManager {
           console.error("WasmWorker init error", event.data);
           reject(event.data);
         }
-        this.worker!.removeEventListener('message', handleInitMessage);
+        this.worker!.removeEventListener("message", handleInitMessage);
       };
 
-      this.worker.addEventListener('message', handleInitMessage);
+      this.worker.addEventListener("message", handleInitMessage);
 
-      this.worker.addEventListener('message', (event: MessageEvent) => {
+      this.worker.addEventListener("message", (event: MessageEvent) => {
 
         const { log, logtype, logmsg } = event.data;
         if (log !== true || log === undefined) {
           return;
-        }
-        if (logtype === 'log') {
-          console.log(`[log]: 123 ${logmsg}`);
-        } else if (logtype === 'error') {
-          console.error(`[error]: 123 ${logmsg}`);
         }
 
         if (this.logCallback) {
@@ -61,7 +56,6 @@ export class WasmWorkerManager {
         reject(new Error("Worker is not initialized"));
         return;
       }
-      console.log("...debug inside callWorker");
       const message: WorkerMessage = { operation, data };
 
       // Listen for the worker's response
@@ -75,7 +69,7 @@ export class WasmWorkerManager {
         if (response.success) {
           resolve(response.data);
         } else {
-          reject(new Error("Worker error: " + (response.error || "Unexpected error response" + JSON.stringify(response))));
+          reject(response.error);
         }
 
         // Clean up the event listener
@@ -87,9 +81,6 @@ export class WasmWorkerManager {
 
       // Post the message to the worker
       this.worker!.postMessage(message);
-
-      console.log("...debug done callWorker");
-
     });
   }
 
