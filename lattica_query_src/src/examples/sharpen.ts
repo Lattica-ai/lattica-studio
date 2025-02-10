@@ -2,6 +2,7 @@ import { LatticaQueryClient, LatticaQueryClientLocalDev } from "../index";
 import { getTensorShape, imageToTensor, tensorToImage } from "../tensorUtils";
 import * as workerApi from "../workerApi";
 import { displayImage, fetchLocalImageAsDataUrl } from "../dev_utils";
+import { workerManagerSingleton } from "../wasm/wasm_worker_manager";
 
 const RUN_LOCAL = true;
 const jwt = "<JWT>";
@@ -24,6 +25,29 @@ const MODEL_INPUT_SIZE = 100;
 // cat: 150x150
 const grayScale = false;
 const imagePath = "./src/examples/data/cat_150x150.png";
+
+document.addEventListener('DOMContentLoaded', () => {
+  const logBox = document.getElementById("logBox");
+
+  workerManagerSingleton.setLogCallback((type: string, message: string) => {
+    if (!logBox) return;
+    const logEntry = document.createElement("div");
+    logEntry.style.color = (type === "error") ? "red" : "black";
+    if (type === "error") {
+      logEntry.style.fontWeight = "bold";
+      logEntry.textContent = `[${type}] ${message}`;
+    } else {
+      if (!message.includes("::")) {
+        logEntry.style.fontWeight = "bold";
+      }
+      logEntry.textContent = `${message}`;
+    }
+    logBox.appendChild(logEntry);
+    logBox.scrollTop = logBox.scrollHeight;
+  });
+
+  console.log("DOM fully loaded and parsed");
+});
 
 (async () => {
   const image = await fetchLocalImageAsDataUrl(imagePath);

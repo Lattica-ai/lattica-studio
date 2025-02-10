@@ -160,5 +160,28 @@ let wasmRuntimeInitializedHandler = async () => {
   };
 };
 
-Module = { onRuntimeInitialized: wasmRuntimeInitializedHandler };
+// Define custom print function that send log messages to the main thread
+function customPrint(...args) {
+  const message = args.join(" ");
+  console.log("[WASM]", message);
+  
+  // Send the log to the main thread
+  postMessage({ log: true, logtype: "log", logmsg: message});
+}
+
+// Define custom print function that send error messages to the main thread
+function customPrintErr(...args) {
+  const message = args.join(" ");
+  console.error("[WASM ERROR]", message);
+
+  // Send the error to the main thread
+  postMessage({ log: true, logtype: "error", logmsg: message});
+}
+
+Module = {
+  print: customPrint,
+  printErr: customPrintErr,
+  onRuntimeInitialized: wasmRuntimeInitializedHandler
+};
+
 importScripts("cpp_sdk.js");
