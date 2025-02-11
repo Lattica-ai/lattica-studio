@@ -6,7 +6,8 @@ import {
   imageToTensor,
   tensorToImage,
 } from "./tensorUtils";
-export { imageToTensor, tensorToImage }; // Re-export for frontend
+import { setLogCallback } from "./wasm/wasm_worker_manager";
+export { imageToTensor, tensorToImage, setLogCallback }; // Re-export for frontend
 import * as toolkit from "./toolkitWrapper";
 
 import { runInferenceDemo } from "./inference";
