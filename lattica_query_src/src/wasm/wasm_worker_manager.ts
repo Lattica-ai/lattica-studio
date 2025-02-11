@@ -37,7 +37,6 @@ export class WasmWorkerManager {
       this.worker.addEventListener("message", handleInitMessage);
 
       this.worker.addEventListener("message", (event: MessageEvent) => {
-
         const { log, logtype, logmsg } = event.data;
         if (log !== true || log === undefined) {
           return;
@@ -104,4 +103,10 @@ export async function initWasm() {
     await workerManagerSingleton.initWorker();
   })();
   return initPromise;
+}
+
+export function setLogCallback(
+  callback: (type: string, message: string) => void,
+) {
+  workerManagerSingleton.setLogCallback(callback);
 }
