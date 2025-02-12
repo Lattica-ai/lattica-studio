@@ -18,6 +18,7 @@ import {
 
 import { triggerEvkCopy } from "./dev_utils";
 import { initWasm } from "./wasm/wasm_worker_manager";
+export { initWasm };
 
 export class LatticaQueryClient {
   public readonly jwt: string;

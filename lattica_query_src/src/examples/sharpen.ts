@@ -26,13 +26,13 @@ const MODEL_INPUT_SIZE = 100;
 const grayScale = false;
 const imagePath = "./src/examples/data/cat_150x150.png";
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener("DOMContentLoaded", () => {
   const logBox = document.getElementById("logBox");
 
   workerManagerSingleton.setLogCallback((type: string, message: string) => {
     if (!logBox) return;
     const logEntry = document.createElement("div");
-    logEntry.style.color = (type === "error") ? "red" : "black";
+    logEntry.style.color = type === "error" ? "red" : "black";
     if (type === "error") {
       logEntry.style.fontWeight = "bold";
       logEntry.textContent = `[${type}] ${message}`;
