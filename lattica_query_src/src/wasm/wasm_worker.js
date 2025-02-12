@@ -14,6 +14,12 @@ function _wasmToJs(wasmArrayResult) {
   ).slice();
 }
 
+function freeMemory(pointers) {
+  pointers.forEach((ptr) => {
+    Module._free(ptr);
+  });
+}
+
 const _applyClientBlock = (data) => {
   let res;
   let resultWasm;
@@ -34,9 +40,7 @@ const _applyClientBlock = (data) => {
     console.log("Error:", e);
     throw e;
   } finally {
-    Module._free(wasmBlock_ptr);
-    Module._free(wasmContext_ptr);
-    Module._free(wasmPt_ptr);
+    freeMemory([wasmBlock_ptr, wasmContext_ptr, wasmPt_ptr]);
   }
   Module.freeMemory(resultWasm.ptr);
   return res;
@@ -63,8 +67,7 @@ const _generateKey = (data) => {
     console.log("Error:", e);
     throw e;
   } finally {
-    Module._free(wasmHomseq_ptr);
-    Module._free(wasmContext_ptr);
+    freeMemory([wasmHomseq_ptr, wasmContext_ptr]);
   }
   Module.freeMemory(resultWasm.sk.ptr);
   Module.freeMemory(resultWasm.sk_coefs.ptr);
@@ -92,9 +95,7 @@ const _dec = (data) => {
     console.log("Error:", e);
     throw e;
   } finally {
-    Module._free(wasmContext_ptr);
-    Module._free(wasmSk_ptr);
-    Module._free(wasmCt_ptr);
+    freeMemory([wasmContext_ptr, wasmSk_ptr, wasmCt_ptr]);
   }
   Module.freeMemory(resultWasm.ptr);
   return res;
@@ -123,9 +124,7 @@ const _enc = (data) => {
     console.log("Error:", e);
     throw e;
   } finally {
-    Module._free(wasmContext_ptr);
-    Module._free(wasmSk_ptr);
-    Module._free(wasmPt_ptr);
+    freeMemory([wasmContext_ptr, wasmSk_ptr, wasmPt_ptr]);
   }
   Module.freeMemory(resultWasm.ptr);
   return res;
@@ -164,9 +163,9 @@ let wasmRuntimeInitializedHandler = async () => {
 function customPrint(...args) {
   const message = args.join(" ");
   console.log("[WASM]", message);
-  
+
   // Send the log to the main thread
-  postMessage({ log: true, logtype: "log", logmsg: message});
+  postMessage({ log: true, logtype: "log", logmsg: message });
 }
 
 // Define custom print function that send error messages to the main thread
@@ -175,13 +174,17 @@ function customPrintErr(...args) {
   console.error("[WASM ERROR]", message);
 
   // Send the error to the main thread
-  postMessage({ log: true, logtype: "error", logmsg: message});
+  postMessage({ log: true, logtype: "error", logmsg: message });
 }
 
-Module = {
+self.Module = {
   print: customPrint,
   printErr: customPrintErr,
-  onRuntimeInitialized: wasmRuntimeInitializedHandler
+  onRuntimeInitialized: wasmRuntimeInitializedHandler,
 };
 
-importScripts("cpp_sdk.js");
+const wasmPath = import.meta.url
+  ? new URL("./cpp_sdk.js", import.meta.url).href
+  : "./cpp_sdk.js";
+console.log("Loading WASM module from", wasmPath);
+importScripts(wasmPath);

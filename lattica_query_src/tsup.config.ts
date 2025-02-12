@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 import { copyFile, mkdir } from "fs/promises";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/wasm/wasm_worker.js"],
   format: ["esm", "cjs"],
   dts: true,
   clean: true,
@@ -14,6 +14,5 @@ export default defineConfig({
     // Copy WASM files maintaining the directory structure
     await copyFile("src/wasm/cpp_sdk.wasm", "dist/wasm/cpp_sdk.wasm");
     await copyFile("src/wasm/cpp_sdk.js", "dist/wasm/cpp_sdk.js");
-    await copyFile("src/wasm/wasm_worker.js", "dist/wasm/wasm_worker.js");
   },
 });
