@@ -6,8 +6,7 @@ import {
   imageToTensor,
   tensorToImage,
 } from "./tensorUtils";
-import { setLogCallback } from "./wasm/wasm_worker_manager";
-export { imageToTensor, tensorToImage, setLogCallback }; // Re-export for frontend
+
 import * as toolkit from "./toolkitWrapper";
 
 import { runInferenceDemo } from "./inference";
@@ -17,8 +16,12 @@ import {
 } from "./serialization/hom_op";
 
 import { triggerEvkCopy } from "./dev_utils";
-import { initWasm, workerManagerSingleton } from "./wasm/wasm_worker_manager";
-export { initWasm };
+import {
+  initWasm,
+  workerManagerSingleton,
+  setLogCallback,
+} from "./wasm/wasm_worker_manager";
+export { initWasm, imageToTensor, tensorToImage, setLogCallback }; // Re-export for frontend
 
 export class LatticaQueryClient {
   public readonly jwt: string;
