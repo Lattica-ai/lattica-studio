@@ -90,6 +90,10 @@ export class WasmWorkerManager {
   setLogCallback(callback: (type: string, message: string) => void) {
     this.logCallback = callback;
   }
+
+  logConsole(message: string) {
+    this.logCallback?.("Console", message);
+  }
 }
 
 let initPromise: Promise<void> | null = null;

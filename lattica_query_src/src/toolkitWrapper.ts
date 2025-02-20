@@ -35,7 +35,7 @@ export const applyClientBlock = async (
   serialized_context: Uint8Array,
   serialized_pt: Uint8Array,
 ) => {
-  console.log("Applying client block...");
+  workerManagerSingleton.logConsole("Applying client block...");
   return await workerManagerSingleton.callWorker("apply_client_block", {
     block: serialized_block,
     context: serialized_context,
@@ -49,7 +49,7 @@ export const encrypt = async (
   serialized_pt: Uint8Array,
   pack_for_transmission: boolean = false,
 ) => {
-  console.log("Encrypting...");
+  workerManagerSingleton.logConsole("Encrypting...");
   return await workerManagerSingleton.callWorker("enc", {
     context: serialized_context,
     sk: serialized_sk[0],
@@ -63,7 +63,7 @@ export const decrypt = async (
   serialized_sk: [Uint8Array, Uint8Array],
   serialized_ct: Uint8Array,
 ) => {
-  console.log("Decrypting...");
+  workerManagerSingleton.logConsole("Decrypting...");
   return await workerManagerSingleton.callWorker("dec", {
     context: serialized_context,
     sk: serialized_sk[1],
@@ -75,7 +75,7 @@ export const generateKey = async (
   serialized_homseq: Uint8Array,
   serialized_context: Uint8Array,
 ) => {
-  console.log("Generating key...");
+  workerManagerSingleton.logConsole("Generating key...");
   return await workerManagerSingleton.callWorker("generate_key", {
     homseq: serialized_homseq,
     context: serialized_context,
