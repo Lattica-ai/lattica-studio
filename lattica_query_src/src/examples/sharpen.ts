@@ -10,14 +10,14 @@ const jwt = "<JWT>";
 let client;
 if (RUN_LOCAL) {
   client = new LatticaQueryClientLocalDev(jwt);
-  console.log("DEV client created");
+  workerManagerSingleton.logConsole("DEV client created");
 } else {
   client = new LatticaQueryClient(
     jwt,
     // "https://api-alb-509680522.eu-central-1.elb.amazonaws.com", // old-dev env
     "https://gini.api.b543.lattica.dev",
   );
-  console.log("Client created");
+  workerManagerSingleton.logConsole("Client created");
 }
 
 const MODEL_INPUT_SIZE = 100;
@@ -32,21 +32,19 @@ document.addEventListener("DOMContentLoaded", () => {
   workerManagerSingleton.setLogCallback((type: string, message: string) => {
     if (!logBox) return;
     const logEntry = document.createElement("div");
-    logEntry.style.color = type === "error" ? "red" : "black";
-    if (type === "error") {
+    const isError = type === "WASM Error";
+    if (isError) {
+      logEntry.style.color = "red";
       logEntry.style.fontWeight = "bold";
-      logEntry.textContent = `[${type}] ${message}`;
     } else {
-      if (!message.includes("::")) {
+      if (type === "Console") {
         logEntry.style.fontWeight = "bold";
       }
-      logEntry.textContent = `${message}`;
     }
+    logEntry.textContent = `[${type}] ${message}`;
     logBox.appendChild(logEntry);
     logBox.scrollTop = logBox.scrollHeight;
   });
-
-  console.log("DOM fully loaded and parsed");
 });
 
 (async () => {
@@ -54,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   console.time("Offline phase");
   await client.init();
-  console.log("Client initialized.");
+  workerManagerSingleton.logConsole("Client initialized.");
   console.timeEnd("Offline phase");
 
   console.time("Online phase");
@@ -68,30 +66,34 @@ document.addEventListener("DOMContentLoaded", () => {
       MODEL_INPUT_SIZE,
       MODEL_INPUT_SIZE,
     );
-    console.log("Image converted to tensor:", getTensorShape(pt));
+    workerManagerSingleton.logConsole(
+      ["Image converted to tensor:", getTensorShape(pt)].join(""),
+    );
   } else {
     imgData = await tensorToImage(image);
     pt = image;
   }
 
   const ct = await client.encrypt(pt);
-  console.log("Encrypted.");
+  workerManagerSingleton.logConsole("Encrypted.");
   console.time("Run query");
   const ct_res = await client.apply_query(ct);
-  console.log("Query finished.");
+  workerManagerSingleton.logConsole("Query finished.");
   console.timeEnd("Run query");
   const pt_res = await client.decrypt(ct_res);
-  console.log("Decrypted.");
+  workerManagerSingleton.logConsole("Decrypted.");
   console.timeEnd("Online phase");
 
   const pt_expected = await workerApi.apply_clear(client.jwt, client.beUrl, pt);
-  console.log("Apply Clear finished");
+  workerManagerSingleton.logConsole("Apply Clear finished");
 
-  console.log(
-    "result shape:",
-    getTensorShape(pt_res),
-    "expected shape:",
-    getTensorShape(pt_expected),
+  workerManagerSingleton.logConsole(
+    [
+      "result shape:",
+      getTensorShape(pt_res),
+      "expected shape:",
+      getTensorShape(pt_expected),
+    ].join(" "),
   );
   console.log("result:", pt_res);
   console.log("expected:", pt_expected);

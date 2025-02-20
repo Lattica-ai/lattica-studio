@@ -16,6 +16,10 @@ export class WasmWorkerManager {
   private worker?: Worker;
   private logCallback?: (type: string, message: string) => void;
 
+  logConsole(message: string) {
+    this.logCallback?.("Console", message);
+  }
+
   async initWorker() {
     return new Promise((resolve, reject) => {
       const workerUrl = import.meta.url

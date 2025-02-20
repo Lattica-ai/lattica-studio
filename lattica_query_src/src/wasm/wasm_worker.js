@@ -162,19 +162,19 @@ let wasmRuntimeInitializedHandler = async () => {
 // Define custom print function that send log messages to the main thread
 function customPrint(...args) {
   const message = args.join(" ");
-  console.log("[WASM]", message);
+  console.log("[WASM Log]", message);
 
   // Send the log to the main thread
-  postMessage({ log: true, logtype: "log", logmsg: message });
+  postMessage({ log: true, logtype: "WASM Log", logmsg: message });
 }
 
 // Define custom print function that send error messages to the main thread
 function customPrintErr(...args) {
   const message = args.join(" ");
-  console.error("[WASM ERROR]", message);
+  console.error("[WASM Error]", message);
 
   // Send the error to the main thread
-  postMessage({ log: true, logtype: "error", logmsg: message });
+  postMessage({ log: true, logtype: "WASM Error", logmsg: message });
 }
 
 self.Module = {

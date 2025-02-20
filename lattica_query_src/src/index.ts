@@ -17,7 +17,7 @@ import {
 } from "./serialization/hom_op";
 
 import { triggerEvkCopy } from "./dev_utils";
-import { initWasm } from "./wasm/wasm_worker_manager";
+import { initWasm, workerManagerSingleton } from "./wasm/wasm_worker_manager";
 export { initWasm };
 
 export class LatticaQueryClient {
@@ -46,7 +46,9 @@ export class LatticaQueryClient {
 
     this.clientBlocks =
       QueryClientSequentialHomOp.decode(serializedHomseq).clientBlocks;
-    console.log("number of client blocks:", this.clientBlocks.length);
+    workerManagerSingleton.logConsole(
+      `number of client blocks: ${this.clientBlocks.length}`,
+    );
 
     // check if need to apply client block before encryption
     this.applyBlockBeforeEncryption =
@@ -101,7 +103,7 @@ export class LatticaQueryClient {
   async encrypt(pt: Tensor): Promise<Uint8Array> {
     if (!this.initialized) throw new Error("Client must be initialized first");
 
-    console.log("pt shape:", getTensorShape(pt));
+    workerManagerSingleton.logConsole(`pt shape: ${getTensorShape(pt)}`);
 
     let serialized_pt = toolkit.dumps_proto_tensor(pt);
     // check if need to apply first client block
@@ -173,7 +175,6 @@ export class LatticaQueryClientLocalDev extends LatticaQueryClient {
       this.beUrl,
       "/api/token/get_pk_upload_url",
     );
-    console.log(s3Key);
     await serverApi.alertUploadComplete(this.jwt, this.beUrl, s3Key); // fake alert to change status of EVK
 
     // This is the only difference from the parent class
