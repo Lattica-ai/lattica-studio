@@ -34,6 +34,7 @@ export class LatticaQueryClient {
   private firstClientBlock: Uint8Array | undefined = undefined;
   private applyBlockAfterDecryption: boolean = false;
   private lastClientBlock: Uint8Array | undefined = undefined;
+  private modelMetadata: Uint8Array | undefined = undefined;
 
   constructor(jwt: string, beUrl?: string) {
     if (!jwt) throw new Error("JWT token is required");
@@ -47,8 +48,9 @@ export class LatticaQueryClient {
       await workerApi.get_user_init_data(this.jwt, this.beUrl);
     this.serializedContext = serializedContext;
 
-    this.clientBlocks =
-      QueryClientSequentialHomOp.decode(serializedHomseq).clientBlocks;
+    const homseq = QueryClientSequentialHomOp.decode(serializedHomseq);
+    this.modelMetadata = homseq.preprocessingData;
+    this.clientBlocks = homseq.clientBlocks;
     workerManagerSingleton.logConsole(
       `number of client blocks: ${this.clientBlocks.length}`,
     );
@@ -101,6 +103,10 @@ export class LatticaQueryClient {
     await workerApi.preprocessEk(this.jwt, this.beUrl);
 
     this.initialized = true;
+  }
+
+  getModelMetadata(): Uint8Array | undefined {
+    return this.modelMetadata;
   }
 
   async encrypt(pt: Tensor): Promise<Uint8Array> {
