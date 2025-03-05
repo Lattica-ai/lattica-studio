@@ -117,6 +117,7 @@ const _enc = (data) => {
       wasmPt_ptr,
       data.pt.length,
       data.pack_for_transmission,
+      data.pt_axis_external,
     );
 
     res = _wasmToJs(resultWasm);
