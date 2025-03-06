@@ -56,7 +56,7 @@ export const encrypt = async (
     sk: serialized_sk[0],
     pt: serialized_pt,
     pack_for_transmission,
-    pt_axis_external,
+    pt_axis_external: pt_axis_external !== undefined ? pt_axis_external : -1, // wasm expects -1 for undefined
   });
 };
 

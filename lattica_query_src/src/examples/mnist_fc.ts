@@ -1,5 +1,10 @@
 import { LatticaQueryClient, LatticaQueryClientLocalDev } from "../index";
-import { getTensorShape, imageToTensor, tensorToImage } from "../tensorUtils";
+import {
+  getTensorShape,
+  imageToTensor,
+  tensorToImage,
+  flattenTensor,
+} from "../tensorUtils";
 import * as workerApi from "../workerApi";
 import { displayImage, argmax, fetchLocalImageAsDataUrl } from "../dev_utils";
 
@@ -64,7 +69,7 @@ const imagePath = "./src/examples/data/four_200x200.png";
 
   displayImage(
     imgData,
-    `Decoded prediction: ${argmax(pt_res as number[])}`,
+    `Decoded prediction: ${argmax(flattenTensor(pt_res))}`,
     300,
   );
 })();
