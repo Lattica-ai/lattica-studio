@@ -69,7 +69,7 @@ const imagePath = "./src/examples/data/four_200x200.png";
 
   displayImage(
     imgData,
-    `Decoded prediction: ${argmax(flattenTensor(pt_res))}`,
+    `Decoded prediction: ${argmax(pt_res as number[])}`,
     300,
   );
 })();
