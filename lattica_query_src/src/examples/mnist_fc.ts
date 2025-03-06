@@ -1,10 +1,5 @@
 import { LatticaQueryClient, LatticaQueryClientLocalDev } from "../index";
-import {
-  getTensorShape,
-  imageToTensor,
-  tensorToImage,
-  flattenTensor,
-} from "../tensorUtils";
+import { getTensorShape, imageToTensor, tensorToImage } from "../tensorUtils";
 import * as workerApi from "../workerApi";
 import { displayImage, argmax, fetchLocalImageAsDataUrl } from "../dev_utils";
 
