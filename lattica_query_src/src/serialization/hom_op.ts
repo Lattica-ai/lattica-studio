@@ -154,6 +154,7 @@ export interface QueryClientBlock {
   isLast: boolean;
   opTypes: HomOpType[];
   applyClearParamsList: ApplyClearParams[];
+  ptAxisExternal?: number | undefined;
 }
 
 export interface QueryClientSequentialHomOp {
@@ -740,7 +741,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
 };
 
 function createBaseQueryClientBlock(): QueryClientBlock {
-  return { blockIndex: 0, isLast: false, opTypes: [], applyClearParamsList: [] };
+  return { blockIndex: 0, isLast: false, opTypes: [], applyClearParamsList: [], ptAxisExternal: undefined };
 }
 
 export const QueryClientBlock: MessageFns<QueryClientBlock> = {
@@ -758,6 +759,9 @@ export const QueryClientBlock: MessageFns<QueryClientBlock> = {
     writer.join();
     for (const v of message.applyClearParamsList) {
       ApplyClearParams.encode(v!, writer.uint32(34).fork()).join();
+    }
+    if (message.ptAxisExternal !== undefined) {
+      writer.uint32(40).int32(message.ptAxisExternal);
     }
     return writer;
   },
@@ -811,6 +815,14 @@ export const QueryClientBlock: MessageFns<QueryClientBlock> = {
           message.applyClearParamsList.push(ApplyClearParams.decode(reader, reader.uint32()));
           continue;
         }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.ptAxisExternal = reader.int32();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -828,6 +840,7 @@ export const QueryClientBlock: MessageFns<QueryClientBlock> = {
       applyClearParamsList: globalThis.Array.isArray(object?.applyClearParamsList)
         ? object.applyClearParamsList.map((e: any) => ApplyClearParams.fromJSON(e))
         : [],
+      ptAxisExternal: isSet(object.ptAxisExternal) ? globalThis.Number(object.ptAxisExternal) : undefined,
     };
   },
 
@@ -845,6 +858,9 @@ export const QueryClientBlock: MessageFns<QueryClientBlock> = {
     if (message.applyClearParamsList?.length) {
       obj.applyClearParamsList = message.applyClearParamsList.map((e) => ApplyClearParams.toJSON(e));
     }
+    if (message.ptAxisExternal !== undefined) {
+      obj.ptAxisExternal = Math.round(message.ptAxisExternal);
+    }
     return obj;
   },
 
@@ -857,6 +873,7 @@ export const QueryClientBlock: MessageFns<QueryClientBlock> = {
     message.isLast = object.isLast ?? false;
     message.opTypes = object.opTypes?.map((e) => e) || [];
     message.applyClearParamsList = object.applyClearParamsList?.map((e) => ApplyClearParams.fromPartial(e)) || [];
+    message.ptAxisExternal = object.ptAxisExternal ?? undefined;
     return message;
   },
 };

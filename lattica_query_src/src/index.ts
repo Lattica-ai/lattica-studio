@@ -106,6 +106,7 @@ export class LatticaQueryClient {
   }
 
   getModelMetadata(): Uint8Array | undefined {
+    if (!this.initialized) throw new Error("Client must be initialized first");
     return this.modelMetadata;
   }
 
@@ -115,8 +116,12 @@ export class LatticaQueryClient {
     workerManagerSingleton.logConsole(`pt shape: ${getTensorShape(pt)}`);
 
     let serialized_pt = toolkit.dumps_proto_tensor(pt);
+    let pt_axis_external = undefined;
     // check if need to apply first client block
     if (this.applyBlockBeforeEncryption) {
+      pt_axis_external = QueryClientBlock.decode(
+        this.firstClientBlock!,
+      ).ptAxisExternal;
       serialized_pt = await toolkit.applyClientBlock(
         this.firstClientBlock!,
         this.serializedContext!,
@@ -129,6 +134,7 @@ export class LatticaQueryClient {
       this.secretKey!,
       serialized_pt,
       true,
+      pt_axis_external,
     );
   }
 

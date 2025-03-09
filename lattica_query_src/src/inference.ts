@@ -20,7 +20,11 @@ export const runInferenceDemo = async (
   );
 
   for (const block_proto of clientBlocks) {
-    let serialized_pt = await toolkit.decrypt(context, secretKey, serialized_ct_res);
+    let serialized_pt = await toolkit.decrypt(
+      context,
+      secretKey,
+      serialized_ct_res,
+    );
 
     serialized_pt = await toolkit.applyClientBlock(
       QueryClientBlock.encode(block_proto).finish(),
@@ -28,7 +32,13 @@ export const runInferenceDemo = async (
       serialized_pt,
     );
 
-    serialized_ct = await toolkit.encrypt(context, secretKey, serialized_pt, true);
+    serialized_ct = await toolkit.encrypt(
+      context,
+      secretKey,
+      serialized_pt,
+      true,
+      block_proto.ptAxisExternal,
+    );
 
     serialized_ct_res = await worker_api.apply_hom_pipeline(
       jwt,
