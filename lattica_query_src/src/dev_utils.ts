@@ -1,3 +1,5 @@
+import { CLIENT_INFO } from "./clientVersionInfo";
+
 export const triggerEvkCopy = async (
   jwt: string,
   beUrl: string,
@@ -13,6 +15,10 @@ export const triggerEvkCopy = async (
   const formData = new FormData();
   const blob = new Blob([ek], { type: "application/octet-stream" });
   formData.append(fileName, blob);
+  
+  // Add client version information
+  formData.append("client_module", CLIENT_INFO.module);
+  formData.append("client_version", CLIENT_INFO.version);
 
   const response = await fetch(`${beUrl}/api/files/dev_save_ek_local`, {
     method: "POST",

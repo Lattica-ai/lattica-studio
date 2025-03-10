@@ -1,5 +1,6 @@
 import { Tensor } from "./tensorUtils";
 import * as toolkit from "./toolkitWrapper";
+import { CLIENT_INFO } from "./clientVersionInfo";
 
 type WorkerResponse = string | Record<string, string>;
 
@@ -13,7 +14,10 @@ const sendHttpRequest = async (
   const reqData = {
     api_call: {
       action: actionName,
-      params: actionParams || {},
+      params: {
+        ...(actionParams || {}),
+        client_info: CLIENT_INFO,
+      },
     },
   };
 
