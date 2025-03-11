@@ -24,14 +24,15 @@
     "**/*.wasm"
   ],
   "scripts": {
-    "build": "tsup",
+    "update-version": "node -e \"const fs = require('fs'); const pkg = require('./package.json'); fs.writeFileSync('./src/version.ts', '// This file is auto-generated. Do not edit directly.\\nexport const VERSION = \\\"' + pkg.version + '\\\";\\n');\"",
+    "build": "npm run update-version && tsup",
     "dev": "tsup --watch",
     "prepare": "npm run build",
     "test": "jest",
     "test:build": "tsup src/index.ts src/**tests**/LatticeQueryClient.test.ts --onSuccess 'node dist/**tests**/LatticeQueryClient.test.js'",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run update-version && npm run build"
   },
   "keywords": [
     "lattica",

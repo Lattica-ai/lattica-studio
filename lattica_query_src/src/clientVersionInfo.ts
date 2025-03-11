@@ -1,6 +1,6 @@
-import packageJson from "../package.json";
+import { VERSION } from "./version";
 
 export const CLIENT_INFO = {
   module: "lattica_query_js",
-  version: packageJson.version,
+  version: VERSION,
 };
