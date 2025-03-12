@@ -24,7 +24,7 @@
     "**/*.wasm"
   ],
   "scripts": {
-    "update-version": "node -e \"const fs = require('fs'); const pkg = require('./package.json'); fs.writeFileSync('./src/version.ts', '// This file is auto-generated. Do not edit directly.\\nexport const VERSION = \\\"' + pkg.version + '\\\";\\n');\"",
+    "update-version": "ts-node dev_scripts/updateVersion.ts",
     "build": "npm run update-version && tsup",
     "dev": "tsup --watch",
     "prepare": "npm run build",
@@ -53,6 +53,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "prettier": "^3.3.3",
     "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
     "ts-proto": "^2.6.0",
     "ts-protoc-gen": "^0.15.0",
     "tsup": "^8.0.0",
