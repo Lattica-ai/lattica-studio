@@ -100,9 +100,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   displayImage(imgData, "Original Image", 300);
 
-  const imgExpected = await tensorToImage(pt_expected);
-  displayImage(imgExpected, "Expected Image", 300);
-
   const imgDec = await tensorToImage(pt_res);
   displayImage(imgDec, "Decoded Image", 300);
+
+  const imgExpected = await tensorToImage(pt_expected);
+  displayImage(imgExpected, "Expected Image", 300);
 })();
