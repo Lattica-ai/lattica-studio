@@ -1,16 +1,24 @@
+import { CLIENT_INFO } from "./clientVersionInfo";
+
 export const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
   requestName: string,
   reqParams: Record<string, any> = {},
 ): Promise<any> => {
+  // Add client info to the request parameters
+  const paramsWithClientInfo = {
+    ...reqParams,
+    client_info: CLIENT_INFO,
+  };
+
   const response = await fetch(`${beUrl}${requestName}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${jwt}`,
     },
-    body: JSON.stringify(reqParams),
+    body: JSON.stringify(paramsWithClientInfo),
   });
 
   if (response.ok) {

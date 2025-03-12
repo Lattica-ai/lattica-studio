@@ -24,14 +24,15 @@
     "**/*.wasm"
   ],
   "scripts": {
-    "build": "tsup",
+    "update-version": "ts-node dev_scripts/updateVersion.ts",
+    "build": "npm run update-version && tsup",
     "dev": "tsup --watch",
     "prepare": "npm run build",
     "test": "jest",
     "test:build": "tsup src/index.ts src/**tests**/LatticeQueryClient.test.ts --onSuccess 'node dist/**tests**/LatticeQueryClient.test.js'",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run update-version && npm run build"
   },
   "keywords": [
     "lattica",
@@ -52,6 +53,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "prettier": "^3.3.3",
     "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
     "ts-proto": "^2.6.0",
     "ts-protoc-gen": "^0.15.0",
     "tsup": "^8.0.0",
