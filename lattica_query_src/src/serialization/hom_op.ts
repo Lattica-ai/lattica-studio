@@ -23,6 +23,7 @@ export enum HomOpType {
   Reshape = 11,
   Softmax = 12,
   ReLU = 13,
+  Clamp = 14,
   UNRECOGNIZED = -1,
 }
 
@@ -70,6 +71,9 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 13:
     case "ReLU":
       return HomOpType.ReLU;
+    case 14:
+    case "Clamp":
+      return HomOpType.Clamp;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -107,6 +111,8 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "Softmax";
     case HomOpType.ReLU:
       return "ReLU";
+    case HomOpType.Clamp:
+      return "Clamp";
     case HomOpType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -140,6 +146,11 @@ export interface SoftmaxApplyClearParams {
   dim: number;
 }
 
+export interface ClampApplyClearParams {
+  minVal: number;
+  maxVal: number;
+}
+
 export interface ApplyClearParams {
   unfold?: UnfoldApplyClearParams | undefined;
   reshape?: ReshapeApplyClearParams | undefined;
@@ -147,6 +158,7 @@ export interface ApplyClearParams {
   constMul?: ConstMulApplyClearParams | undefined;
   constMatMul?: ConstMatMulApplyClearParams | undefined;
   softmax?: SoftmaxApplyClearParams | undefined;
+  clamp?: ClampApplyClearParams | undefined;
 }
 
 export interface QueryClientBlock {
@@ -581,6 +593,82 @@ export const SoftmaxApplyClearParams: MessageFns<SoftmaxApplyClearParams> = {
   },
 };
 
+function createBaseClampApplyClearParams(): ClampApplyClearParams {
+  return { minVal: 0, maxVal: 0 };
+}
+
+export const ClampApplyClearParams: MessageFns<ClampApplyClearParams> = {
+  encode(message: ClampApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.minVal !== 0) {
+      writer.uint32(13).float(message.minVal);
+    }
+    if (message.maxVal !== 0) {
+      writer.uint32(21).float(message.maxVal);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClampApplyClearParams {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseClampApplyClearParams();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 13) {
+            break;
+          }
+
+          message.minVal = reader.float();
+          continue;
+        }
+        case 2: {
+          if (tag !== 21) {
+            break;
+          }
+
+          message.maxVal = reader.float();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ClampApplyClearParams {
+    return {
+      minVal: isSet(object.minVal) ? globalThis.Number(object.minVal) : 0,
+      maxVal: isSet(object.maxVal) ? globalThis.Number(object.maxVal) : 0,
+    };
+  },
+
+  toJSON(message: ClampApplyClearParams): unknown {
+    const obj: any = {};
+    if (message.minVal !== 0) {
+      obj.minVal = message.minVal;
+    }
+    if (message.maxVal !== 0) {
+      obj.maxVal = message.maxVal;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClampApplyClearParams>, I>>(base?: I): ClampApplyClearParams {
+    return ClampApplyClearParams.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClampApplyClearParams>, I>>(object: I): ClampApplyClearParams {
+    const message = createBaseClampApplyClearParams();
+    message.minVal = object.minVal ?? 0;
+    message.maxVal = object.maxVal ?? 0;
+    return message;
+  },
+};
+
 function createBaseApplyClearParams(): ApplyClearParams {
   return {
     unfold: undefined,
@@ -589,6 +677,7 @@ function createBaseApplyClearParams(): ApplyClearParams {
     constMul: undefined,
     constMatMul: undefined,
     softmax: undefined,
+    clamp: undefined,
   };
 }
 
@@ -611,6 +700,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.softmax !== undefined) {
       SoftmaxApplyClearParams.encode(message.softmax, writer.uint32(50).fork()).join();
+    }
+    if (message.clamp !== undefined) {
+      ClampApplyClearParams.encode(message.clamp, writer.uint32(58).fork()).join();
     }
     return writer;
   },
@@ -670,6 +762,14 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
           message.softmax = SoftmaxApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.clamp = ClampApplyClearParams.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -687,6 +787,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       constMul: isSet(object.constMul) ? ConstMulApplyClearParams.fromJSON(object.constMul) : undefined,
       constMatMul: isSet(object.constMatMul) ? ConstMatMulApplyClearParams.fromJSON(object.constMatMul) : undefined,
       softmax: isSet(object.softmax) ? SoftmaxApplyClearParams.fromJSON(object.softmax) : undefined,
+      clamp: isSet(object.clamp) ? ClampApplyClearParams.fromJSON(object.clamp) : undefined,
     };
   },
 
@@ -709,6 +810,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.softmax !== undefined) {
       obj.softmax = SoftmaxApplyClearParams.toJSON(message.softmax);
+    }
+    if (message.clamp !== undefined) {
+      obj.clamp = ClampApplyClearParams.toJSON(message.clamp);
     }
     return obj;
   },
@@ -735,6 +839,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       : undefined;
     message.softmax = (object.softmax !== undefined && object.softmax !== null)
       ? SoftmaxApplyClearParams.fromPartial(object.softmax)
+      : undefined;
+    message.clamp = (object.clamp !== undefined && object.clamp !== null)
+      ? ClampApplyClearParams.fromPartial(object.clamp)
       : undefined;
     return message;
   },
