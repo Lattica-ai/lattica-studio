@@ -9,7 +9,7 @@ import {
 
 import * as toolkit from "./toolkitWrapper";
 
-import { runInferenceDemo } from "./inference";
+import { runInferenceDemo, runInference } from "./inference";
 import {
   QueryClientSequentialHomOp,
   QueryClientBlock,
@@ -29,6 +29,7 @@ export class LatticaQueryClient {
   protected initialized: boolean = false;
   private serializedContext: Uint8Array | null = null;
   private clientBlocks: QueryClientBlock[] = [];
+  private allClientBlocks: QueryClientBlock[] = [];
   private secretKey: [Uint8Array, Uint8Array] | null = null;
   private applyBlockBeforeEncryption: boolean = false;
   private firstClientBlock: Uint8Array | undefined = undefined;
@@ -50,6 +51,7 @@ export class LatticaQueryClient {
     const homseq = QueryClientSequentialHomOp.decode(serializedHomseq);
     this.modelMetadata = homseq.preprocessingData;
     this.clientBlocks = homseq.clientBlocks;
+    this.allClientBlocks = homseq.clientBlocks.slice();
     workerManagerSingleton.logConsole(
       `number of client blocks: ${this.clientBlocks.length}`,
     );
@@ -169,6 +171,18 @@ export class LatticaQueryClient {
     }
 
     return toolkit.load_proto_tensor(decryptedOutput);
+  }
+
+  async runQuery(pt: Tensor): Promise<Tensor> {
+    if (!this.initialized) throw new Error("Client must be initialized first");
+    return await runInference(
+      this.jwt,
+      this.beUrl,
+      this.serializedContext!,
+      this.secretKey!,
+      pt,
+      this.allClientBlocks,
+    );
   }
 }
 

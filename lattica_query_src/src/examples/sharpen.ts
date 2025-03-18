@@ -20,7 +20,7 @@ if (RUN_LOCAL) {
   workerManagerSingleton.logConsole("Client created");
 }
 
-const MODEL_INPUT_SIZE = 100;
+const MODEL_INPUT_SIZE = 200;
 
 // cat: 150x150
 const grayScale = false;
@@ -74,15 +74,19 @@ document.addEventListener("DOMContentLoaded", () => {
     pt = image;
   }
 
-  const ct = await client.encrypt(pt);
-  workerManagerSingleton.logConsole("Encrypted.");
-  console.time("Run query");
-  const ct_res = await client.apply_query(ct);
-  workerManagerSingleton.logConsole("Query finished.");
-  console.timeEnd("Run query");
-  const pt_res = await client.decrypt(ct_res);
-  workerManagerSingleton.logConsole("Decrypted.");
-  console.timeEnd("Online phase");
+  //================ using runInferenceDemo
+  // const ct = await client.encrypt(pt);
+  // workerManagerSingleton.logConsole("Encrypted.");
+  // console.time("Run query");
+  // const ct_res = await client.apply_query(ct);
+  // workerManagerSingleton.logConsole("Query finished.");
+  // console.timeEnd("Run query");
+  // const pt_res = await client.decrypt(ct_res);
+  // workerManagerSingleton.logConsole("Decrypted.");
+  // console.timeEnd("Online phase");
+
+  //================ using runInference
+  const pt_res = await client.runQuery(pt);
 
   const pt_expected = await workerApi.apply_clear(client.jwt, client.beUrl, pt);
   workerManagerSingleton.logConsole("Apply Clear finished");
