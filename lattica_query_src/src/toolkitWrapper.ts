@@ -48,7 +48,7 @@ export const encrypt = async (
   serialized_sk: [Uint8Array, Uint8Array],
   serialized_pt: Uint8Array,
   pack_for_transmission: boolean = false,
-  pt_axis_external: number | undefined,
+  pt_axis_external?: number,
 ) => {
   workerManagerSingleton.logConsole("Encrypting...");
   return await workerManagerSingleton.callWorker("enc", {
@@ -56,7 +56,7 @@ export const encrypt = async (
     sk: serialized_sk[0],
     pt: serialized_pt,
     pack_for_transmission,
-    pt_axis_external: pt_axis_external !== undefined ? pt_axis_external : -1, // wasm expects -1 for undefined
+    pt_axis_external: pt_axis_external ?? -1, // wasm expects -1 for undefined
   });
 };
 
