@@ -39,8 +39,7 @@ export class LatticaQueryClient {
   constructor(jwt: string, beUrl?: string) {
     if (!jwt) throw new Error("JWT token is required");
     this.jwt = jwt;
-    if (!beUrl) throw new Error("BE URL is required");
-    this.beUrl = beUrl;
+    this.beUrl = beUrl ?? "https://api.lattica.ai";
   }
 
   protected async getClientData(): Promise<Uint8Array> {
