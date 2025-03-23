@@ -10,7 +10,8 @@ import { workerManagerSingleton } from "../wasm/wasm_worker_manager";
 
 const RUN_LOCAL = true;
 
-const MODEL_ID = "imageEnhancement";
+let jwt = "<JWT>";
+const MODEL_ID = "<ModelId>";
 
 const MODEL_INPUT_SIZE = 200;
 
@@ -41,9 +42,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 (async () => {
   // Either use hardcoded JWT or create a new one (if the model visibility is PUBLIC)
-  const jwt = "<JWT>";
-  // const jwt = await getDemoToken(MODEL_ID, "http://localhost:3050");
-  console.log("Created demo token for public model", MODEL_ID, jwt);
+  // jwt = await getDemoToken(MODEL_ID, "http://localhost:3050");
+  // console.log("Created demo token for public model", MODEL_ID, jwt);
 
   let client;
   if (RUN_LOCAL) {

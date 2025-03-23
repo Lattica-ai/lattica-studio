@@ -9,7 +9,8 @@ import { displayImage, argmax, fetchLocalImageAsDataUrl } from "../dev_utils";
 
 const RUN_LOCAL = true;
 
-const MODEL_ID = "sketchToNumber";
+let jwt = "<JWT>";
+const MODEL_ID = "<ModelId>";
 
 // number 4: 200x200
 const grayScale = true;
@@ -17,9 +18,8 @@ const imagePath = "./src/examples/data/four_200x200.png";
 
 (async () => {
   // Either use hardcoded JWT or create a new one (if the model visibility is PUBLIC)
-  const jwt = "<JWT>";
   // const jwt = await getDemoToken(MODEL_ID, "http://localhost:3050");
-  console.log("Created demo token for public model", MODEL_ID, jwt);
+  // console.log("Created demo token for public model", MODEL_ID, jwt);
 
   let client;
   if (RUN_LOCAL) {
