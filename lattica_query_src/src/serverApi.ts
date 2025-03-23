@@ -1,5 +1,7 @@
 import { CLIENT_INFO } from "./clientVersionInfo";
 
+export const BE_URL = "https://api.lattica.ai";
+
 export const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
@@ -108,7 +110,7 @@ export const getDemoToken = async (
   };
 
   const response = await fetch(
-    `${beUrl ?? "https://api.lattica.ai"}/api/token/generate_token_demo`,
+    `${beUrl ?? BE_URL}/api/token/generate_token_demo`,
     {
       method: "POST",
       headers: {
