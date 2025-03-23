@@ -85,3 +85,44 @@ export const uploadEk = async (
 
   return s3Key;
 };
+
+function generateRandomTokenName(n: number): string {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i = 0; i < n; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+export const getDemoToken = async (
+  modelId: string,
+  beUrl?: string,
+): Promise<string> => {
+  console.log("Getting demo token");
+  const paramsWithClientInfo = {
+    modelId,
+    tokenName: generateRandomTokenName(10),
+    client_info: CLIENT_INFO,
+  };
+
+  const response = await fetch(
+    `${beUrl ?? "https://api.lattica.ai"}/api/token/generate_token_demo`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(paramsWithClientInfo),
+    },
+  );
+  if (response.ok) {
+    const responseJson = await response.json();
+    return responseJson.result.token;
+  }
+
+  throw new Error(
+    `FAILED getDemoToken with error: ${response.status} ${response.statusText}`,
+  );
+};

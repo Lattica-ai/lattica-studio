@@ -21,7 +21,8 @@ import {
   workerManagerSingleton,
   setLogCallback,
 } from "./wasm/wasm_worker_manager";
-export { initWasm, imageToTensor, tensorToImage, setLogCallback }; // Re-export for frontend
+import { getDemoToken } from "./serverApi";
+export { initWasm, imageToTensor, tensorToImage, setLogCallback, getDemoToken }; // Re-export for frontend
 
 export class LatticaQueryClient {
   public readonly jwt: string;
