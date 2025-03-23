@@ -21,7 +21,8 @@ import {
   workerManagerSingleton,
   setLogCallback,
 } from "./wasm/wasm_worker_manager";
-export { initWasm, imageToTensor, tensorToImage, setLogCallback }; // Re-export for frontend
+import { getDemoToken } from "./serverApi";
+export { initWasm, imageToTensor, tensorToImage, setLogCallback, getDemoToken }; // Re-export for frontend
 
 export class LatticaQueryClient {
   public readonly jwt: string;
@@ -40,7 +41,7 @@ export class LatticaQueryClient {
   constructor(jwt: string, beUrl?: string) {
     if (!jwt) throw new Error("JWT token is required");
     this.jwt = jwt;
-    this.beUrl = beUrl ?? "https://api.lattica.ai";
+    this.beUrl = beUrl ?? serverApi.BE_URL;
   }
 
   protected async getClientData(): Promise<Uint8Array> {

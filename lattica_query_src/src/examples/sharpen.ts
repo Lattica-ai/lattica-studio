@@ -1,24 +1,17 @@
-import { LatticaQueryClient, LatticaQueryClientLocalDev } from "../index";
+import {
+  LatticaQueryClient,
+  LatticaQueryClientLocalDev,
+  getDemoToken,
+} from "../index";
 import { getTensorShape, imageToTensor, tensorToImage } from "../tensorUtils";
 import * as workerApi from "../workerApi";
 import { displayImage, fetchLocalImageAsDataUrl } from "../dev_utils";
 import { workerManagerSingleton } from "../wasm/wasm_worker_manager";
 
 const RUN_LOCAL = true;
-const jwt = "<JWT>";
 
-let client;
-if (RUN_LOCAL) {
-  client = new LatticaQueryClientLocalDev(jwt);
-  workerManagerSingleton.logConsole("DEV client created");
-} else {
-  client = new LatticaQueryClient(
-    jwt,
-    // "https://api-alb-509680522.eu-central-1.elb.amazonaws.com", // old-dev env
-    "https://gini.api.b543.lattica.dev",
-  );
-  workerManagerSingleton.logConsole("Client created");
-}
+let jwt = "<JWT>";
+const MODEL_ID = "<ModelId>";
 
 const MODEL_INPUT_SIZE = 200;
 
@@ -48,6 +41,22 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 (async () => {
+  // Either use hardcoded JWT or create a new one (if the model visibility is PUBLIC)
+  // jwt = await getDemoToken(MODEL_ID, "http://localhost:3050");
+  // console.log("Created demo token for public model", MODEL_ID, jwt);
+
+  let client;
+  if (RUN_LOCAL) {
+    client = new LatticaQueryClientLocalDev(jwt);
+    workerManagerSingleton.logConsole("DEV client created");
+  } else {
+    client = new LatticaQueryClient(
+      jwt,
+      "https://gini.api.b543.lattica.dev", // Gini
+    );
+    workerManagerSingleton.logConsole("Client created");
+  }
+
   const image = await fetchLocalImageAsDataUrl(imagePath);
 
   console.time("Offline phase");

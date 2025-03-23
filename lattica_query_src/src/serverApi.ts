@@ -1,5 +1,7 @@
 import { CLIENT_INFO } from "./clientVersionInfo";
 
+export const BE_URL = "https://api.lattica.ai";
+
 export const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
@@ -84,4 +86,45 @@ export const uploadEk = async (
   await alertUploadComplete(jwt, beUrl, s3Key);
 
   return s3Key;
+};
+
+function generateRandomTokenName(n: number): string {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i = 0; i < n; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+export const getDemoToken = async (
+  modelId: string,
+  beUrl?: string,
+): Promise<string> => {
+  console.log("Getting demo token");
+  const paramsWithClientInfo = {
+    modelId,
+    tokenName: generateRandomTokenName(10),
+    client_info: CLIENT_INFO,
+  };
+
+  const response = await fetch(
+    `${beUrl ?? BE_URL}/api/token/generate_token_demo`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(paramsWithClientInfo),
+    },
+  );
+  if (response.ok) {
+    const responseJson = await response.json();
+    return responseJson.result.token;
+  }
+
+  throw new Error(
+    `FAILED getDemoToken with error: ${response.status} ${response.statusText}`,
+  );
 };
