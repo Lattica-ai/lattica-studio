@@ -1,6 +1,7 @@
 import { Tensor } from "./tensorUtils";
 import * as toolkit from "./toolkitWrapper";
 import { CLIENT_INFO } from "./clientVersionInfo";
+import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
 
 type WorkerResponse = string | Record<string, string>;
 
@@ -118,11 +119,13 @@ export const apply_hom_pipeline = async (
   block_index: number,
   return_new_state: boolean = false,
 ): Promise<Uint8Array> => {
+  workerManagerSingleton.logConsole("Sending encrypted data to server...");
   const response = await sendHttpRequest(jwt, beUrl, "apply_hom_pipeline", {
     ct_proto_str: bytesToBase64(serialized_ct),
     block_index,
     return_new_state,
   });
+  workerManagerSingleton.logConsole("Received encrypted result from server.");
   return base64ToBytes(response as string);
 };
 

@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
       MODEL_INPUT_SIZE,
     );
     workerManagerSingleton.logConsole(
-      ["Image converted to tensor:", getTensorShape(pt)].join(""),
+      `Image converted to tensor: (${getTensorShape(pt).join(",")})`,
     );
   } else {
     imgData = await tensorToImage(image);
