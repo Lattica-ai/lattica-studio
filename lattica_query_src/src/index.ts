@@ -54,7 +54,7 @@ export class LatticaQueryClient {
     this.clientBlocks = homseq.clientBlocks;
     this.allClientBlocks = homseq.clientBlocks.slice();
     workerManagerSingleton.logConsole(
-      `number of client blocks: ${this.clientBlocks.length}`,
+      `Number of client blocks: ${this.clientBlocks.length}`,
     );
 
     // check if need to apply client block before encryption
@@ -96,11 +96,14 @@ export class LatticaQueryClient {
   async init(): Promise<void> {
     await initWasm();
 
+    workerManagerSingleton.logConsole("Getting context from server...");
     const serializedHomseq = await this.getClientData();
 
     const evaluationKey = await this.generateKey(serializedHomseq);
 
+    workerManagerSingleton.logConsole("Uploading evaluation key...");
     await serverApi.uploadEk(this.jwt, this.beUrl, evaluationKey);
+    workerManagerSingleton.logConsole("Evaluation key uploaded.");
 
     await workerApi.preprocessEk(this.jwt, this.beUrl);
 
@@ -115,7 +118,9 @@ export class LatticaQueryClient {
   async encrypt(pt: Tensor): Promise<Uint8Array> {
     if (!this.initialized) throw new Error("Client must be initialized first");
 
-    workerManagerSingleton.logConsole(`pt shape: ${getTensorShape(pt)}`);
+    workerManagerSingleton.logConsole(
+      `Plain text shape: (${getTensorShape(pt).join(",")})`,
+    );
 
     let serialized_pt = toolkit.dumps_proto_tensor(pt);
     let pt_axis_external = undefined;
