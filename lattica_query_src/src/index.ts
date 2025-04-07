@@ -13,6 +13,7 @@ import { runInferenceDemo, runInference } from "./inference";
 import {
   QueryClientSequentialHomOp,
   QueryClientBlock,
+  ClientData,
 } from "./serialization/hom_op";
 
 import { triggerEvkCopy } from "./dev_utils";
@@ -45,11 +46,18 @@ export class LatticaQueryClient {
   }
 
   protected async getClientData(): Promise<Uint8Array> {
-    const { serializedHomseq, serializedContext } =
-      await workerApi.get_user_init_data(this.jwt, this.beUrl);
-    this.serializedContext = serializedContext;
+    const serializedClientData = await workerApi.get_user_init_data(
+      this.jwt,
+      this.beUrl,
+    );
 
-    const homseq = QueryClientSequentialHomOp.decode(serializedHomseq);
+    const clientData = ClientData.decode(serializedClientData);
+
+    this.serializedContext = clientData.serializedContext;
+
+    const homseq = QueryClientSequentialHomOp.decode(
+      clientData.serializedClientSequentialHomOp,
+    );
     this.modelMetadata = homseq.preprocessingData;
     this.clientBlocks = homseq.clientBlocks;
     this.allClientBlocks = homseq.clientBlocks.slice();
@@ -77,7 +85,7 @@ export class LatticaQueryClient {
 
     // TODO: we can apply serializeBinary() to all remaining blocks in clientBlocks list, to save time runInference
 
-    return serializedHomseq;
+    return clientData.serializedClientSequentialHomOp;
   }
 
   protected async generateKey(serializedHomseq: Uint8Array) {
@@ -98,6 +106,7 @@ export class LatticaQueryClient {
 
     workerManagerSingleton.logConsole("Getting context from server...");
     const serializedHomseq = await this.getClientData();
+    workerManagerSingleton.logConsole("Context received.");
 
     const evaluationKey = await this.generateKey(serializedHomseq);
 
