@@ -175,6 +175,11 @@ export interface QueryClientSequentialHomOp {
   preprocessingData: Uint8Array;
 }
 
+export interface ClientData {
+  serializedContext: Uint8Array;
+  serializedClientSequentialHomOp: Uint8Array;
+}
+
 function createBaseUnfoldApplyClearParams(): UnfoldApplyClearParams {
   return { kernelSize: 0, padding: 0, stride: 0 };
 }
@@ -1091,6 +1096,86 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
     message.keyTypes = object.keyTypes?.map((e) => e) || [];
     message.clientBlocks = object.clientBlocks?.map((e) => QueryClientBlock.fromPartial(e)) || [];
     message.preprocessingData = object.preprocessingData ?? new Uint8Array(0);
+    return message;
+  },
+};
+
+function createBaseClientData(): ClientData {
+  return { serializedContext: new Uint8Array(0), serializedClientSequentialHomOp: new Uint8Array(0) };
+}
+
+export const ClientData: MessageFns<ClientData> = {
+  encode(message: ClientData, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.serializedContext.length !== 0) {
+      writer.uint32(10).bytes(message.serializedContext);
+    }
+    if (message.serializedClientSequentialHomOp.length !== 0) {
+      writer.uint32(18).bytes(message.serializedClientSequentialHomOp);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClientData {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseClientData();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.serializedContext = reader.bytes();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.serializedClientSequentialHomOp = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ClientData {
+    return {
+      serializedContext: isSet(object.serializedContext)
+        ? bytesFromBase64(object.serializedContext)
+        : new Uint8Array(0),
+      serializedClientSequentialHomOp: isSet(object.serializedClientSequentialHomOp)
+        ? bytesFromBase64(object.serializedClientSequentialHomOp)
+        : new Uint8Array(0),
+    };
+  },
+
+  toJSON(message: ClientData): unknown {
+    const obj: any = {};
+    if (message.serializedContext.length !== 0) {
+      obj.serializedContext = base64FromBytes(message.serializedContext);
+    }
+    if (message.serializedClientSequentialHomOp.length !== 0) {
+      obj.serializedClientSequentialHomOp = base64FromBytes(message.serializedClientSequentialHomOp);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClientData>, I>>(base?: I): ClientData {
+    return ClientData.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClientData>, I>>(object: I): ClientData {
+    const message = createBaseClientData();
+    message.serializedContext = object.serializedContext ?? new Uint8Array(0);
+    message.serializedClientSequentialHomOp = object.serializedClientSequentialHomOp ?? new Uint8Array(0);
     return message;
   },
 };

@@ -3,7 +3,7 @@ import * as toolkit from "./toolkitWrapper";
 import { CLIENT_INFO } from "./clientVersionInfo";
 import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
 
-type WorkerResponse = string | Record<string, string>;
+type WorkerResponse = string;
 
 const sendHttpRequest = async (
   jwt: string,
@@ -93,16 +93,9 @@ const bytesToBase64 = (uint8Array: Uint8Array): string => {
 export const get_user_init_data = async (
   jwt: string,
   beUrl: string,
-): Promise<{ serializedContext: Uint8Array; serializedHomseq: Uint8Array }> => {
-  const response = (await sendHttpRequest(
-    jwt,
-    beUrl,
-    "get_user_init_data",
-  )) as Record<string, string>;
-  return {
-    serializedContext: base64ToBytes(response.context_proto_str),
-    serializedHomseq: base64ToBytes(response.homseq_proto_str),
-  };
+): Promise<Uint8Array> => {
+  const response = await sendHttpRequest(jwt, beUrl, "get_user_init_data");
+  return base64ToBytes(response as string);
 };
 
 export const preprocessEk = async (

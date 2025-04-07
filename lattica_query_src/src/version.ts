@@ -1,2 +1,2 @@
 // This file is auto-generated. Do not edit directly.
-export const VERSION = "4.13.0";
+export const VERSION = "5.0.0";
