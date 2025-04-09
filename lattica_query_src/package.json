@@ -1,6 +1,6 @@
 {
   "name": "@lattica-ai/query",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "A client for lattica image queries",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
