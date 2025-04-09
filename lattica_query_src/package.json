@@ -1,9 +1,9 @@
 {
-  "name": "@Lattica-ai/lattica-query-client",
-  "version": "5.0.0",
+  "name": "@lattica-ai/query",
+  "version": "1.0.0",
   "description": "A client for lattica image queries",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org/"
   },
   "repository": {
     "type": "git",
