@@ -1,27 +1,11 @@
 # LatticaAI Query Client
 
-A TypeScript client for performing lattica queries on images.
+A TypeScript client for performing homomorphic queries with LatticaAI.
 
 ## Installation
 Install the package:
 ```bash
 npm install @lattica-ai/query
-```
-
-## Usage
-
-```typescript
-import { LatticaQueryClient } from '@lattica-ai/query';
-
-const client = new LatticaQueryClient('your-jwt-token');
-
-async function processImage(encodedImage: string) {
-    await client.init();
-    const encryptedImage = await client.encrypt(encodedImage);
-    const queryResult = await client.apply_query(encryptedImage);
-    const result = await client.decrypt(queryResult);
-    return result;
-}
 ```
 
 ## Documentation
