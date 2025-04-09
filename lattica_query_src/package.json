@@ -21,7 +21,8 @@
   },
   "files": [
     "dist",
-    "**/*.wasm"
+    "**/*.wasm",
+    "LICENSE.txt"
   ],
   "scripts": {
     "update-version": "ts-node dev_scripts/updateVersion.ts",
@@ -40,7 +41,7 @@
     "query"
   ],
   "author": "Lattica AI",
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN LICENSE.txt",
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@types/jest": "^29.5.14",
