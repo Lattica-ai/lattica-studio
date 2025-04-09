@@ -32,7 +32,7 @@ See documentation at: https://platformdocs.lattica.ai/
 
 Proprietary - © Lattica AI
 
-See license details in the `LICENSE.md` file.
+See license details in the `LICENSE.txt` file.
 
 ---
 
