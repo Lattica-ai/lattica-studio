@@ -1,10 +1,11 @@
 {
-  "name": "@Lattica-ai/lattica-query-client",
-  "version": "6.0.0",
+  "name": "@lattica-ai/query",
+  "version": "1.0.3",
   "description": "A client for lattica image queries",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org/"
   },
+  "homepage": "https://www.lattica.ai/platform/",
   "repository": {
     "type": "git",
     "url": "git://github.com/Lattica-ai/lattica-query-client.git"
@@ -21,7 +22,7 @@
   },
   "files": [
     "dist",
-    "**/*.wasm"
+    "LICENSE.txt"
   ],
   "scripts": {
     "update-version": "ts-node dev_scripts/updateVersion.ts",
@@ -40,7 +41,7 @@
     "query"
   ],
   "author": "Lattica AI",
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN LICENSE.txt",
   "devDependencies": {
     "@eslint/js": "^9.17.0",
     "@types/jest": "^29.5.14",
