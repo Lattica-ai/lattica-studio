@@ -3,6 +3,8 @@ import { load_proto_tensor, dumps_proto_tensor } from "./toolkitWrapper";
 import { CLIENT_INFO } from "./clientVersionInfo";
 import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
 
+type WorkerResponse = Uint8Array | null;
+
 const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
@@ -10,7 +12,7 @@ const sendHttpRequest = async (
   actionParams: Record<string, any> | null = null,
   serializedData: Uint8Array | null = null,
   withPolling: boolean = true,
-): Promise<Uint8Array> => {
+): Promise<WorkerResponse> => {
   const reqData = {
     api_call: {
       action: actionName,
@@ -59,7 +61,7 @@ const sendHttpRequest = async (
 
     if (responseJson.status === "ERROR") {
       throw new Error(
-        `Error in action ${actionName}: ${responseJson.error_message}`, // TODO: correct field error_message?
+        `Error in action ${actionName}: ${responseJson.error}`, // TODO: correct field error_message?
       );
     }
 
@@ -74,7 +76,7 @@ const resampleResult = async (
   jwt: string,
   beUrl: string,
   executionId: string,
-): Promise<Uint8Array> => {
+): Promise<WorkerResponse> => {
   // Query the status of a previously triggered action.
   console.log(`Polling for executionId: ${executionId}`);
 
@@ -89,7 +91,11 @@ export const get_user_init_data = async (
   jwt: string,
   beUrl: string,
 ): Promise<Uint8Array> => {
-  return await sendHttpRequest(jwt, beUrl, "get_user_init_data");
+  const response = await sendHttpRequest(jwt, beUrl, "get_user_init_data");
+  if (!response) {
+    throw new Error("Failed to get user init data");
+  }
+  return response;
 };
 
 export const preprocessEk = async (
@@ -117,6 +123,9 @@ export const apply_hom_pipeline = async (
     },
     serialized_ct,
   );
+  if (!response) {
+    throw new Error("Failed to apply hom pipeline");
+  }
   workerManagerSingleton.logConsole("Received encrypted result from server.");
   return response;
 };
@@ -129,5 +138,8 @@ export const apply_clear = async (jwt: string, beUrl: string, pt: Tensor) => {
     {},
     dumps_proto_tensor(pt),
   );
+  if (!response) {
+    throw new Error("Failed to apply clear");
+  }
   return load_proto_tensor(response);
 };
