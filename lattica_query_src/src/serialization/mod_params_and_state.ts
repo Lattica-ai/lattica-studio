@@ -12,6 +12,8 @@ export interface ModState {
   activeQ?: BigInt | undefined;
   activeLenQList: number;
   activeQList?: TensorHolder | undefined;
+  activeLog2qList?: TensorHolder | undefined;
+  activeMuList?: TensorHolder | undefined;
   activeRows?: TensorHolder | undefined;
   activeCols?: TensorHolder | undefined;
   activeReconstructionTerms: BigInt[];
@@ -22,6 +24,8 @@ function createBaseModState(): ModState {
     activeQ: undefined,
     activeLenQList: 0,
     activeQList: undefined,
+    activeLog2qList: undefined,
+    activeMuList: undefined,
     activeRows: undefined,
     activeCols: undefined,
     activeReconstructionTerms: [],
@@ -39,14 +43,20 @@ export const ModState: MessageFns<ModState> = {
     if (message.activeQList !== undefined) {
       TensorHolder.encode(message.activeQList, writer.uint32(26).fork()).join();
     }
+    if (message.activeLog2qList !== undefined) {
+      TensorHolder.encode(message.activeLog2qList, writer.uint32(34).fork()).join();
+    }
+    if (message.activeMuList !== undefined) {
+      TensorHolder.encode(message.activeMuList, writer.uint32(42).fork()).join();
+    }
     if (message.activeRows !== undefined) {
-      TensorHolder.encode(message.activeRows, writer.uint32(34).fork()).join();
+      TensorHolder.encode(message.activeRows, writer.uint32(50).fork()).join();
     }
     if (message.activeCols !== undefined) {
-      TensorHolder.encode(message.activeCols, writer.uint32(42).fork()).join();
+      TensorHolder.encode(message.activeCols, writer.uint32(58).fork()).join();
     }
     for (const v of message.activeReconstructionTerms) {
-      BigInt.encode(v!, writer.uint32(50).fork()).join();
+      BigInt.encode(v!, writer.uint32(66).fork()).join();
     }
     return writer;
   },
@@ -87,7 +97,7 @@ export const ModState: MessageFns<ModState> = {
             break;
           }
 
-          message.activeRows = TensorHolder.decode(reader, reader.uint32());
+          message.activeLog2qList = TensorHolder.decode(reader, reader.uint32());
           continue;
         }
         case 5: {
@@ -95,11 +105,27 @@ export const ModState: MessageFns<ModState> = {
             break;
           }
 
-          message.activeCols = TensorHolder.decode(reader, reader.uint32());
+          message.activeMuList = TensorHolder.decode(reader, reader.uint32());
           continue;
         }
         case 6: {
           if (tag !== 50) {
+            break;
+          }
+
+          message.activeRows = TensorHolder.decode(reader, reader.uint32());
+          continue;
+        }
+        case 7: {
+          if (tag !== 58) {
+            break;
+          }
+
+          message.activeCols = TensorHolder.decode(reader, reader.uint32());
+          continue;
+        }
+        case 8: {
+          if (tag !== 66) {
             break;
           }
 
@@ -120,6 +146,8 @@ export const ModState: MessageFns<ModState> = {
       activeQ: isSet(object.activeQ) ? BigInt.fromJSON(object.activeQ) : undefined,
       activeLenQList: isSet(object.activeLenQList) ? globalThis.Number(object.activeLenQList) : 0,
       activeQList: isSet(object.activeQList) ? TensorHolder.fromJSON(object.activeQList) : undefined,
+      activeLog2qList: isSet(object.activeLog2qList) ? TensorHolder.fromJSON(object.activeLog2qList) : undefined,
+      activeMuList: isSet(object.activeMuList) ? TensorHolder.fromJSON(object.activeMuList) : undefined,
       activeRows: isSet(object.activeRows) ? TensorHolder.fromJSON(object.activeRows) : undefined,
       activeCols: isSet(object.activeCols) ? TensorHolder.fromJSON(object.activeCols) : undefined,
       activeReconstructionTerms: globalThis.Array.isArray(object?.activeReconstructionTerms)
@@ -138,6 +166,12 @@ export const ModState: MessageFns<ModState> = {
     }
     if (message.activeQList !== undefined) {
       obj.activeQList = TensorHolder.toJSON(message.activeQList);
+    }
+    if (message.activeLog2qList !== undefined) {
+      obj.activeLog2qList = TensorHolder.toJSON(message.activeLog2qList);
+    }
+    if (message.activeMuList !== undefined) {
+      obj.activeMuList = TensorHolder.toJSON(message.activeMuList);
     }
     if (message.activeRows !== undefined) {
       obj.activeRows = TensorHolder.toJSON(message.activeRows);
@@ -162,6 +196,12 @@ export const ModState: MessageFns<ModState> = {
     message.activeLenQList = object.activeLenQList ?? 0;
     message.activeQList = (object.activeQList !== undefined && object.activeQList !== null)
       ? TensorHolder.fromPartial(object.activeQList)
+      : undefined;
+    message.activeLog2qList = (object.activeLog2qList !== undefined && object.activeLog2qList !== null)
+      ? TensorHolder.fromPartial(object.activeLog2qList)
+      : undefined;
+    message.activeMuList = (object.activeMuList !== undefined && object.activeMuList !== null)
+      ? TensorHolder.fromPartial(object.activeMuList)
       : undefined;
     message.activeRows = (object.activeRows !== undefined && object.activeRows !== null)
       ? TensorHolder.fromPartial(object.activeRows)
