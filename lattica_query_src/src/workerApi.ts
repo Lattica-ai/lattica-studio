@@ -47,11 +47,11 @@ const sendHttpRequest = async (
     throw new Error(`FAILED api/${actionName} with error: ${errorText}`);
   }
 
-  const contentType = response.headers.get("Content-Type");
-  if (contentType === "application/octet-stream") {
+  const contentType = response.headers.get("content-type");
+  if (contentType.includes("application/octet-stream")) {
     const buffer = await response.arrayBuffer();
     return new Uint8Array(buffer);
-  } else if (contentType === "application/json") {
+  } else if (contentType.includes("application/json")) {
     const responseJson = await response.json();
     console.log(`${actionName}: ${responseJson.status}`);
 
@@ -60,12 +60,9 @@ const sendHttpRequest = async (
     }
 
     if (responseJson.status === "ERROR") {
-      throw new Error(
-        `Error in action ${actionName}: ${responseJson.error}`, // TODO: correct field error_message?
-      );
+      throw new Error(`Error in action ${actionName}: ${responseJson.error}`);
     }
 
-    // TODO: if status is "COMPLETE", we assume this case is either application/octet-stream or no data (e.g. preprocess_pk)
     return null;
   } else {
     throw new Error(`Unexpected content type: ${contentType}`);
