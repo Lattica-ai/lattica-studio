@@ -1,15 +1,16 @@
 import { Tensor } from "./tensorUtils";
-import * as toolkit from "./toolkitWrapper";
+import { load_proto_tensor, dumps_proto_tensor } from "./toolkitWrapper";
 import { CLIENT_INFO } from "./clientVersionInfo";
 import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
 
-type WorkerResponse = string;
+type WorkerResponse = Uint8Array | null;
 
 const sendHttpRequest = async (
   jwt: string,
   beUrl: string,
   actionName: string,
   actionParams: Record<string, any> | null = null,
+  serializedData: Uint8Array | null = null,
   withPolling: boolean = true,
 ): Promise<WorkerResponse> => {
   const reqData = {
@@ -22,31 +23,49 @@ const sendHttpRequest = async (
     },
   };
 
+  const formData = new FormData();
+  formData.append("metadata", JSON.stringify(reqData));
+
+  if (serializedData) {
+    formData.append(
+      "file",
+      new Blob([serializedData], { type: "application/octet-stream" }),
+      "data.bin",
+    );
+  }
+
   const response = await fetch(`${beUrl}/api/do_action`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
       Authorization: `Bearer ${jwt}`,
     },
-    body: JSON.stringify(reqData),
+    body: formData,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`FAILED api/${actionName} with error: ${errorText}`);
   }
-  const responseJson = await response.json();
-  console.log(`${actionName}: ${responseJson.status}`);
 
-  if (responseJson.status === "RUNNING" && withPolling) {
-    return resampleResult(jwt, beUrl, responseJson.executionId);
-  }
+  const contentType = response.headers.get("content-type");
+  if (contentType.includes("application/octet-stream")) {
+    const buffer = await response.arrayBuffer();
+    return new Uint8Array(buffer);
+  } else if (contentType.includes("application/json")) {
+    const responseJson = await response.json();
+    console.log(`${actionName}: ${responseJson.status}`);
 
-  if (responseJson.action_result) {
-    if (responseJson.action_result.error) {
-      throw new Error(responseJson.action_result.error); // worker error
+    if (responseJson.status === "RUNNING" && withPolling) {
+      return resampleResult(jwt, beUrl, responseJson.executionId);
     }
-    return responseJson.action_result.result;
+
+    if (responseJson.status === "ERROR") {
+      throw new Error(`Error in action ${actionName}: ${responseJson.error}`);
+    }
+
+    return null;
+  } else {
+    throw new Error(`Unexpected content type: ${contentType}`);
   }
 };
 
@@ -58,11 +77,6 @@ const resampleResult = async (
   // Query the status of a previously triggered action.
   console.log(`Polling for executionId: ${executionId}`);
 
-  if (!executionId) {
-    // TODO: prevent worker from returning executionId = 0
-    return "";
-  }
-
   await new Promise((resolve) => setTimeout(resolve, 1000)); // Sleep for 1 second
 
   return await sendHttpRequest(jwt, beUrl, "get_action_result", {
@@ -70,32 +84,15 @@ const resampleResult = async (
   });
 };
 
-const base64ToBytes = (base64: string): Uint8Array => {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-};
-
-const bytesToBase64 = (uint8Array: Uint8Array): string => {
-  const chunkSize = 0x8000; // Process 32 KB chunks to avoid call stack issues
-  let binaryString = "";
-
-  for (let i = 0; i < uint8Array.length; i += chunkSize) {
-    const chunk = uint8Array.subarray(i, i + chunkSize);
-    binaryString += String.fromCharCode.apply(null, Array.from(chunk));
-  }
-  return btoa(binaryString);
-};
-
 export const get_user_init_data = async (
   jwt: string,
   beUrl: string,
 ): Promise<Uint8Array> => {
   const response = await sendHttpRequest(jwt, beUrl, "get_user_init_data");
-  return base64ToBytes(response as string);
+  if (!response) {
+    throw new Error("Failed to get user init data");
+  }
+  return response;
 };
 
 export const preprocessEk = async (
@@ -113,18 +110,33 @@ export const apply_hom_pipeline = async (
   return_new_state: boolean = false,
 ): Promise<Uint8Array> => {
   workerManagerSingleton.logConsole("Sending encrypted data to server...");
-  const response = await sendHttpRequest(jwt, beUrl, "apply_hom_pipeline", {
-    ct_proto_str: bytesToBase64(serialized_ct),
-    block_index,
-    return_new_state,
-  });
+  const response = await sendHttpRequest(
+    jwt,
+    beUrl,
+    "apply_hom_pipeline",
+    {
+      block_index,
+      return_new_state,
+    },
+    serialized_ct,
+  );
+  if (!response) {
+    throw new Error("Failed to apply hom pipeline");
+  }
   workerManagerSingleton.logConsole("Received encrypted result from server.");
-  return base64ToBytes(response as string);
+  return response;
 };
 
 export const apply_clear = async (jwt: string, beUrl: string, pt: Tensor) => {
-  const response = await sendHttpRequest(jwt, beUrl, "apply_clear", {
-    pt_proto_str: bytesToBase64(toolkit.dumps_proto_tensor(pt)),
-  });
-  return toolkit.load_proto_tensor(base64ToBytes(response as string));
+  const response = await sendHttpRequest(
+    jwt,
+    beUrl,
+    "apply_clear",
+    {},
+    dumps_proto_tensor(pt),
+  );
+  if (!response) {
+    throw new Error("Failed to apply clear");
+  }
+  return load_proto_tensor(response);
 };
