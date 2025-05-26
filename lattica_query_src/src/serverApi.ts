@@ -80,7 +80,7 @@ export const uploadEk = async (
     "/api/token/get_pk_upload_url",
   );
   console.log("Upload URL:", s3Url);
-  console.log(s3Key);
+  console.log("s3Key:", s3Key);
   await uploadFile(ek, s3Url);
   console.log("Evaluation key uploaded");
   await alertUploadComplete(jwt, beUrl, s3Key);

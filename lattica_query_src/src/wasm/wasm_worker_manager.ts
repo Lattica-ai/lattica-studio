@@ -18,34 +18,59 @@ export class WasmWorkerManager {
 
   async initWorker() {
     return new Promise((resolve, reject) => {
-      const workerUrl = import.meta.url
+      try {
+        const workerUrl = import.meta.url
         ? new URL("../dist/wasm/wasm_worker.js", import.meta.url).href
         : "../dist/wasm/wasm_worker.js";
-      this.worker = new Worker(workerUrl);
 
-      const handleInitMessage = (event: MessageEvent) => {
-        if (event.data === "loaded_wasm_module") {
-          console.log("WasmWorker initialized successfully");
-          resolve(undefined);
-        } else {
-          console.error("WasmWorker init error", event.data);
-          reject(event.data);
-        }
-        this.worker!.removeEventListener("message", handleInitMessage);
-      };
+        // Initialize Worker
+        this.worker = new Worker(workerUrl);
 
-      this.worker.addEventListener("message", handleInitMessage);
+        // Define onWorkerInit event handlers
+        const onWorkerInitError = (event: ErrorEvent) => {
+          console.error("WasmWorker internal error during initialization:", event.message, event);
+          if (this.worker) {
+            this.worker.removeEventListener("message", onWorkerInitMessage);
+            this.worker.removeEventListener("error", onWorkerInitError);
+          }
+          reject(new Error(`WasmWorker internal error: ${event.message}`));
+          event.preventDefault();
+        };
 
-      this.worker.addEventListener("message", (event: MessageEvent) => {
-        const { log, logtype, logmsg } = event.data;
-        if (log !== true || log === undefined) {
-          return;
-        }
+        const onWorkerInitMessage = (event: MessageEvent) => {
+          if (this.worker) {
+            this.worker.removeEventListener("message", onWorkerInitMessage);
+            this.worker.removeEventListener("error", onWorkerInitError);
+          }
+          if (event.data === "loaded_wasm_module") {
+            console.log("WasmWorker initialized successfully");
+            resolve(undefined);
+          } else {
+            const errMsg = `WasmWorker unexpected message: ${String(event.data)}`;
+            console.error(errMsg, event.data);
+            reject(new Error(errMsg));
+          }
+        };
 
-        if (this.logCallback) {
-          this.logCallback(logtype, logmsg);
-        }
-      });
+        this.worker.addEventListener("message", onWorkerInitMessage);
+        this.worker.addEventListener("error", onWorkerInitError);
+
+        this.worker.addEventListener("message", (event: MessageEvent) => {
+          const { log, logtype, logmsg } = event.data;
+          if (log !== true || log === undefined) {
+            return;
+          }
+
+          if (this.logCallback) {
+            this.logCallback(logtype, logmsg);
+          }
+        });
+
+      } catch (error: any) {
+        const errorMessage = "Failed to instantiate WasmWorker";
+        console.error(errorMessage, error);
+        reject(new Error(error.message ? `${errorMessage}: ${error.message}` : errorMessage));
+      }
     });
   }
 

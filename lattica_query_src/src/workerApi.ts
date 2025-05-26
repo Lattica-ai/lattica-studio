@@ -48,6 +48,10 @@ const sendHttpRequest = async (
   }
 
   const contentType = response.headers.get("content-type");
+  if (!contentType) {
+    throw new Error("No content-type header received");
+  }
+
   if (contentType.includes("application/octet-stream")) {
     const buffer = await response.arrayBuffer();
     return new Uint8Array(buffer);
