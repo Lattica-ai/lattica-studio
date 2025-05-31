@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 import { copyFile, mkdir } from "fs/promises";
 
 export default defineConfig({
-  entry: ["src/index.ts", "src/wasm/wasm_worker.js"],
+  entry: ["src/index.ts", "src/examples/CIFAR10.ts", "src/wasm/wasm_worker.js"],
   format: ["esm", "cjs"],
   dts: true,
   clean: true,
