@@ -137,25 +137,30 @@ let wasmRuntimeInitializedHandler = async () => {
   self.onmessage = (event) => {
     const message = event.data;
     let result;
-    switch (message.operation) {
-      case "apply_client_block":
-        result = _applyClientBlock(message.data);
-        self.postMessage({ success: true, data: result });
-        break;
-      case "generate_key":
-        result = _generateKey(message.data);
-        self.postMessage({ success: true, data: result });
-        break;
-      case "dec":
-        result = _dec(message.data);
-        self.postMessage({ success: true, data: result });
-        break;
-      case "enc":
-        result = _enc(message.data);
-        self.postMessage({ success: true, data: result });
-        break;
-      default:
-        self.postMessage({ success: false, error: "Unknown operation" });
+    try {
+      switch (message.operation) {
+        case "apply_client_block":
+          result = _applyClientBlock(message.data);
+          self.postMessage({success: true, data: result});
+          break;
+        case "generate_key":
+          result = _generateKey(message.data);
+          self.postMessage({success: true, data: result});
+          break;
+        case "dec":
+          result = _dec(message.data);
+          self.postMessage({success: true, data: result});
+          break;
+        case "enc":
+          result = _enc(message.data);
+          self.postMessage({success: true, data: result});
+          break;
+        default:
+          self.postMessage({success: false, error: "Unknown operation"});
+      }
+    } catch (e) {
+        console.error("Error in WASM worker operation:", e);
+        self.postMessage({ success: false, error: e.message || String(e) });
     }
   };
 };

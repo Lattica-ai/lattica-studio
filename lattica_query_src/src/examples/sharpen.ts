@@ -96,6 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   //================ using runInference
   const pt_res = await client.runQuery(pt);
+  console.timeEnd("Online phase");
 
   const pt_expected = await workerApi.apply_clear(client.jwt, client.beUrl, pt);
   workerManagerSingleton.logConsole("Apply Clear finished");

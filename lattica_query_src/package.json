@@ -1,6 +1,6 @@
 {
   "name": "@lattica-ai/query",
-  "version": "1.0.3",
+  "version": "2.3.0",
   "description": "A client for lattica image queries",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
@@ -62,6 +62,7 @@
     "typescript-eslint": "^8.19.0"
   },
   "dependencies": {
+    "fhe-core": "0.1.8",
     "google-protobuf": "^3.21.4"
   }
 }

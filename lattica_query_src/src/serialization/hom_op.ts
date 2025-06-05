@@ -120,9 +120,9 @@ export function homOpTypeToJSON(object: HomOpType): string {
 }
 
 export interface UnfoldApplyClearParams {
-  kernelSize: number;
-  padding: number;
-  stride: number;
+  kernelSize: number[];
+  padding: number[];
+  stride: number[];
 }
 
 export interface ReshapeApplyClearParams {
@@ -181,20 +181,26 @@ export interface ClientData {
 }
 
 function createBaseUnfoldApplyClearParams(): UnfoldApplyClearParams {
-  return { kernelSize: 0, padding: 0, stride: 0 };
+  return { kernelSize: [], padding: [], stride: [] };
 }
 
 export const UnfoldApplyClearParams: MessageFns<UnfoldApplyClearParams> = {
   encode(message: UnfoldApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.kernelSize !== 0) {
-      writer.uint32(8).int32(message.kernelSize);
+    writer.uint32(10).fork();
+    for (const v of message.kernelSize) {
+      writer.int32(v);
     }
-    if (message.padding !== 0) {
-      writer.uint32(16).int32(message.padding);
+    writer.join();
+    writer.uint32(18).fork();
+    for (const v of message.padding) {
+      writer.int32(v);
     }
-    if (message.stride !== 0) {
-      writer.uint32(24).int32(message.stride);
+    writer.join();
+    writer.uint32(26).fork();
+    for (const v of message.stride) {
+      writer.int32(v);
     }
+    writer.join();
     return writer;
   },
 
@@ -206,28 +212,58 @@ export const UnfoldApplyClearParams: MessageFns<UnfoldApplyClearParams> = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1: {
-          if (tag !== 8) {
-            break;
+          if (tag === 8) {
+            message.kernelSize.push(reader.int32());
+
+            continue;
           }
 
-          message.kernelSize = reader.int32();
-          continue;
+          if (tag === 10) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.kernelSize.push(reader.int32());
+            }
+
+            continue;
+          }
+
+          break;
         }
         case 2: {
-          if (tag !== 16) {
-            break;
+          if (tag === 16) {
+            message.padding.push(reader.int32());
+
+            continue;
           }
 
-          message.padding = reader.int32();
-          continue;
+          if (tag === 18) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.padding.push(reader.int32());
+            }
+
+            continue;
+          }
+
+          break;
         }
         case 3: {
-          if (tag !== 24) {
-            break;
+          if (tag === 24) {
+            message.stride.push(reader.int32());
+
+            continue;
           }
 
-          message.stride = reader.int32();
-          continue;
+          if (tag === 26) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.stride.push(reader.int32());
+            }
+
+            continue;
+          }
+
+          break;
         }
       }
       if ((tag & 7) === 4 || tag === 0) {
@@ -240,22 +276,24 @@ export const UnfoldApplyClearParams: MessageFns<UnfoldApplyClearParams> = {
 
   fromJSON(object: any): UnfoldApplyClearParams {
     return {
-      kernelSize: isSet(object.kernelSize) ? globalThis.Number(object.kernelSize) : 0,
-      padding: isSet(object.padding) ? globalThis.Number(object.padding) : 0,
-      stride: isSet(object.stride) ? globalThis.Number(object.stride) : 0,
+      kernelSize: globalThis.Array.isArray(object?.kernelSize)
+        ? object.kernelSize.map((e: any) => globalThis.Number(e))
+        : [],
+      padding: globalThis.Array.isArray(object?.padding) ? object.padding.map((e: any) => globalThis.Number(e)) : [],
+      stride: globalThis.Array.isArray(object?.stride) ? object.stride.map((e: any) => globalThis.Number(e)) : [],
     };
   },
 
   toJSON(message: UnfoldApplyClearParams): unknown {
     const obj: any = {};
-    if (message.kernelSize !== 0) {
-      obj.kernelSize = Math.round(message.kernelSize);
+    if (message.kernelSize?.length) {
+      obj.kernelSize = message.kernelSize.map((e) => Math.round(e));
     }
-    if (message.padding !== 0) {
-      obj.padding = Math.round(message.padding);
+    if (message.padding?.length) {
+      obj.padding = message.padding.map((e) => Math.round(e));
     }
-    if (message.stride !== 0) {
-      obj.stride = Math.round(message.stride);
+    if (message.stride?.length) {
+      obj.stride = message.stride.map((e) => Math.round(e));
     }
     return obj;
   },
@@ -265,9 +303,9 @@ export const UnfoldApplyClearParams: MessageFns<UnfoldApplyClearParams> = {
   },
   fromPartial<I extends Exact<DeepPartial<UnfoldApplyClearParams>, I>>(object: I): UnfoldApplyClearParams {
     const message = createBaseUnfoldApplyClearParams();
-    message.kernelSize = object.kernelSize ?? 0;
-    message.padding = object.padding ?? 0;
-    message.stride = object.stride ?? 0;
+    message.kernelSize = object.kernelSize?.map((e) => e) || [];
+    message.padding = object.padding?.map((e) => e) || [];
+    message.stride = object.stride?.map((e) => e) || [];
     return message;
   },
 };
