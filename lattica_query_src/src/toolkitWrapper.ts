@@ -1,34 +1,4 @@
-import {
-  Tensor,
-  getTensorShape,
-  getTensorStrides,
-  flattenTensor,
-  dataToTensor,
-  reshapeWithStrides,
-} from "./tensorUtils";
-import { DataType, TensorHolder } from "./serialization/generic";
 import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
-
-export const dumps_proto_tensor = (pt: Tensor): Uint8Array => {
-  const shape = getTensorShape(pt);
-  const strides = getTensorStrides(shape);
-  const binaryData = new Uint8Array(new Float64Array(flattenTensor(pt)).buffer);
-
-  const proto = TensorHolder.create({
-    dtype: DataType.DOUBLE, // TODO: always double for now
-    sizes: shape,
-    strides: strides,
-    data: binaryData,
-  });
-
-  return TensorHolder.encode(proto).finish();
-};
-
-export const load_proto_tensor = (serialized_pt: Uint8Array): Tensor => {
-  const tensorProto = TensorHolder.decode(serialized_pt);
-  const tensor = dataToTensor(tensorProto.data, tensorProto.dtype);
-  return reshapeWithStrides(tensor, tensorProto.sizes, tensorProto.strides);
-};
 
 export const applyClientBlock = async (
   serialized_block: Uint8Array,

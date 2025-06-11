@@ -2,9 +2,12 @@ import * as serverApi from "./serverApi";
 import * as workerApi from "./workerApi";
 import {
   Tensor,
-  getTensorShape,
+  vecToTensor,
+  tensor1DToVec,
   imageToTensor,
   tensorToImage,
+  dumps_proto_tensor,
+  loads_proto_tensor,
 } from "./tensorUtils";
 
 import * as toolkit from "./toolkitWrapper";
@@ -23,7 +26,15 @@ import {
   setLogCallback,
 } from "./wasm/wasm_worker_manager";
 import { getDemoToken } from "./serverApi";
-export { initWasm, imageToTensor, tensorToImage, setLogCallback, getDemoToken }; // Re-export for frontend
+export {
+  initWasm,
+  vecToTensor,
+  tensor1DToVec,
+  imageToTensor,
+  tensorToImage,
+  setLogCallback,
+  getDemoToken,
+}; // Re-export for frontend
 
 export class LatticaQueryClient {
   public readonly jwt: string;
@@ -127,11 +138,9 @@ export class LatticaQueryClient {
   async encrypt(pt: Tensor): Promise<Uint8Array> {
     if (!this.initialized) throw new Error("Client must be initialized first");
 
-    workerManagerSingleton.logConsole(
-      `Plain text shape: (${getTensorShape(pt).join(",")})`,
-    );
+    workerManagerSingleton.logConsole(`Plain text shape: (${pt.shape})`);
 
-    let serialized_pt = toolkit.dumps_proto_tensor(pt);
+    let serialized_pt = dumps_proto_tensor(pt);
     let pt_axis_external = undefined;
     // check if need to apply first client block
     if (this.applyBlockBeforeEncryption) {
@@ -185,7 +194,7 @@ export class LatticaQueryClient {
       );
     }
 
-    return toolkit.load_proto_tensor(decryptedOutput);
+    return loads_proto_tensor(decryptedOutput);
   }
 
   async runQuery(pt: Tensor): Promise<Tensor> {

@@ -3,7 +3,7 @@ import {
   LatticaQueryClientLocalDev,
   getDemoToken,
 } from "../index";
-import { getTensorShape, imageToTensor, tensorToImage } from "../tensorUtils";
+import { imageToTensor, tensorToImage } from "../tensorUtils";
 import * as workerApi from "../workerApi";
 import { displayImage, fetchLocalImageAsDataUrl } from "../dev_utils";
 import { workerManagerSingleton } from "../wasm/wasm_worker_manager";
@@ -72,11 +72,12 @@ document.addEventListener("DOMContentLoaded", () => {
     pt = await imageToTensor(
       image,
       grayScale,
+      false,
       MODEL_INPUT_SIZE,
       MODEL_INPUT_SIZE,
     );
     workerManagerSingleton.logConsole(
-      `Image converted to tensor: (${getTensorShape(pt).join(",")})`,
+      `Image converted to tensor: (${pt.shape})`,
     );
   } else {
     imgData = await tensorToImage(image);
@@ -102,21 +103,16 @@ document.addEventListener("DOMContentLoaded", () => {
   workerManagerSingleton.logConsole("Apply Clear finished");
 
   workerManagerSingleton.logConsole(
-    [
-      "result shape:",
-      getTensorShape(pt_res),
-      "expected shape:",
-      getTensorShape(pt_expected),
-    ].join(" "),
+    ["result shape:", pt_res.shape, "expected shape:", pt_expected.shape].join(
+      " ",
+    ),
   );
-  console.log("result:", pt_res);
-  console.log("expected:", pt_expected);
 
   displayImage(imgData, "Original Image", 300);
 
-  const imgDec = await tensorToImage(pt_res);
+  const imgDec = await tensorToImage(pt_res, false);
   displayImage(imgDec, "Decoded Image", 300);
 
-  const imgExpected = await tensorToImage(pt_expected);
+  const imgExpected = await tensorToImage(pt_expected, false);
   displayImage(imgExpected, "Expected Image", 300);
 })();

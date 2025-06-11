@@ -1,5 +1,4 @@
-import { Tensor } from "./tensorUtils";
-import { load_proto_tensor, dumps_proto_tensor } from "./toolkitWrapper";
+import { Tensor, loads_proto_tensor, dumps_proto_tensor } from "./tensorUtils";
 import { CLIENT_INFO } from "./clientVersionInfo";
 import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
 
@@ -131,7 +130,11 @@ export const apply_hom_pipeline = async (
   return response;
 };
 
-export const apply_clear = async (jwt: string, beUrl: string, pt: Tensor) => {
+export const apply_clear = async (
+  jwt: string,
+  beUrl: string,
+  pt: Tensor,
+): Promise<Tensor> => {
   const response = await sendHttpRequest(
     jwt,
     beUrl,
@@ -142,5 +145,5 @@ export const apply_clear = async (jwt: string, beUrl: string, pt: Tensor) => {
   if (!response) {
     throw new Error("Failed to apply clear");
   }
-  return load_proto_tensor(response);
+  return loads_proto_tensor(response);
 };

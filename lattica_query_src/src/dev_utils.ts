@@ -1,4 +1,5 @@
 import { CLIENT_INFO } from "./clientVersionInfo";
+import { Tensor } from "./tensorUtils";
 
 export const triggerEvkCopy = async (
   jwt: string,
@@ -15,7 +16,7 @@ export const triggerEvkCopy = async (
   const formData = new FormData();
   const blob = new Blob([ek], { type: "application/octet-stream" });
   formData.append(fileName, blob);
-  
+
   // Add client version information
   formData.append("client_module", CLIENT_INFO.module);
   formData.append("client_version", CLIENT_INFO.version);
@@ -75,19 +76,20 @@ export function displayImage(data: string, title?: string, width?: number) {
   document.body.appendChild(container); // Add the container to the body
 }
 
-// TODO: Add dim param, and make input a tensor with arbitrary dimensions
-export function argmax(arr: number[]): number {
-  if (arr.length === 0) return -1;
+export function argmax1D(arr: Tensor): number {
+  if (arr.shape.length !== 1) {
+    throw new Error("Input must be a 1D array.");
+  }
+  const len = arr.shape[0];
+  let maxVal = arr.get(0);
+  let maxIdx = 0;
 
-  let maxIndex = 0;
-  let maxValue = arr[0];
-
-  for (let i = 1; i < arr.length; i++) {
-    if (arr[i] > maxValue) {
-      maxValue = arr[i];
-      maxIndex = i;
+  for (let i = 1; i < len; i++) {
+    const val = arr.get(i);
+    if (val > maxVal) {
+      maxVal = val;
+      maxIdx = i;
     }
   }
-
-  return maxIndex;
+  return maxIdx;
 }

@@ -1,7 +1,7 @@
 import * as worker_api from "./workerApi";
 import * as toolkit from "./toolkitWrapper";
 import { QueryClientBlock } from "./serialization/hom_op";
-import { Tensor } from "./tensorUtils";
+import { Tensor, loads_proto_tensor, dumps_proto_tensor } from "./tensorUtils";
 
 // assume we get and return encrypted: first client block (if exists) was applied, and last client block (will be applied)- are not in the clientBlocks list
 export const runInferenceDemo = async (
@@ -60,7 +60,7 @@ export const runInference = async (
   pt: Tensor,
   clientBlocks: QueryClientBlock[],
 ): Promise<Tensor> => {
-  let serialized_pt = toolkit.dumps_proto_tensor(pt);
+  let serialized_pt = dumps_proto_tensor(pt);
 
   const isBeFirst =
     clientBlocks.length === 0 || clientBlocks[0].blockIndex !== 0;
@@ -118,5 +118,5 @@ export const runInference = async (
       serialized_ct_res,
     );
   }
-  return toolkit.load_proto_tensor(serialized_pt);
+  return loads_proto_tensor(serialized_pt);
 };

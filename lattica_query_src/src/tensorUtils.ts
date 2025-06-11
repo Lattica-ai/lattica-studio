@@ -1,91 +1,86 @@
-import { DataType } from "./serialization/generic";
+import { DataType, TensorHolder } from "./serialization/generic";
+import ndarray from "ndarray";
+export type Tensor = import("ndarray").NdArray;
 
-export type Tensor = number | Tensor[];
-
-export const getTensorShape = (tensor: Tensor): number[] => {
-  if (typeof tensor === "number") {
-    return [];
-  }
-  return [tensor.length, ...getTensorShape(tensor[0])];
-};
-
-export const getTensorStrides = (shape: number[]): number[] => {
-  const strides = Array(shape.length).fill(1);
-  for (let i = shape.length - 2; i >= 0; i--) {
-    strides[i] = shape[i + 1] * strides[i + 1];
-  }
-  return strides;
-};
-
-export const flattenTensor = (tensor: Tensor): number[] => {
-  if (typeof tensor === "number") {
-    return [tensor]; // Base case: a single number.
-  }
-  return tensor.reduce<number[]>(
-    (acc, value) => acc.concat(flattenTensor(value)),
-    [],
-  );
-};
-
-export const dataToTensor = (data: Uint8Array, dtype: DataType) => {
-  const buffer = data.slice().buffer; // Copy the data to a new buffer
+function dtypeToTypedArray(dtype: DataType, buffer: ArrayBuffer) {
   switch (dtype) {
+    case DataType.FLOAT:
+      return new Float32Array(buffer);
     case DataType.DOUBLE:
       return new Float64Array(buffer);
+    case DataType.INT32:
+      return new Int32Array(buffer);
+    case DataType.INT64:
+      return new BigInt64Array(buffer);
+    case DataType.BOOL:
+      return new Uint8Array(buffer);
     default:
-      throw new Error(`Unsupported dtype: ${dtype}`);
+      throw new Error(`Unsupported dtype ${dtype}`);
   }
-};
+}
 
-export const reshapeWithStrides = (
-  flatArray: Float64Array,
-  shape: number[],
-  strides: number[],
-) => {
-  // Create a function to access the elements in the flattened array using strides
-  function getElement(indices: number[]): number {
-    let index = 0;
-    for (let i = 0; i < indices.length; i++) {
-      index += indices[i] * strides[i];
-    }
-    return flatArray[index];
+function dtypeStringToEnum(dtype: string): DataType {
+  switch (dtype) {
+    case "float32":
+      return DataType.FLOAT;
+    case "float64":
+      return DataType.DOUBLE;
+    case "int32":
+      return DataType.INT32;
+    case "bigint64":
+      return DataType.INT64;
+    case "uint8":
+      return DataType.BOOL;
+    default:
+      return DataType.UNRECOGNIZED;
   }
+}
 
-  // Recursively create the multi-dimensional array based on shape and strides
-  function createMultiDimensionalArray(
-    dimIndex = 0,
-    indices: number[] = [],
-  ): Tensor {
-    if (dimIndex === shape.length) {
-      return getElement(indices);
-    }
+export function loads_proto_tensor(serializedTensorHolder: Uint8Array): Tensor {
+  const tensorHolder = TensorHolder.decode(serializedTensorHolder);
+  const buffer = tensorHolder.data.slice().buffer;
+  const typedArray = dtypeToTypedArray(tensorHolder.dtype, buffer);
+  return ndarray(typedArray, tensorHolder.sizes, tensorHolder.strides);
+}
 
-    const result = [];
-    for (let i = 0; i < shape[dimIndex]; i++) {
-      indices[dimIndex] = i;
-      result.push(createMultiDimensionalArray(dimIndex + 1, indices));
-    }
-    return result;
+export function dumps_proto_tensor(arr: Tensor): Uint8Array {
+  const data = new Uint8Array(
+    arr.data.buffer,
+    arr.data.byteOffset || 0,
+    arr.data.byteLength || arr.data.length * arr.data.BYTES_PER_ELEMENT,
+  );
+
+  const proto = TensorHolder.create({
+    sizes: arr.shape,
+    strides: arr.stride,
+    data,
+    dtype: dtypeStringToEnum(arr.dtype),
+  });
+
+  return TensorHolder.encode(proto).finish();
+}
+
+export function vecToTensor(vec: number[]): Tensor {
+  return ndarray(new Float64Array(vec), [vec.length]);
+}
+
+export function tensor1DToVec(tensor: Tensor): number[] {
+  if (tensor.shape.length !== 1) {
+    throw new Error("Invalid tensor shape. Expected 1D tensor.");
   }
+  const vec: number[] = [];
+  for (let i = 0; i < tensor.shape[0]; i++) {
+    vec.push(Number(tensor.get(i)));
+  }
+  return vec;
+}
 
-  return createMultiDimensionalArray();
-};
-
-/**
- * Converts a Base64 image data URL to an RGBA matrix.
- * @param base64 - The Base64 image data URL.
- * @param grayScale - Whether the image is in grayscale.
- * @param targetWidth
- * @param targetHeight
- * @param scaling - The scaling factor to divide the pixel values by.
- * @returns A promise resolving to a 3D array representing image in (C,H,W) format
- */
 export async function imageToTensor(
   base64: string,
   grayScale: boolean = false,
+  normalize: boolean = true,
   targetWidth?: number,
   targetHeight?: number,
-  scaling: number = 255,
 ): Promise<Tensor> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -104,101 +99,83 @@ export async function imageToTensor(
         height,
       );
 
+      // Draw image onto a canvas
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
 
-      const context = canvas.getContext("2d");
-      if (!context) {
-        reject(new Error("Failed to get canvas context."));
-        return;
-      }
+      // Get pixel data (RGBA)
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const rgba = imageData.data; // Uint8ClampedArray
 
-      // Draw the image onto the canvas.
-      context.drawImage(img, 0, 0, width, height);
+      // Convert to [C, H, W]
+      const C = grayScale ? 1 : 3;
+      const H = height;
+      const W = width;
+      const data = new Float64Array(C * H * W);
 
-      // Extract image data.
-      const imageData = context.getImageData(0, 0, width, height);
-      const { data } = imageData;
+      const factor = normalize ? 255 : 1;
 
-      const channels = grayScale ? 1 : 3;
-      const tensor: number[][][] = Array.from({ length: channels }, () =>
-        Array.from({ length: height }, () => Array(width).fill(0)),
-      );
+      for (let h = 0; h < H; h++) {
+        for (let w = 0; w < W; w++) {
+          const i = (h * W + w) * 4; // RGBA stride
+          const pixelIndex = h * W + w;
+          data[0 * H * W + pixelIndex] = rgba[i] / factor;
 
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const idx = (y * width + x) * 4; // RGBA data index
-          if (grayScale) {
-            tensor[0][y][x] = data[idx] / scaling; // just take the first channel
-          } else {
-            tensor[0][y][x] = data[idx] / scaling;
-            tensor[1][y][x] = data[idx + 1] / scaling;
-            tensor[2][y][x] = data[idx + 2] / scaling;
+          if (!grayScale) {
+            data[1 * H * W + pixelIndex] = rgba[i + 1] / factor;
+
+            data[2 * H * W + pixelIndex] = rgba[i + 2] / factor;
           }
         }
       }
 
-      resolve(tensor);
+      resolve(ndarray(data, [C, H, W]));
     };
-
     img.onerror = (err) => reject(new Error(`Failed to load image: ${err}`));
   });
 }
 
-/**
- * Converts a 3D array representing image in (C,H,W) format, to a Base64 image data URL.
- * @param tensor - The 3D array representing the image in (C,H,W) format.
- * @param scaling - The scaling factor to multiply the pixel values by.
- * @constructor - The Base64 image data URL.
- */
 export async function tensorToImage(
   tensor: Tensor,
-  scaling: number = 255,
+  normalized: boolean = true,
 ): Promise<string> {
-  const shape = getTensorShape(tensor);
-  if (shape.length !== 3) {
+  if (tensor.shape.length !== 3) {
     throw new Error("Invalid tensor shape. Expected 3D tensor.");
   }
-  const [channels, height, width] = shape;
-  if (channels !== 3 && channels !== 1) {
+  const [C, H, W] = tensor.shape;
+  if (C !== 3 && C !== 1) {
     throw new Error("Invalid number of channels. Expected 1 or 3.");
   }
 
-  const arr = tensor as number[][][];
+  // Prepare RGBA pixel array
+  const rgba = new Uint8ClampedArray(H * W * 4);
+  const factor = normalized ? 255 : 1;
 
-  // Flatten the 3D array into a 1D Uint8ClampedArray
-  const imageData = new Uint8ClampedArray(width * height * 4); // RGBA format
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const pixelIndex = (y * width + x) * 4;
-      imageData[pixelIndex] = arr[0][y][x] * scaling;
-      if (channels === 1) {
-        // repeat the same value for all channels
-        imageData[pixelIndex + 1] = imageData[pixelIndex];
-        imageData[pixelIndex + 2] = imageData[pixelIndex];
+  for (let h = 0; h < H; h++) {
+    for (let w = 0; w < W; w++) {
+      const idx = (h * W + w) * 4;
+      rgba[idx] = Number(tensor.get(0, h, w)) * factor;
+      if (C === 1) {
+        rgba[idx + 1] = rgba[idx];
+        rgba[idx + 2] = rgba[idx];
       } else {
-        imageData[pixelIndex + 1] = arr[1][y][x] * scaling;
-        imageData[pixelIndex + 2] = arr[2][y][x] * scaling;
+        rgba[idx + 1] = Number(tensor.get(1, h, w)) * factor;
+        rgba[idx + 2] = Number(tensor.get(2, h, w)) * factor;
       }
-      imageData[pixelIndex + 3] = 255; // Alpha channel (opaque)
+      rgba[idx + 3] = 255; // Alpha channel (opaque)
     }
   }
 
-  // Create a canvas
+  // Put pixels onto canvas
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+  const imageData = new ImageData(rgba, W, H);
+  ctx.putImageData(imageData, 0, 0);
 
-  if (!ctx) {
-    throw new Error("Failed to get 2D context");
-  }
-
-  // Create ImageData and put it on the canvas
-  const imgData = new ImageData(imageData, width, height);
-  ctx.putImageData(imgData, 0, 0);
-
-  // Convert canvas to Base64 Data URL
   return canvas.toDataURL("image/png");
 }

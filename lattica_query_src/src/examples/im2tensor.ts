@@ -1,4 +1,4 @@
-import { getTensorShape, tensorToImage, imageToTensor } from "../tensorUtils";
+import { tensorToImage, imageToTensor } from "../tensorUtils";
 import { displayImage, fetchLocalImageAsDataUrl } from "../dev_utils";
 
 // number 4: 28x28
@@ -16,14 +16,14 @@ const imagePath = "./src/examples/data/frog_600x400.JPEG";
   displayImage(imageData, "original");
 
   const tensor = await imageToTensor(imageData, grayScale);
-  console.log("tensor shape:", getTensorShape(tensor));
+  console.log("tensor shape:", tensor.shape);
   console.log(tensor);
 
-  const imgDataRec = await tensorToImage(tensor, 255);
+  const imgDataRec = await tensorToImage(tensor);
   console.log("reconstructed image base64 length:", imgDataRec.length);
   displayImage(imgDataRec, "reconstructed");
 
   const tensorRec = await imageToTensor(imgDataRec, grayScale);
-  console.log("reconstructed tensor shape:", getTensorShape(tensorRec));
+  console.log("reconstructed tensor shape:", tensorRec.shape);
   console.log(tensorRec);
 })();

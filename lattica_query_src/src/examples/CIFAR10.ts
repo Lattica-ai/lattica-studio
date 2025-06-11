@@ -3,9 +3,9 @@ import {
   LatticaQueryClientLocalDev,
   getDemoToken,
 } from "../index";
-import { getTensorShape, imageToTensor, tensorToImage } from "../tensorUtils";
+import { imageToTensor, tensorToImage } from "../tensorUtils";
 import * as workerApi from "../workerApi";
-import { displayImage, argmax, fetchLocalImageAsDataUrl } from "../dev_utils";
+import { displayImage, argmax1D, fetchLocalImageAsDataUrl } from "../dev_utils";
 import { workerManagerSingleton } from "../wasm/wasm_worker_manager";
 
 const RUN_LOCAL = true;
@@ -71,14 +71,15 @@ document.addEventListener("DOMContentLoaded", () => {
     pt = await imageToTensor(
       image,
       grayScale,
+      true,
       MODEL_INPUT_SIZE,
       MODEL_INPUT_SIZE,
     );
     workerManagerSingleton.logConsole(
-      `Image converted to tensor: (${getTensorShape(pt).join(",")})`,
+      `Image converted to tensor: (${pt.shape})`,
     );
   } else {
-    imgData = await tensorToImage(image);
+    imgData = await tensorToImage(image, true);
     pt = image;
   }
 
@@ -89,23 +90,20 @@ document.addEventListener("DOMContentLoaded", () => {
   workerManagerSingleton.logConsole("Apply Clear finished");
 
   workerManagerSingleton.logConsole(
-    [
-      "result shape:",
-      getTensorShape(pt_res),
-      "expected shape:",
-      getTensorShape(pt_expected),
-    ].join(" "),
+    ["result shape:", pt_res.shape, "expected shape:", pt_expected.shape].join(
+      " ",
+    ),
   );
   console.log("result:", pt_res);
   console.log("expected:", pt_expected);
 
   const modelMetadataBinary = client.getModelMetadata();
   const jsonString = new TextDecoder().decode(modelMetadataBinary);
-  const modelClasses = JSON.parse(jsonString);
+  const modelMetadata = JSON.parse(jsonString);
 
   displayImage(
-    await tensorToImage(pt),
-    `Prediction: ${modelClasses[argmax(pt_res as number[])]} (actual: ${modelClasses[argmax(pt_expected as number[])]})`,
+    await tensorToImage(pt, true),
+    `Prediction: ${modelMetadata.labels[argmax1D(pt_res)]} (actual: ${modelMetadata.labels[argmax1D(pt_expected)]})`,
     300,
   );
 
