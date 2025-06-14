@@ -7,7 +7,7 @@
 /* eslint-disable */
 import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
 import { TensorHolder } from "./generic";
-import { AuxKeyRequirements } from "./key_aux";
+import { CrtPermutations } from "./slot_permutations";
 
 export enum HomOpType {
   AuxPropagateKey = 0,
@@ -168,6 +168,11 @@ export interface QueryClientBlock {
   opTypes: HomOpType[];
   applyClearParamsList: ApplyClearParams[];
   ptAxisExternal?: number | undefined;
+}
+
+export interface AuxKeyRequirements {
+  rotationKeyPerms?: CrtPermutations | undefined;
+  squareKey: boolean;
 }
 
 export interface QueryClientSequentialHomOp {
@@ -1025,6 +1030,84 @@ export const QueryClientBlock: MessageFns<QueryClientBlock> = {
     message.opTypes = object.opTypes?.map((e) => e) || [];
     message.applyClearParamsList = object.applyClearParamsList?.map((e) => ApplyClearParams.fromPartial(e)) || [];
     message.ptAxisExternal = object.ptAxisExternal ?? undefined;
+    return message;
+  },
+};
+
+function createBaseAuxKeyRequirements(): AuxKeyRequirements {
+  return { rotationKeyPerms: undefined, squareKey: false };
+}
+
+export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
+  encode(message: AuxKeyRequirements, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.rotationKeyPerms !== undefined) {
+      CrtPermutations.encode(message.rotationKeyPerms, writer.uint32(10).fork()).join();
+    }
+    if (message.squareKey !== false) {
+      writer.uint32(16).bool(message.squareKey);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): AuxKeyRequirements {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseAuxKeyRequirements();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.rotationKeyPerms = CrtPermutations.decode(reader, reader.uint32());
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.squareKey = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): AuxKeyRequirements {
+    return {
+      rotationKeyPerms: isSet(object.rotationKeyPerms) ? CrtPermutations.fromJSON(object.rotationKeyPerms) : undefined,
+      squareKey: isSet(object.squareKey) ? globalThis.Boolean(object.squareKey) : false,
+    };
+  },
+
+  toJSON(message: AuxKeyRequirements): unknown {
+    const obj: any = {};
+    if (message.rotationKeyPerms !== undefined) {
+      obj.rotationKeyPerms = CrtPermutations.toJSON(message.rotationKeyPerms);
+    }
+    if (message.squareKey !== false) {
+      obj.squareKey = message.squareKey;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<AuxKeyRequirements>, I>>(base?: I): AuxKeyRequirements {
+    return AuxKeyRequirements.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<AuxKeyRequirements>, I>>(object: I): AuxKeyRequirements {
+    const message = createBaseAuxKeyRequirements();
+    message.rotationKeyPerms = (object.rotationKeyPerms !== undefined && object.rotationKeyPerms !== null)
+      ? CrtPermutations.fromPartial(object.rotationKeyPerms)
+      : undefined;
+    message.squareKey = object.squareKey ?? false;
     return message;
   },
 };
