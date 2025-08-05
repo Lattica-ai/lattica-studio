@@ -38,12 +38,14 @@ export const decrypt = async (
   serialized_context: Uint8Array,
   serialized_sk: [Uint8Array, Uint8Array],
   serialized_ct: Uint8Array,
+  as_complex: boolean = false,
 ) => {
   workerManagerSingleton.logConsole("Decrypting ciphertext...");
   const res = await workerManagerSingleton.callWorker("dec", {
     context: serialized_context,
     sk: serialized_sk[1],
     ct: serialized_ct,
+    as_complex,
   });
   workerManagerSingleton.logConsole("Decrypted.");
   return res;

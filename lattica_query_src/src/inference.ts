@@ -12,6 +12,7 @@ export const runInferenceDemo = async (
   serialized_ct: Uint8Array,
   clientBlocks: QueryClientBlock[],
   firstBlockToRun: number,
+  asComplex: boolean = false,
 ): Promise<Uint8Array> => {
   let serialized_ct_res = await worker_api.apply_hom_pipeline(
     jwt,
@@ -25,6 +26,7 @@ export const runInferenceDemo = async (
       context,
       secretKey,
       serialized_ct_res,
+      asComplex,
     );
 
     serialized_pt = await toolkit.applyClientBlock(
@@ -59,6 +61,7 @@ export const runInference = async (
   secretKey: [Uint8Array, Uint8Array],
   pt: Tensor,
   clientBlocks: QueryClientBlock[],
+  asComplex: boolean = false,
 ): Promise<Tensor> => {
   let serialized_pt = dumps_proto_tensor(pt);
 
@@ -84,6 +87,7 @@ export const runInference = async (
       context,
       secretKey,
       serialized_ct_res,
+      asComplex,
     );
   }
 
@@ -116,6 +120,7 @@ export const runInference = async (
       context,
       secretKey,
       serialized_ct_res,
+      asComplex,
     );
   }
   return loads_proto_tensor(serialized_pt);

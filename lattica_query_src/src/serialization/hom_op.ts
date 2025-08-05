@@ -183,6 +183,7 @@ export interface QueryClientSequentialHomOp {
   auxKeyRequirements?: AuxKeyRequirements | undefined;
   clientBlocks: QueryClientBlock[];
   preprocessingData: Uint8Array;
+  asComplex: boolean;
 }
 
 export interface ClientData {
@@ -1197,7 +1198,7 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
 };
 
 function createBaseQueryClientSequentialHomOp(): QueryClientSequentialHomOp {
-  return { auxKeyRequirements: undefined, clientBlocks: [], preprocessingData: new Uint8Array(0) };
+  return { auxKeyRequirements: undefined, clientBlocks: [], preprocessingData: new Uint8Array(0), asComplex: false };
 }
 
 export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> = {
@@ -1210,6 +1211,9 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
     }
     if (message.preprocessingData.length !== 0) {
       writer.uint32(26).bytes(message.preprocessingData);
+    }
+    if (message.asComplex !== false) {
+      writer.uint32(32).bool(message.asComplex);
     }
     return writer;
   },
@@ -1245,6 +1249,14 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
           message.preprocessingData = reader.bytes();
           continue;
         }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.asComplex = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1265,6 +1277,7 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
       preprocessingData: isSet(object.preprocessingData)
         ? bytesFromBase64(object.preprocessingData)
         : new Uint8Array(0),
+      asComplex: isSet(object.asComplex) ? globalThis.Boolean(object.asComplex) : false,
     };
   },
 
@@ -1279,6 +1292,9 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
     if (message.preprocessingData.length !== 0) {
       obj.preprocessingData = base64FromBytes(message.preprocessingData);
     }
+    if (message.asComplex !== false) {
+      obj.asComplex = message.asComplex;
+    }
     return obj;
   },
 
@@ -1292,6 +1308,7 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
       : undefined;
     message.clientBlocks = object.clientBlocks?.map((e) => QueryClientBlock.fromPartial(e)) || [];
     message.preprocessingData = object.preprocessingData ?? new Uint8Array(0);
+    message.asComplex = object.asComplex ?? false;
     return message;
   },
 };

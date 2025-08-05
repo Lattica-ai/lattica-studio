@@ -49,6 +49,7 @@ export class LatticaQueryClient {
   private applyBlockAfterDecryption: boolean = false;
   private lastClientBlock: Uint8Array | undefined = undefined;
   private modelMetadata: Uint8Array | undefined = undefined;
+  private asComplex: boolean = false;
 
   constructor(jwt: string, beUrl?: string) {
     if (!jwt) throw new Error("JWT token is required");
@@ -69,6 +70,7 @@ export class LatticaQueryClient {
     const homseq = QueryClientSequentialHomOp.decode(
       clientData.serializedClientSequentialHomOp,
     );
+    this.asComplex = homseq.asComplex;
     this.modelMetadata = homseq.preprocessingData;
     this.clientBlocks = homseq.clientBlocks;
     this.allClientBlocks = homseq.clientBlocks.slice();
@@ -174,6 +176,7 @@ export class LatticaQueryClient {
       encryptedInput,
       this.clientBlocks,
       this.applyBlockBeforeEncryption ? 1 : 0,
+      this.asComplex,
     );
   }
 
@@ -183,6 +186,7 @@ export class LatticaQueryClient {
       this.serializedContext!,
       this.secretKey!,
       encryptedResult,
+      this.asComplex,
     );
 
     // check if last block is on client
@@ -206,6 +210,7 @@ export class LatticaQueryClient {
       this.secretKey!,
       pt,
       this.allClientBlocks,
+      this.asComplex,
     );
   }
 }
