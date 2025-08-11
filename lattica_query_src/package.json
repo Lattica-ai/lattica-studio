@@ -22,7 +22,7 @@
   },
   "files": [
     "dist",
-    "LICENSE.txt"
+    "LICENSE.md"
   ],
   "scripts": {
     "update-version": "ts-node dev_scripts/updateVersion.ts",
