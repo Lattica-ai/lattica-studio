@@ -1,6 +1,13 @@
 import { LatticaQueryClient } from "../src";
 import * as toolkitWrapper from "../src/toolkitWrapper";
 import * as serverApi from "../src/serverApi";
+import * as inference from "../src/inference";
+import { Tensor, vecToTensor, dumps_proto_tensor } from "../src/tensorUtils";
+import {
+  ClientData,
+  QueryClientSequentialHomOp,
+  QueryClientBlock,
+} from "../src/serialization/hom_op";
 
 (global as any).URL.createObjectURL = jest.fn(() => "blob://dummy");
 
@@ -8,60 +15,52 @@ import * as serverApi from "../src/serverApi";
 /*  Module mocks                                                      */
 /* ------------------------------------------------------------------ */
 
-// WASM bootstrap
+const dummyTensor: Tensor = vecToTensor([1, 2, 3, 4, 5]);
+const dummySerializedTensor = dumps_proto_tensor(dummyTensor);
+
+const dummySerializedCt = new Uint8Array([42]);
+
 jest.mock("../src/wasm/wasm_worker_manager", () => ({
   initWasm: jest.fn(() => Promise.resolve()),
   workerManagerSingleton: { logConsole: jest.fn() },
 }));
 
-// Crypto / tensor helpers
 jest.mock("../src/toolkitWrapper", () => ({
   generateKey: jest.fn(() => [
     new Uint8Array([11]), // sk
     new Uint8Array([22]), // skCoefs
     new Uint8Array([7]), // evaluation key to upload
   ]),
-  encrypt: jest.fn(() => new Uint8Array([42])),
-  decrypt: jest.fn(() => new Uint8Array([99])),
-  applyClientBlock: jest.fn(),
+  encrypt: jest.fn(() => dummySerializedCt),
+  decrypt: jest.fn(() => dummySerializedTensor),
+  applyClientBlock: jest.fn((...args: any[]) => args[2]), // return pt
   logConsole: jest.fn(),
 }));
 
-// Worker HTTP helpers
 jest.mock("../src/workerApi", () => ({
-  get_user_init_data: jest.fn(() => Promise.resolve(new Uint8Array([1]))),
+  get_user_init_data: jest.fn(async () => {
+    const clientBlocks = [
+      QueryClientBlock.create({ blockIndex: 0 }),
+      QueryClientBlock.create({ blockIndex: 2 }),
+      QueryClientBlock.create({ blockIndex: 4, isLast: true }),
+    ];
+    const seqHomOp = QueryClientSequentialHomOp.create({ clientBlocks });
+    const serializedSeqHomOp =
+      QueryClientSequentialHomOp.encode(seqHomOp).finish();
+    const clientData = ClientData.create({
+      serializedClientSequentialHomOp: serializedSeqHomOp,
+    });
+    return ClientData.encode(clientData).finish();
+  }),
   preprocessEk: jest.fn(() => Promise.resolve()),
+  apply_hom_pipeline: jest.fn((...args: any[]) => args[2]), // return ct
 }));
 
-// Backend HTTP helpers
 jest.mock("../src/serverApi", () => ({
-  BE_URL: "https://be.example.com",
+  BE_URL: "https://be.prod.com",
   uploadEk: jest.fn(() => Promise.resolve({ ok: true })),
   sendHttpRequest: jest.fn(() => Promise.resolve({ s3Key: "s3://dummy" })),
   alertUploadComplete: jest.fn(() => Promise.resolve()),
-}));
-
-// Protobuf decode stubs
-jest.mock("../src/serialization/hom_op", () => ({
-  ClientData: {
-    decode: jest.fn(() => ({
-      serializedContext: new Uint8Array([10]),
-      serializedClientSequentialHomOp: new Uint8Array([20]),
-    })),
-  },
-  QueryClientSequentialHomOp: {
-    decode: jest.fn(() => ({
-      preprocessingData: undefined,
-      clientBlocks: [],
-    })),
-  },
-}));
-
-// Inference RPC
-const mockTensor = { data: "tensor-out" };
-jest.mock("../src/inference", () => ({
-  runInference: jest.fn(() => Promise.resolve(mockTensor)),
-  runInferenceDemo: jest.fn(),
 }));
 
 /* ------------------------------------------------------------------ */
@@ -70,7 +69,7 @@ jest.mock("../src/inference", () => ({
 
 describe("LatticaQueryClient (Node-side)", () => {
   const jwt = "dummy-jwt";
-  const beUrl = "https://be.example.com";
+  const beUrl = "https://be.local.com";
   let client: LatticaQueryClient;
 
   beforeEach(() => {
@@ -89,24 +88,35 @@ describe("LatticaQueryClient (Node-side)", () => {
   it("throws if runQuery() is called before init()", async () => {
     const nakedClient = new LatticaQueryClient(jwt, beUrl); // no init()
 
-    const dummyTensor = { data: "tensor-in" } as any;
     await expect(nakedClient.runQuery(dummyTensor)).rejects.toThrow(
       "Client must be initialized first",
     );
   });
 
   it("encrypt() before init() throws", async () => {
-    const dummyTensor = { data: "pt" } as any;
     await expect(client.encrypt(dummyTensor)).rejects.toThrow(
       "Client must be initialized first",
     );
   });
 
+  it("encrypt() returns ct", async () => {
+    await client.init();
+    const result = await client.encrypt(dummyTensor);
+
+    expect(result).toStrictEqual(dummySerializedCt);
+  });
+
   it("decrypt() before init() throws", async () => {
-    const dummyCt = new Uint8Array([1]);
-    await expect(client.decrypt(dummyCt)).rejects.toThrow(
+    await expect(client.decrypt(dummySerializedCt)).rejects.toThrow(
       "Client must be initialized first",
     );
+  });
+
+  it("decrypt() returns pt", async () => {
+    await client.init();
+    const result = await client.decrypt(dummySerializedCt);
+
+    expect(result).toStrictEqual(dummyTensor);
   });
 
   it("second init() call cause extra uploadEk", async () => {
@@ -141,20 +151,38 @@ describe("LatticaQueryClient (Node-side)", () => {
   });
 
   it("runQuery() does a full encrypt → inference → decrypt round-trip", async () => {
+    const spy = jest.spyOn(inference, "runInference");
+
     await client.init();
 
-    const inputTensor = { data: "tensor-in" } as any;
-    const result = await client.runQuery(inputTensor);
+    const result = await client.runQuery(dummyTensor);
 
-    const { runInference } = require("../src/inference");
-    expect(runInference).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(1);
 
-    //  runInference(jwt, beUrl, serializedContext, secretKey, pt, clientBlocks)
-    const args = (runInference as jest.Mock).mock.calls[0];
+    //  runInference(jwt, beUrl, serializedContext, secretKey, pt, clientBlocks)dummyCt
+    const args = spy.mock.calls[0];
     expect(args[0]).toBe(jwt);
     expect(args[1]).toBe(beUrl);
-    expect(args[5]).toEqual([]); // clientBlocks passed through
+    expect(args[5].length).toEqual(3); // length of all client blocks
 
-    expect(result).toBe(mockTensor); // User sees the inference result
+    expect(result).toStrictEqual(dummyTensor);
+  });
+
+  it("apply_query() does not handle first and last client blocks", async () => {
+    const spy = jest.spyOn(inference, "runInferenceDemo");
+
+    await client.init();
+
+    const result = await client.apply_query(dummySerializedCt);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // runInferenceDemo(jwt, beUrl, context, secretKey, serialized_ct, clientBlocks)
+    const args = spy.mock.calls[0];
+    expect(args[0]).toBe(jwt);
+    expect(args[1]).toBe(beUrl);
+    expect(args[5].length).toEqual(1); // length of client blocks without first and last blocks
+
+    expect(result).toBe(dummySerializedCt); // User sees the inference result
   });
 });

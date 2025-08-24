@@ -40,14 +40,12 @@ export class LatticaQueryClient {
   public readonly jwt: string;
   public readonly beUrl: string;
   protected initialized: boolean = false;
-  private serializedContext: Uint8Array | null = null;
-  private clientBlocks: QueryClientBlock[] = [];
-  private allClientBlocks: QueryClientBlock[] = [];
-  private secretKey: [Uint8Array, Uint8Array] | null = null;
-  private applyBlockBeforeEncryption: boolean = false;
-  private firstClientBlock: Uint8Array | undefined = undefined;
-  private applyBlockAfterDecryption: boolean = false;
-  private lastClientBlock: Uint8Array | undefined = undefined;
+  private serializedContext!: Uint8Array;
+  private clientBlocks!: QueryClientBlock[];
+  private allClientBlocks!: QueryClientBlock[];
+  private secretKey!: [Uint8Array, Uint8Array];
+  private firstClientBlock!: Uint8Array;
+  private lastClientBlock!: Uint8Array;
   private modelMetadata: Uint8Array | undefined = undefined;
   private asComplex: boolean = false;
 
@@ -78,23 +76,13 @@ export class LatticaQueryClient {
       `Number of client blocks: ${this.clientBlocks.length}`,
     );
 
-    // check if need to apply client block before encryption
-    this.applyBlockBeforeEncryption =
-      this.clientBlocks.length > 0 && this.clientBlocks[0].blockIndex === 0;
-    if (this.applyBlockBeforeEncryption) {
-      this.firstClientBlock = QueryClientBlock.encode(
-        this.clientBlocks.shift()!,
-      ).finish(); // remove first from list
-    }
-    // check if need to apply client block after decryption
-    this.applyBlockAfterDecryption =
-      this.clientBlocks.length > 0 &&
-      this.clientBlocks[this.clientBlocks.length - 1].isLast;
-    if (this.applyBlockAfterDecryption) {
-      this.lastClientBlock = QueryClientBlock.encode(
-        this.clientBlocks.pop()!,
-      ).finish(); // remove last from list
-    }
+    this.firstClientBlock = QueryClientBlock.encode(
+      this.clientBlocks.shift()!,
+    ).finish(); // remove first from list
+
+    this.lastClientBlock = QueryClientBlock.encode(
+      this.clientBlocks.pop()!,
+    ).finish(); // remove last from list
 
     // TODO: we can apply serializeBinary() to all remaining blocks in clientBlocks list, to save time runInference
 
@@ -104,7 +92,7 @@ export class LatticaQueryClient {
   protected async generateKey(serializedHomseq: Uint8Array) {
     const [sk, skCoefs, evaluationKey] = await toolkit.generateKey(
       serializedHomseq,
-      this.serializedContext!,
+      this.serializedContext,
     );
 
     this.secretKey = [sk, skCoefs];
@@ -143,22 +131,20 @@ export class LatticaQueryClient {
     workerManagerSingleton.logConsole(`Plain text shape: (${pt.shape})`);
 
     let serialized_pt = dumps_proto_tensor(pt);
-    let pt_axis_external = undefined;
-    // check if need to apply first client block
-    if (this.applyBlockBeforeEncryption) {
-      pt_axis_external = QueryClientBlock.decode(
-        this.firstClientBlock!,
-      ).ptAxisExternal;
-      serialized_pt = await toolkit.applyClientBlock(
-        this.firstClientBlock!,
-        this.serializedContext!,
-        serialized_pt,
-      );
-    }
+    // apply first client block
+    serialized_pt = await toolkit.applyClientBlock(
+      this.firstClientBlock,
+      this.serializedContext,
+      serialized_pt,
+    );
+
+    const pt_axis_external = QueryClientBlock.decode(
+      this.firstClientBlock,
+    ).ptAxisExternal;
 
     return await toolkit.encrypt(
-      this.serializedContext!,
-      this.secretKey!,
+      this.serializedContext,
+      this.secretKey,
       serialized_pt,
       true,
       pt_axis_external,
@@ -171,11 +157,10 @@ export class LatticaQueryClient {
     return await runInferenceDemo(
       this.jwt,
       this.beUrl,
-      this.serializedContext!,
-      this.secretKey!,
+      this.serializedContext,
+      this.secretKey,
       encryptedInput,
       this.clientBlocks,
-      this.applyBlockBeforeEncryption ? 1 : 0,
       this.asComplex,
     );
   }
@@ -183,20 +168,18 @@ export class LatticaQueryClient {
   async decrypt(encryptedResult: Uint8Array): Promise<Tensor> {
     if (!this.initialized) throw new Error("Client must be initialized first");
     let decryptedOutput = await toolkit.decrypt(
-      this.serializedContext!,
-      this.secretKey!,
+      this.serializedContext,
+      this.secretKey,
       encryptedResult,
       this.asComplex,
     );
 
-    // check if last block is on client
-    if (this.applyBlockAfterDecryption) {
-      decryptedOutput = await toolkit.applyClientBlock(
-        this.lastClientBlock!,
-        this.serializedContext!,
-        decryptedOutput,
-      );
-    }
+    // apply last client block
+    decryptedOutput = await toolkit.applyClientBlock(
+      this.lastClientBlock,
+      this.serializedContext,
+      decryptedOutput,
+    );
 
     return loads_proto_tensor(decryptedOutput);
   }
@@ -206,8 +189,8 @@ export class LatticaQueryClient {
     return await runInference(
       this.jwt,
       this.beUrl,
-      this.serializedContext!,
-      this.secretKey!,
+      this.serializedContext,
+      this.secretKey,
       pt,
       this.allClientBlocks,
       this.asComplex,
