@@ -1,6 +1,6 @@
-import { Tensor, loads_proto_tensor, dumps_proto_tensor } from "./tensorUtils";
-import { CLIENT_INFO } from "./clientVersionInfo";
-import { workerManagerSingleton } from "./wasm/wasm_worker_manager";
+import { Tensor, loads_proto_tensor, dumps_proto_tensor } from './tensorUtils';
+import { CLIENT_INFO } from './clientVersionInfo';
+import { workerManagerSingleton } from './wasm/wasm_worker_manager';
 
 type WorkerResponse = Uint8Array | null;
 
@@ -14,7 +14,6 @@ const sendHttpRequest = async (
 ): Promise<WorkerResponse> => {
   const reqData = {
     api_call: {
-      action: actionName,
       params: {
         ...(actionParams || {}),
         client_info: CLIENT_INFO,
@@ -23,18 +22,18 @@ const sendHttpRequest = async (
   };
 
   const formData = new FormData();
-  formData.append("metadata", JSON.stringify(reqData));
+  formData.append('metadata', JSON.stringify(reqData));
 
   if (serializedData) {
     formData.append(
-      "file",
-      new Blob([serializedData], { type: "application/octet-stream" }),
-      "data.bin",
+      'file',
+      new Blob([serializedData], { type: 'application/octet-stream' }),
+      'data.bin',
     );
   }
 
-  const response = await fetch(`${beUrl}/api/do_action`, {
-    method: "POST",
+  const response = await fetch(`${beUrl}/api/do_action/${actionName}`, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${jwt}`,
     },
@@ -43,26 +42,26 @@ const sendHttpRequest = async (
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`FAILED api/${actionName} with error: ${errorText}`);
+    throw new Error(`FAILED api/do_action/${actionName} with error: ${errorText}`);
   }
 
-  const contentType = response.headers.get("content-type");
+  const contentType = response.headers.get('content-type');
   if (!contentType) {
-    throw new Error("No content-type header received");
+    throw new Error('No content-type header received');
   }
 
-  if (contentType.includes("application/octet-stream")) {
+  if (contentType.includes('application/octet-stream')) {
     const buffer = await response.arrayBuffer();
     return new Uint8Array(buffer);
-  } else if (contentType.includes("application/json")) {
+  } else if (contentType.includes('application/json')) {
     const responseJson = await response.json();
     console.log(`${actionName}: ${responseJson.status}`);
 
-    if (responseJson.status === "RUNNING" && withPolling) {
+    if (responseJson.status === 'RUNNING' && withPolling) {
       return resampleResult(jwt, beUrl, responseJson.executionId);
     }
 
-    if (responseJson.status === "ERROR") {
+    if (responseJson.status === 'ERROR') {
       throw new Error(`Error in action ${actionName}: ${responseJson.error}`);
     }
 
@@ -82,27 +81,21 @@ const resampleResult = async (
 
   await new Promise((resolve) => setTimeout(resolve, 1000)); // Sleep for 1 second
 
-  return await sendHttpRequest(jwt, beUrl, "get_action_result", {
+  return await sendHttpRequest(jwt, beUrl, 'get_action_result', {
     executionId,
   });
 };
 
-export const get_user_init_data = async (
-  jwt: string,
-  beUrl: string,
-): Promise<Uint8Array> => {
-  const response = await sendHttpRequest(jwt, beUrl, "get_user_init_data");
+export const get_user_init_data = async (jwt: string, beUrl: string): Promise<Uint8Array> => {
+  const response = await sendHttpRequest(jwt, beUrl, 'get_user_init_data');
   if (!response) {
-    throw new Error("Failed to get user init data");
+    throw new Error('Failed to get user init data');
   }
   return response;
 };
 
-export const preprocessEk = async (
-  jwt: string,
-  beUrl: string,
-): Promise<void> => {
-  await sendHttpRequest(jwt, beUrl, "preprocess_pk");
+export const preprocessEk = async (jwt: string, beUrl: string): Promise<void> => {
+  await sendHttpRequest(jwt, beUrl, 'preprocess_pk');
 };
 
 export const apply_hom_pipeline = async (
@@ -112,11 +105,11 @@ export const apply_hom_pipeline = async (
   block_index: number,
   return_new_state: boolean = false,
 ): Promise<Uint8Array> => {
-  workerManagerSingleton.logConsole("Sending encrypted data to server...");
+  workerManagerSingleton.logConsole('Sending encrypted data to server...');
   const response = await sendHttpRequest(
     jwt,
     beUrl,
-    "apply_hom_pipeline",
+    'apply_hom_pipeline',
     {
       block_index,
       return_new_state,
@@ -124,26 +117,16 @@ export const apply_hom_pipeline = async (
     serialized_ct,
   );
   if (!response) {
-    throw new Error("Failed to apply hom pipeline");
+    throw new Error('Failed to apply hom pipeline');
   }
-  workerManagerSingleton.logConsole("Received encrypted result from server.");
+  workerManagerSingleton.logConsole('Received encrypted result from server.');
   return response;
 };
 
-export const apply_clear = async (
-  jwt: string,
-  beUrl: string,
-  pt: Tensor,
-): Promise<Tensor> => {
-  const response = await sendHttpRequest(
-    jwt,
-    beUrl,
-    "apply_clear",
-    {},
-    dumps_proto_tensor(pt),
-  );
+export const apply_clear = async (jwt: string, beUrl: string, pt: Tensor): Promise<Tensor> => {
+  const response = await sendHttpRequest(jwt, beUrl, 'apply_clear', {}, dumps_proto_tensor(pt));
   if (!response) {
-    throw new Error("Failed to apply clear");
+    throw new Error('Failed to apply clear');
   }
   return loads_proto_tensor(response);
 };
