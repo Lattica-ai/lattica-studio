@@ -1,17 +1,13 @@
-console.log("Started Worker(wasm_worker.ts)");
+console.log('Started Worker(wasm_worker.ts)');
 
 function _jsToWasm(uintArray) {
   const ptr = Module._malloc(uintArray.length);
   Module.HEAPU8.set(uintArray, ptr);
-  return ptr;
+  return { ptr, length: uintArray.length };
 }
 
-function _wasmToJs(wasmArrayResult) {
-  return new Uint8Array(
-    Module.HEAPU8.buffer,
-    wasmArrayResult.ptr,
-    wasmArrayResult.length,
-  ).slice();
+function _wasmToJs(wasmBufferView) {
+  return new Uint8Array(Module.HEAPU8.buffer, wasmBufferView.ptr, wasmBufferView.length).slice();
 }
 
 function freeMemory(pointers) {
@@ -23,24 +19,17 @@ function freeMemory(pointers) {
 const _applyClientBlock = (data) => {
   let res;
   let resultWasm;
-  const wasmBlock_ptr = _jsToWasm(data.block);
-  const wasmContext_ptr = _jsToWasm(data.context);
-  const wasmPt_ptr = _jsToWasm(data.pt);
+  const wasmBlock = _jsToWasm(data.block);
+  const wasmContext = _jsToWasm(data.context);
+  const wasmPt = _jsToWasm(data.pt);
   try {
-    resultWasm = Module.apply_client_block(
-      wasmBlock_ptr,
-      data.block.length,
-      wasmContext_ptr,
-      data.context.length,
-      wasmPt_ptr,
-      data.pt.length,
-    );
+    resultWasm = Module.apply_client_block(wasmBlock, wasmContext, wasmPt);
     res = _wasmToJs(resultWasm);
   } catch (e) {
-    console.log("Error:", e);
+    console.log('Error:', e);
     throw e;
   } finally {
-    freeMemory([wasmBlock_ptr, wasmContext_ptr, wasmPt_ptr]);
+    freeMemory([wasmBlock.ptr, wasmContext.ptr, wasmPt.ptr]);
   }
   Module.freeMemory(resultWasm.ptr);
   return res;
@@ -49,25 +38,16 @@ const _applyClientBlock = (data) => {
 const _generateKey = (data) => {
   let res;
   let resultWasm;
-  const wasmHomseq_ptr = _jsToWasm(data.homseq);
-  const wasmContext_ptr = _jsToWasm(data.context);
+  const wasmHomseq = _jsToWasm(data.homseq);
+  const wasmContext = _jsToWasm(data.context);
   try {
-    resultWasm = Module.generate_key(
-      wasmHomseq_ptr,
-      data.homseq.length,
-      wasmContext_ptr,
-      data.context.length,
-    );
-    res = [
-      _wasmToJs(resultWasm.sk),
-      _wasmToJs(resultWasm.sk_coefs),
-      _wasmToJs(resultWasm.pk),
-    ];
+    resultWasm = Module.generate_key(wasmHomseq, wasmContext);
+    res = [_wasmToJs(resultWasm.sk), _wasmToJs(resultWasm.sk_coefs), _wasmToJs(resultWasm.pk)];
   } catch (e) {
-    console.log("Error:", e);
+    console.log('Error:', e);
     throw e;
   } finally {
-    freeMemory([wasmHomseq_ptr, wasmContext_ptr]);
+    freeMemory([wasmHomseq.ptr, wasmContext.ptr]);
   }
   Module.freeMemory(resultWasm.sk.ptr);
   Module.freeMemory(resultWasm.sk_coefs.ptr);
@@ -78,25 +58,17 @@ const _generateKey = (data) => {
 const _dec = (data) => {
   let res;
   let resultWasm;
-  const wasmContext_ptr = _jsToWasm(data.context);
-  const wasmSk_ptr = _jsToWasm(data.sk);
-  const wasmCt_ptr = _jsToWasm(data.ct);
+  const wasmContext = _jsToWasm(data.context);
+  const wasmSk = _jsToWasm(data.sk);
+  const wasmCt = _jsToWasm(data.ct);
   try {
-    resultWasm = Module.dec(
-      wasmContext_ptr,
-      data.context.length,
-      wasmSk_ptr,
-      data.sk.length,
-      wasmCt_ptr,
-      data.ct.length,
-      data.as_complex,
-    );
+    resultWasm = Module.dec(wasmContext, wasmSk, wasmCt, data.as_complex);
     res = _wasmToJs(resultWasm);
   } catch (e) {
-    console.log("Error:", e);
+    console.log('Error:', e);
     throw e;
   } finally {
-    freeMemory([wasmContext_ptr, wasmSk_ptr, wasmCt_ptr]);
+    freeMemory([wasmContext.ptr, wasmSk.ptr, wasmCt.ptr]);
   }
   Module.freeMemory(resultWasm.ptr);
   return res;
@@ -105,62 +77,62 @@ const _dec = (data) => {
 const _enc = (data) => {
   let res;
   let resultWasm;
-  const wasmContext_ptr = _jsToWasm(data.context);
-  const wasmSk_ptr = _jsToWasm(data.sk);
-  const wasmPt_ptr = _jsToWasm(data.pt);
+  const wasmContext = _jsToWasm(data.context);
+  const wasmSk = _jsToWasm(data.sk[0]);
+  const wasmSkCoefs = _jsToWasm(data.sk[1]);
+  const wasmPt = _jsToWasm(data.pt);
 
   try {
     resultWasm = Module.enc(
-      wasmContext_ptr,
-      data.context.length,
-      wasmSk_ptr,
-      data.sk.length,
-      wasmPt_ptr,
-      data.pt.length,
+      wasmContext,
+      wasmSk,
+      wasmSkCoefs,
+      wasmPt,
       data.pack_for_transmission,
       data.pt_axis_external,
+      data.custom_state_name,
     );
 
     res = _wasmToJs(resultWasm);
   } catch (e) {
-    console.log("Error:", e);
+    console.log('Error:', e);
     throw e;
   } finally {
-    freeMemory([wasmContext_ptr, wasmSk_ptr, wasmPt_ptr]);
+    freeMemory([wasmContext.ptr, wasmSk.ptr, wasmSkCoefs.ptr, wasmPt.ptr]);
   }
   Module.freeMemory(resultWasm.ptr);
   return res;
 };
 
 let wasmRuntimeInitializedHandler = async () => {
-  self.postMessage("loaded_wasm_module");
+  self.postMessage('loaded_wasm_module');
 
   self.onmessage = (event) => {
     const message = event.data;
     let result;
     try {
       switch (message.operation) {
-        case "apply_client_block":
+        case 'apply_client_block':
           result = _applyClientBlock(message.data);
           self.postMessage({ success: true, data: result });
           break;
-        case "generate_key":
+        case 'generate_key':
           result = _generateKey(message.data);
           self.postMessage({ success: true, data: result });
           break;
-        case "dec":
+        case 'dec':
           result = _dec(message.data);
           self.postMessage({ success: true, data: result });
           break;
-        case "enc":
+        case 'enc':
           result = _enc(message.data);
           self.postMessage({ success: true, data: result });
           break;
         default:
-          self.postMessage({ success: false, error: "Unknown operation" });
+          self.postMessage({ success: false, error: 'Unknown operation' });
       }
     } catch (e) {
-      console.error("Error in WASM worker operation:", e);
+      console.error('Error in WASM worker operation:', e);
       self.postMessage({ success: false, error: e.message || String(e) });
     }
   };
@@ -168,20 +140,20 @@ let wasmRuntimeInitializedHandler = async () => {
 
 // Define custom print function that send log messages to the main thread
 function customPrint(...args) {
-  const message = args.join(" ");
-  console.log("[WASM Log]", message);
+  const message = args.join(' ');
+  console.log('[WASM Log]', message);
 
   // Send the log to the main thread
-  postMessage({ log: true, logtype: "WASM Log", logmsg: message });
+  postMessage({ log: true, logtype: 'WASM Log', logmsg: message });
 }
 
 // Define custom print function that send error messages to the main thread
 function customPrintErr(...args) {
-  const message = args.join(" ");
-  console.error("[WASM Error]", message);
+  const message = args.join(' ');
+  console.error('[WASM Error]', message);
 
   // Send the error to the main thread
-  postMessage({ log: true, logtype: "WASM Error", logmsg: message });
+  postMessage({ log: true, logtype: 'WASM Error', logmsg: message });
 }
 
 self.Module = {
@@ -190,8 +162,6 @@ self.Module = {
   onRuntimeInitialized: wasmRuntimeInitializedHandler,
 };
 
-const wasmPath = import.meta.url
-  ? new URL("./cpp_sdk.js", import.meta.url).href
-  : "./cpp_sdk.js";
-console.log("Loading WASM module from", wasmPath);
+const wasmPath = import.meta.url ? new URL('./cpp_sdk.js', import.meta.url).href : './cpp_sdk.js';
+console.log('Loading WASM module from', wasmPath);
 importScripts(wasmPath);
