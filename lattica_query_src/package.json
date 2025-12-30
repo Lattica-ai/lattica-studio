@@ -64,6 +64,6 @@
   "dependencies": {
     "google-protobuf": "^3.21.4",
     "ndarray": "^1.0.19",
-    "@lattica-ai/fhe-core": "^0.9.0"
+    "@lattica-ai/fhe-core": "^0.7.0"
   }
 }
