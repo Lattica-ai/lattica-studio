@@ -21,23 +21,16 @@ const sendHttpRequest = async (
     },
   };
 
-  const formData = new FormData();
-  formData.append('metadata', JSON.stringify(reqData));
-
-  if (serializedData) {
-    formData.append(
-      'file',
-      new Blob([serializedData], { type: 'application/octet-stream' }),
-      'data.bin',
-    );
-  }
+  const metadataHeaderValue = JSON.stringify(reqData);
 
   const response = await fetch(`${beUrl}/api/do_action/${actionName}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${jwt}`,
+      'Content-Type': 'application/octet-stream',
+      'X-Metadata': metadataHeaderValue,
     },
-    body: formData,
+    body: serializedData,
   });
 
   if (!response.ok) {
