@@ -167,14 +167,6 @@ export interface ApplyClearParams {
   clamp?: ClampApplyClearParams | undefined;
 }
 
-export interface QueryClientBlock {
-  blockIndex: number;
-  isLast: boolean;
-  opTypes: HomOpType[];
-  applyClearParamsList: ApplyClearParams[];
-  ptAxisExternal?: number | undefined;
-}
-
 export interface CrtPermutations {
   galoisEls?: TensorHolder | undefined;
   newIdxs?: TensorHolder | undefined;
@@ -185,16 +177,23 @@ export interface AuxKeyRequirements {
   squareKey: boolean;
 }
 
-export interface QueryClientSequentialHomOp {
+export interface ClientBlock {
+  opTypes: HomOpType[];
+  applyClearParamsList: ApplyClearParams[];
+}
+
+export interface ClientModel {
   auxKeyRequirements?: AuxKeyRequirements | undefined;
-  clientBlocks: QueryClientBlock[];
-  preprocessingData: Uint8Array;
-  asComplex: boolean;
+  ptAxisExternal?: number | undefined;
+  asComplex?: boolean | undefined;
+  preprocessBlock?: ClientBlock | undefined;
+  postprocessBlock?: ClientBlock | undefined;
+  preprocessingData?: Uint8Array | undefined;
 }
 
 export interface ClientData {
   serializedContext: Uint8Array;
-  serializedClientSequentialHomOp: Uint8Array;
+  serializedModel: Uint8Array;
 }
 
 function createBaseUnfoldApplyClearParams(): UnfoldApplyClearParams {
@@ -907,144 +906,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
   },
 };
 
-function createBaseQueryClientBlock(): QueryClientBlock {
-  return { blockIndex: 0, isLast: false, opTypes: [], applyClearParamsList: [], ptAxisExternal: undefined };
-}
-
-export const QueryClientBlock: MessageFns<QueryClientBlock> = {
-  encode(message: QueryClientBlock, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.blockIndex !== 0) {
-      writer.uint32(8).int32(message.blockIndex);
-    }
-    if (message.isLast !== false) {
-      writer.uint32(16).bool(message.isLast);
-    }
-    writer.uint32(26).fork();
-    for (const v of message.opTypes) {
-      writer.int32(v);
-    }
-    writer.join();
-    for (const v of message.applyClearParamsList) {
-      ApplyClearParams.encode(v!, writer.uint32(34).fork()).join();
-    }
-    if (message.ptAxisExternal !== undefined) {
-      writer.uint32(40).int32(message.ptAxisExternal);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): QueryClientBlock {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseQueryClientBlock();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1: {
-          if (tag !== 8) {
-            break;
-          }
-
-          message.blockIndex = reader.int32();
-          continue;
-        }
-        case 2: {
-          if (tag !== 16) {
-            break;
-          }
-
-          message.isLast = reader.bool();
-          continue;
-        }
-        case 3: {
-          if (tag === 24) {
-            message.opTypes.push(reader.int32() as any);
-
-            continue;
-          }
-
-          if (tag === 26) {
-            const end2 = reader.uint32() + reader.pos;
-            while (reader.pos < end2) {
-              message.opTypes.push(reader.int32() as any);
-            }
-
-            continue;
-          }
-
-          break;
-        }
-        case 4: {
-          if (tag !== 34) {
-            break;
-          }
-
-          message.applyClearParamsList.push(ApplyClearParams.decode(reader, reader.uint32()));
-          continue;
-        }
-        case 5: {
-          if (tag !== 40) {
-            break;
-          }
-
-          message.ptAxisExternal = reader.int32();
-          continue;
-        }
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skip(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): QueryClientBlock {
-    return {
-      blockIndex: isSet(object.blockIndex) ? globalThis.Number(object.blockIndex) : 0,
-      isLast: isSet(object.isLast) ? globalThis.Boolean(object.isLast) : false,
-      opTypes: globalThis.Array.isArray(object?.opTypes) ? object.opTypes.map((e: any) => homOpTypeFromJSON(e)) : [],
-      applyClearParamsList: globalThis.Array.isArray(object?.applyClearParamsList)
-        ? object.applyClearParamsList.map((e: any) => ApplyClearParams.fromJSON(e))
-        : [],
-      ptAxisExternal: isSet(object.ptAxisExternal) ? globalThis.Number(object.ptAxisExternal) : undefined,
-    };
-  },
-
-  toJSON(message: QueryClientBlock): unknown {
-    const obj: any = {};
-    if (message.blockIndex !== 0) {
-      obj.blockIndex = Math.round(message.blockIndex);
-    }
-    if (message.isLast !== false) {
-      obj.isLast = message.isLast;
-    }
-    if (message.opTypes?.length) {
-      obj.opTypes = message.opTypes.map((e) => homOpTypeToJSON(e));
-    }
-    if (message.applyClearParamsList?.length) {
-      obj.applyClearParamsList = message.applyClearParamsList.map((e) => ApplyClearParams.toJSON(e));
-    }
-    if (message.ptAxisExternal !== undefined) {
-      obj.ptAxisExternal = Math.round(message.ptAxisExternal);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<QueryClientBlock>, I>>(base?: I): QueryClientBlock {
-    return QueryClientBlock.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<QueryClientBlock>, I>>(object: I): QueryClientBlock {
-    const message = createBaseQueryClientBlock();
-    message.blockIndex = object.blockIndex ?? 0;
-    message.isLast = object.isLast ?? false;
-    message.opTypes = object.opTypes?.map((e) => e) || [];
-    message.applyClearParamsList = object.applyClearParamsList?.map((e) => ApplyClearParams.fromPartial(e)) || [];
-    message.ptAxisExternal = object.ptAxisExternal ?? undefined;
-    return message;
-  },
-};
-
 function createBaseCrtPermutations(): CrtPermutations {
   return { galoisEls: undefined, newIdxs: undefined };
 }
@@ -1203,31 +1064,134 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
   },
 };
 
-function createBaseQueryClientSequentialHomOp(): QueryClientSequentialHomOp {
-  return { auxKeyRequirements: undefined, clientBlocks: [], preprocessingData: new Uint8Array(0), asComplex: false };
+function createBaseClientBlock(): ClientBlock {
+  return { opTypes: [], applyClearParamsList: [] };
 }
 
-export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> = {
-  encode(message: QueryClientSequentialHomOp, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.auxKeyRequirements !== undefined) {
-      AuxKeyRequirements.encode(message.auxKeyRequirements, writer.uint32(10).fork()).join();
+export const ClientBlock: MessageFns<ClientBlock> = {
+  encode(message: ClientBlock, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    writer.uint32(10).fork();
+    for (const v of message.opTypes) {
+      writer.int32(v);
     }
-    for (const v of message.clientBlocks) {
-      QueryClientBlock.encode(v!, writer.uint32(18).fork()).join();
-    }
-    if (message.preprocessingData.length !== 0) {
-      writer.uint32(26).bytes(message.preprocessingData);
-    }
-    if (message.asComplex !== false) {
-      writer.uint32(32).bool(message.asComplex);
+    writer.join();
+    for (const v of message.applyClearParamsList) {
+      ApplyClearParams.encode(v!, writer.uint32(18).fork()).join();
     }
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): QueryClientSequentialHomOp {
+  decode(input: BinaryReader | Uint8Array, length?: number): ClientBlock {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseQueryClientSequentialHomOp();
+    const message = createBaseClientBlock();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag === 8) {
+            message.opTypes.push(reader.int32() as any);
+
+            continue;
+          }
+
+          if (tag === 10) {
+            const end2 = reader.uint32() + reader.pos;
+            while (reader.pos < end2) {
+              message.opTypes.push(reader.int32() as any);
+            }
+
+            continue;
+          }
+
+          break;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.applyClearParamsList.push(ApplyClearParams.decode(reader, reader.uint32()));
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): ClientBlock {
+    return {
+      opTypes: globalThis.Array.isArray(object?.opTypes) ? object.opTypes.map((e: any) => homOpTypeFromJSON(e)) : [],
+      applyClearParamsList: globalThis.Array.isArray(object?.applyClearParamsList)
+        ? object.applyClearParamsList.map((e: any) => ApplyClearParams.fromJSON(e))
+        : [],
+    };
+  },
+
+  toJSON(message: ClientBlock): unknown {
+    const obj: any = {};
+    if (message.opTypes?.length) {
+      obj.opTypes = message.opTypes.map((e) => homOpTypeToJSON(e));
+    }
+    if (message.applyClearParamsList?.length) {
+      obj.applyClearParamsList = message.applyClearParamsList.map((e) => ApplyClearParams.toJSON(e));
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<ClientBlock>, I>>(base?: I): ClientBlock {
+    return ClientBlock.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<ClientBlock>, I>>(object: I): ClientBlock {
+    const message = createBaseClientBlock();
+    message.opTypes = object.opTypes?.map((e) => e) || [];
+    message.applyClearParamsList = object.applyClearParamsList?.map((e) => ApplyClearParams.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseClientModel(): ClientModel {
+  return {
+    auxKeyRequirements: undefined,
+    ptAxisExternal: undefined,
+    asComplex: undefined,
+    preprocessBlock: undefined,
+    postprocessBlock: undefined,
+    preprocessingData: undefined,
+  };
+}
+
+export const ClientModel: MessageFns<ClientModel> = {
+  encode(message: ClientModel, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.auxKeyRequirements !== undefined) {
+      AuxKeyRequirements.encode(message.auxKeyRequirements, writer.uint32(10).fork()).join();
+    }
+    if (message.ptAxisExternal !== undefined) {
+      writer.uint32(16).int32(message.ptAxisExternal);
+    }
+    if (message.asComplex !== undefined) {
+      writer.uint32(24).bool(message.asComplex);
+    }
+    if (message.preprocessBlock !== undefined) {
+      ClientBlock.encode(message.preprocessBlock, writer.uint32(34).fork()).join();
+    }
+    if (message.postprocessBlock !== undefined) {
+      ClientBlock.encode(message.postprocessBlock, writer.uint32(42).fork()).join();
+    }
+    if (message.preprocessingData !== undefined) {
+      writer.uint32(50).bytes(message.preprocessingData);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): ClientModel {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseClientModel();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -1240,27 +1204,43 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
           continue;
         }
         case 2: {
-          if (tag !== 18) {
+          if (tag !== 16) {
             break;
           }
 
-          message.clientBlocks.push(QueryClientBlock.decode(reader, reader.uint32()));
+          message.ptAxisExternal = reader.int32();
           continue;
         }
         case 3: {
-          if (tag !== 26) {
-            break;
-          }
-
-          message.preprocessingData = reader.bytes();
-          continue;
-        }
-        case 4: {
-          if (tag !== 32) {
+          if (tag !== 24) {
             break;
           }
 
           message.asComplex = reader.bool();
+          continue;
+        }
+        case 4: {
+          if (tag !== 34) {
+            break;
+          }
+
+          message.preprocessBlock = ClientBlock.decode(reader, reader.uint32());
+          continue;
+        }
+        case 5: {
+          if (tag !== 42) {
+            break;
+          }
+
+          message.postprocessBlock = ClientBlock.decode(reader, reader.uint32());
+          continue;
+        }
+        case 6: {
+          if (tag !== 50) {
+            break;
+          }
+
+          message.preprocessingData = reader.bytes();
           continue;
         }
       }
@@ -1272,55 +1252,65 @@ export const QueryClientSequentialHomOp: MessageFns<QueryClientSequentialHomOp> 
     return message;
   },
 
-  fromJSON(object: any): QueryClientSequentialHomOp {
+  fromJSON(object: any): ClientModel {
     return {
       auxKeyRequirements: isSet(object.auxKeyRequirements)
         ? AuxKeyRequirements.fromJSON(object.auxKeyRequirements)
         : undefined,
-      clientBlocks: globalThis.Array.isArray(object?.clientBlocks)
-        ? object.clientBlocks.map((e: any) => QueryClientBlock.fromJSON(e))
-        : [],
-      preprocessingData: isSet(object.preprocessingData)
-        ? bytesFromBase64(object.preprocessingData)
-        : new Uint8Array(0),
-      asComplex: isSet(object.asComplex) ? globalThis.Boolean(object.asComplex) : false,
+      ptAxisExternal: isSet(object.ptAxisExternal) ? globalThis.Number(object.ptAxisExternal) : undefined,
+      asComplex: isSet(object.asComplex) ? globalThis.Boolean(object.asComplex) : undefined,
+      preprocessBlock: isSet(object.preprocessBlock) ? ClientBlock.fromJSON(object.preprocessBlock) : undefined,
+      postprocessBlock: isSet(object.postprocessBlock) ? ClientBlock.fromJSON(object.postprocessBlock) : undefined,
+      preprocessingData: isSet(object.preprocessingData) ? bytesFromBase64(object.preprocessingData) : undefined,
     };
   },
 
-  toJSON(message: QueryClientSequentialHomOp): unknown {
+  toJSON(message: ClientModel): unknown {
     const obj: any = {};
     if (message.auxKeyRequirements !== undefined) {
       obj.auxKeyRequirements = AuxKeyRequirements.toJSON(message.auxKeyRequirements);
     }
-    if (message.clientBlocks?.length) {
-      obj.clientBlocks = message.clientBlocks.map((e) => QueryClientBlock.toJSON(e));
+    if (message.ptAxisExternal !== undefined) {
+      obj.ptAxisExternal = Math.round(message.ptAxisExternal);
     }
-    if (message.preprocessingData.length !== 0) {
-      obj.preprocessingData = base64FromBytes(message.preprocessingData);
-    }
-    if (message.asComplex !== false) {
+    if (message.asComplex !== undefined) {
       obj.asComplex = message.asComplex;
+    }
+    if (message.preprocessBlock !== undefined) {
+      obj.preprocessBlock = ClientBlock.toJSON(message.preprocessBlock);
+    }
+    if (message.postprocessBlock !== undefined) {
+      obj.postprocessBlock = ClientBlock.toJSON(message.postprocessBlock);
+    }
+    if (message.preprocessingData !== undefined) {
+      obj.preprocessingData = base64FromBytes(message.preprocessingData);
     }
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<QueryClientSequentialHomOp>, I>>(base?: I): QueryClientSequentialHomOp {
-    return QueryClientSequentialHomOp.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<ClientModel>, I>>(base?: I): ClientModel {
+    return ClientModel.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<QueryClientSequentialHomOp>, I>>(object: I): QueryClientSequentialHomOp {
-    const message = createBaseQueryClientSequentialHomOp();
+  fromPartial<I extends Exact<DeepPartial<ClientModel>, I>>(object: I): ClientModel {
+    const message = createBaseClientModel();
     message.auxKeyRequirements = (object.auxKeyRequirements !== undefined && object.auxKeyRequirements !== null)
       ? AuxKeyRequirements.fromPartial(object.auxKeyRequirements)
       : undefined;
-    message.clientBlocks = object.clientBlocks?.map((e) => QueryClientBlock.fromPartial(e)) || [];
-    message.preprocessingData = object.preprocessingData ?? new Uint8Array(0);
-    message.asComplex = object.asComplex ?? false;
+    message.ptAxisExternal = object.ptAxisExternal ?? undefined;
+    message.asComplex = object.asComplex ?? undefined;
+    message.preprocessBlock = (object.preprocessBlock !== undefined && object.preprocessBlock !== null)
+      ? ClientBlock.fromPartial(object.preprocessBlock)
+      : undefined;
+    message.postprocessBlock = (object.postprocessBlock !== undefined && object.postprocessBlock !== null)
+      ? ClientBlock.fromPartial(object.postprocessBlock)
+      : undefined;
+    message.preprocessingData = object.preprocessingData ?? undefined;
     return message;
   },
 };
 
 function createBaseClientData(): ClientData {
-  return { serializedContext: new Uint8Array(0), serializedClientSequentialHomOp: new Uint8Array(0) };
+  return { serializedContext: new Uint8Array(0), serializedModel: new Uint8Array(0) };
 }
 
 export const ClientData: MessageFns<ClientData> = {
@@ -1328,8 +1318,8 @@ export const ClientData: MessageFns<ClientData> = {
     if (message.serializedContext.length !== 0) {
       writer.uint32(10).bytes(message.serializedContext);
     }
-    if (message.serializedClientSequentialHomOp.length !== 0) {
-      writer.uint32(18).bytes(message.serializedClientSequentialHomOp);
+    if (message.serializedModel.length !== 0) {
+      writer.uint32(18).bytes(message.serializedModel);
     }
     return writer;
   },
@@ -1354,7 +1344,7 @@ export const ClientData: MessageFns<ClientData> = {
             break;
           }
 
-          message.serializedClientSequentialHomOp = reader.bytes();
+          message.serializedModel = reader.bytes();
           continue;
         }
       }
@@ -1371,9 +1361,7 @@ export const ClientData: MessageFns<ClientData> = {
       serializedContext: isSet(object.serializedContext)
         ? bytesFromBase64(object.serializedContext)
         : new Uint8Array(0),
-      serializedClientSequentialHomOp: isSet(object.serializedClientSequentialHomOp)
-        ? bytesFromBase64(object.serializedClientSequentialHomOp)
-        : new Uint8Array(0),
+      serializedModel: isSet(object.serializedModel) ? bytesFromBase64(object.serializedModel) : new Uint8Array(0),
     };
   },
 
@@ -1382,8 +1370,8 @@ export const ClientData: MessageFns<ClientData> = {
     if (message.serializedContext.length !== 0) {
       obj.serializedContext = base64FromBytes(message.serializedContext);
     }
-    if (message.serializedClientSequentialHomOp.length !== 0) {
-      obj.serializedClientSequentialHomOp = base64FromBytes(message.serializedClientSequentialHomOp);
+    if (message.serializedModel.length !== 0) {
+      obj.serializedModel = base64FromBytes(message.serializedModel);
     }
     return obj;
   },
@@ -1394,7 +1382,7 @@ export const ClientData: MessageFns<ClientData> = {
   fromPartial<I extends Exact<DeepPartial<ClientData>, I>>(object: I): ClientData {
     const message = createBaseClientData();
     message.serializedContext = object.serializedContext ?? new Uint8Array(0);
-    message.serializedClientSequentialHomOp = object.serializedClientSequentialHomOp ?? new Uint8Array(0);
+    message.serializedModel = object.serializedModel ?? new Uint8Array(0);
     return message;
   },
 };
