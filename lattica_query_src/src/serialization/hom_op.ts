@@ -25,6 +25,7 @@ export enum HomOpType {
   ReLU = 13,
   Clamp = 14,
   CosineSimilarity = 15,
+  ExactSearch = 16,
   UNRECOGNIZED = -1,
 }
 
@@ -78,6 +79,9 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 15:
     case "CosineSimilarity":
       return HomOpType.CosineSimilarity;
+    case 16:
+    case "ExactSearch":
+      return HomOpType.ExactSearch;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -119,6 +123,8 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "Clamp";
     case HomOpType.CosineSimilarity:
       return "CosineSimilarity";
+    case HomOpType.ExactSearch:
+      return "ExactSearch";
     case HomOpType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
