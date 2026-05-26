@@ -25,7 +25,12 @@ export enum HomOpType {
   ReLU = 13,
   Clamp = 14,
   CosineSimilarity = 15,
-  ExactSearch = 16,
+  Expand = 17,
+  RunningSum = 18,
+  PolyEval = 19,
+  AxisModSum = 20,
+  Add = 21,
+  Repeat = 22,
   UNRECOGNIZED = -1,
 }
 
@@ -79,9 +84,24 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 15:
     case "CosineSimilarity":
       return HomOpType.CosineSimilarity;
-    case 16:
-    case "ExactSearch":
-      return HomOpType.ExactSearch;
+    case 17:
+    case "Expand":
+      return HomOpType.Expand;
+    case 18:
+    case "RunningSum":
+      return HomOpType.RunningSum;
+    case 19:
+    case "PolyEval":
+      return HomOpType.PolyEval;
+    case 20:
+    case "AxisModSum":
+      return HomOpType.AxisModSum;
+    case 21:
+    case "Add":
+      return HomOpType.Add;
+    case 22:
+    case "Repeat":
+      return HomOpType.Repeat;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -123,8 +143,18 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "Clamp";
     case HomOpType.CosineSimilarity:
       return "CosineSimilarity";
-    case HomOpType.ExactSearch:
-      return "ExactSearch";
+    case HomOpType.Expand:
+      return "Expand";
+    case HomOpType.RunningSum:
+      return "RunningSum";
+    case HomOpType.PolyEval:
+      return "PolyEval";
+    case HomOpType.AxisModSum:
+      return "AxisModSum";
+    case HomOpType.Add:
+      return "Add";
+    case HomOpType.Repeat:
+      return "Repeat";
     case HomOpType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
