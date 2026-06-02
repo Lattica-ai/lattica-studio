@@ -33,7 +33,9 @@ export class LatticaQueryClient {
   public readonly beUrl: string;
   protected initialized: boolean = false;
   private serializedContext!: Uint8Array;
+  private serializedContextRingSwitch!: Uint8Array;
   private secretKey!: [Uint8Array, Uint8Array];
+  private secretKeyRingSwitch!: [Uint8Array, Uint8Array];
   private preprocessingBlock!: Uint8Array;
   private postprocessingBlock!: Uint8Array;
   private modelMetadata: Uint8Array | undefined;
@@ -52,6 +54,7 @@ export class LatticaQueryClient {
     const clientData = ClientData.decode(serializedClientData);
 
     this.serializedContext = clientData.serializedContext;
+    this.serializedContextRingSwitch = clientData.serialized_context_ring_switch;
 
     const model = ClientModel.decode(clientData.serializedModel);
     this.modelMetadata = model.preprocessingData;
@@ -66,12 +69,15 @@ export class LatticaQueryClient {
   }
 
   protected async generateKey(serializedHomseq: Uint8Array) {
-    const [sk, skCoefs, evaluationKey] = await toolkit.generateKey(
+    const [skRingSwitch, skRingSwitchCoefs, sk, skCoefs, evaluationKey] = await toolkit.generateKey(
       serializedHomseq,
       this.serializedContext,
+      this.serializedContextRingSwitch,
     );
 
     this.secretKey = [sk, skCoefs];
+    this.secretKeyRingSwitch = [skRingSwitch, skRingSwitchCoefs];
+
 
     console.log('PK size:', evaluationKey.length / (1024 * 1024), 'MB');
 
@@ -114,10 +120,19 @@ export class LatticaQueryClient {
       this.serializedContext,
       serialized_pt,
     );
-
+    let secretKEyEnc: [Uint8Array, Uint8Array];
+    let serializedContextEnc: Uint8Array;
+    if (this.serializedContextRingSwitch) {
+      serializedContextEnc = this.serializedContextRingSwitch;
+      secretKEyEnc = this.secretKeyRingSwitch;
+    }
+    else {
+      serializedContextEnc = this.serializedContext;
+      secretKEyEnc = this.secretKey;
+    }
     return await toolkit.encrypt(
-      this.serializedContext,
-      this.secretKey,
+      serializedContextEnc,
+      secretKEyEnc,
       serialized_pt,
       true,
       this.ptAxisExternal,
@@ -169,6 +184,8 @@ export class LatticaQueryClient {
       this.postprocessingBlock,
       this.ptAxisExternal,
       this.asComplex,
+      this.serializedContextRingSwitch,
+      this.secretKeyRingSwitch,
     );
   }
 }

@@ -211,6 +211,7 @@ export interface CrtPermutations {
 export interface AuxKeyRequirements {
   rotationKeyPerms?: CrtPermutations | undefined;
   squareKey: boolean;
+  ring_switch_key: boolean;
 }
 
 export interface ClientBlock {
@@ -230,6 +231,7 @@ export interface ClientModel {
 export interface ClientData {
   serializedContext: Uint8Array;
   serializedModel: Uint8Array;
+  serialized_context_ring_switch: Uint8Array;
 }
 
 function createBaseUnfoldApplyClearParams(): UnfoldApplyClearParams {
@@ -1023,7 +1025,7 @@ export const CrtPermutations: MessageFns<CrtPermutations> = {
 };
 
 function createBaseAuxKeyRequirements(): AuxKeyRequirements {
-  return { rotationKeyPerms: undefined, squareKey: false };
+  return { rotationKeyPerms: undefined, squareKey: false, ring_switch_key: false };
 }
 
 export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
@@ -1033,6 +1035,9 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
     }
     if (message.squareKey !== false) {
       writer.uint32(16).bool(message.squareKey);
+    }
+    if (message.ring_switch_key !== false) {
+      writer.uint32(24).bool(message.ring_switch_key);
     }
     return writer;
   },
@@ -1060,6 +1065,14 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
           message.squareKey = reader.bool();
           continue;
         }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.ring_switch_key = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1073,6 +1086,7 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
     return {
       rotationKeyPerms: isSet(object.rotationKeyPerms) ? CrtPermutations.fromJSON(object.rotationKeyPerms) : undefined,
       squareKey: isSet(object.squareKey) ? globalThis.Boolean(object.squareKey) : false,
+      ring_switch_key: isSet(object.ring_switch_key) ? globalThis.Boolean(object.ring_switch_key) : false,
     };
   },
 
@@ -1083,6 +1097,9 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
     }
     if (message.squareKey !== false) {
       obj.squareKey = message.squareKey;
+    }
+    if (message.ring_switch_key !== false) {
+      obj.ring_switch_key = message.ring_switch_key;
     }
     return obj;
   },
@@ -1096,6 +1113,7 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
       ? CrtPermutations.fromPartial(object.rotationKeyPerms)
       : undefined;
     message.squareKey = object.squareKey ?? false;
+    message.ring_switch_key = object.ring_switch_key ?? false;
     return message;
   },
 };
@@ -1346,7 +1364,7 @@ export const ClientModel: MessageFns<ClientModel> = {
 };
 
 function createBaseClientData(): ClientData {
-  return { serializedContext: new Uint8Array(0), serializedModel: new Uint8Array(0) };
+  return { serializedContext: new Uint8Array(0), serializedModel: new Uint8Array(0), serialized_context_ring_switch: new Uint8Array(0) };
 }
 
 export const ClientData: MessageFns<ClientData> = {
@@ -1356,6 +1374,9 @@ export const ClientData: MessageFns<ClientData> = {
     }
     if (message.serializedModel.length !== 0) {
       writer.uint32(18).bytes(message.serializedModel);
+    }
+    if (message.serialized_context_ring_switch.length !== 0) {
+      writer.uint32(26).bytes(message.serialized_context_ring_switch);
     }
     return writer;
   },
@@ -1383,6 +1404,14 @@ export const ClientData: MessageFns<ClientData> = {
           message.serializedModel = reader.bytes();
           continue;
         }
+        case 3: {
+          if (tag !== 26) {
+            break;
+          }
+
+          message.serialized_context_ring_switch = reader.bytes();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1398,6 +1427,9 @@ export const ClientData: MessageFns<ClientData> = {
         ? bytesFromBase64(object.serializedContext)
         : new Uint8Array(0),
       serializedModel: isSet(object.serializedModel) ? bytesFromBase64(object.serializedModel) : new Uint8Array(0),
+      serialized_context_ring_switch: isSet(object.serialized_context_ring_switch)
+       ? bytesFromBase64(object.serialized_context_ring_switch)
+       : new Uint8Array(0),
     };
   },
 
@@ -1409,6 +1441,9 @@ export const ClientData: MessageFns<ClientData> = {
     if (message.serializedModel.length !== 0) {
       obj.serializedModel = base64FromBytes(message.serializedModel);
     }
+    if (message.serialized_context_ring_switch.length !== 0) {
+      obj.serialized_context_ring_switch = base64FromBytes(message.serialized_context_ring_switch);
+    }
     return obj;
   },
 
@@ -1419,6 +1454,7 @@ export const ClientData: MessageFns<ClientData> = {
     const message = createBaseClientData();
     message.serializedContext = object.serializedContext ?? new Uint8Array(0);
     message.serializedModel = object.serializedModel ?? new Uint8Array(0);
+    message.serialized_context_ring_switch = object.serialized_context_ring_switch ?? new Uint8Array(0);
     return message;
   },
 };

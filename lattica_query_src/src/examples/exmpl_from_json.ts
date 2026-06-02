@@ -82,6 +82,7 @@ async function _demo_generate_key() {
   const result: any = await toolkit.generateKey(
     dict['serialized_homseq'],
     dict['serialized_context'],
+    dict['serialized_context_ring_switch'],
   );
   const expected = [dict['res'][0][0], dict['res'][0][1], dict['res'][1]];
   console.log('Result:', result);

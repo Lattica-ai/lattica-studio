@@ -56,11 +56,13 @@ export const decrypt = async (
 export const generateKey = async (
   serialized_homseq: Uint8Array,
   serialized_context: Uint8Array,
+  serialized_context_ring_switch: Uint8Array,
 ) => {
   workerManagerSingleton.logConsole('Generating keys...');
   const res = await workerManagerSingleton.callWorker('generate_key', {
     homseq: serialized_homseq,
     context: serialized_context,
+    context_ring_switch: serialized_context_ring_switch,
   });
   workerManagerSingleton.logConsole('Keys generated.');
   return res;

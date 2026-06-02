@@ -12,6 +12,8 @@ export const runInference = async (
   postBlock: Uint8Array,
   ptAxisExternal?: number,
   asComplex: boolean = false,
+  contextRingSwitch: Uint8Array | null = null,
+  secretKeyRingSwitch: [Uint8Array, Uint8Array] | null = null,
 ): Promise<Tensor> => {
   let serialized_pt = dumps_proto_tensor(pt);
 
@@ -19,9 +21,19 @@ export const runInference = async (
   serialized_pt = await toolkit.applyClientBlock(preBlock, context, serialized_pt);
 
   console.log('Encrypting input tensor');
+  let contextEnc: Uint8Array;
+  let secretKeyEnc: [Uint8Array, Uint8Array];
+  if (contextRingSwitch) {
+    contextEnc = contextRingSwitch;
+    secretKeyEnc = secretKeyRingSwitch!;
+  }
+  else {
+    contextEnc = context;
+    secretKeyEnc = secretKey;
+  }
   const serialized_ct = await toolkit.encrypt(
-    context,
-    secretKey,
+    contextEnc,
+    secretKeyEnc,
     serialized_pt,
     true,
     ptAxisExternal,
