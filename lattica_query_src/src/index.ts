@@ -54,7 +54,7 @@ export class LatticaQueryClient {
     const clientData = ClientData.decode(serializedClientData);
 
     this.serializedContext = clientData.serializedContext;
-    this.serializedContextRingSwitch = clientData.serialized_context_ring_switch;
+    this.serializedContextRingSwitch = clientData.serializedContextRingSwitch;
 
     const model = ClientModel.decode(clientData.serializedModel);
     this.modelMetadata = model.preprocessingData;
@@ -120,19 +120,19 @@ export class LatticaQueryClient {
       this.serializedContext,
       serialized_pt,
     );
-    let secretKEyEnc: [Uint8Array, Uint8Array];
+    let secretKeyEnc: [Uint8Array, Uint8Array];
     let serializedContextEnc: Uint8Array;
     if (this.serializedContextRingSwitch) {
       serializedContextEnc = this.serializedContextRingSwitch;
-      secretKEyEnc = this.secretKeyRingSwitch;
+      secretKeyEnc = this.secretKeyRingSwitch;
     }
     else {
       serializedContextEnc = this.serializedContext;
-      secretKEyEnc = this.secretKey;
+      secretKeyEnc = this.secretKey;
     }
     return await toolkit.encrypt(
       serializedContextEnc,
-      secretKEyEnc,
+      secretKeyEnc,
       serialized_pt,
       true,
       this.ptAxisExternal,
