@@ -39,10 +39,12 @@ const _generateKey = (data) => {
   let res;
   let resultWasm;
   const wasmHomseq = _jsToWasm(data.homseq);
-  const wasmContext = _jsToWasm(data.context);
+  const wasmContext = _jsToWasm(data.extended_context);
   try {
     resultWasm = Module.generate_key(wasmHomseq, wasmContext);
-    res = [_wasmToJs(resultWasm.sk), _wasmToJs(resultWasm.sk_coefs), _wasmToJs(resultWasm.pk)];
+    const extendedSecretKey = _wasmToJs(resultWasm.first);
+    const pk = _wasmToJs(resultWasm.second);
+    res = [extendedSecretKey, pk];
   } catch (e) {
     console.log('Error:', e);
     throw e;
