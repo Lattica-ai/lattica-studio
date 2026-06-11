@@ -244,6 +244,11 @@ export interface SecretKey {
   skCoefs?: TensorHolder | undefined;
 }
 
+export interface SerializedExtendedContext {
+  serializedContext: Uint8Array;
+  serializedRingSwitchContext?: Uint8Array | undefined;
+}
+
 export interface ExtendedSecretKey {
   secretKey?: SecretKey | undefined;
   ringSwitchSecretKey?: SecretKey | undefined;
@@ -1530,6 +1535,86 @@ export const SecretKey: MessageFns<SecretKey> = {
     message.skCoefs = (object.skCoefs !== undefined && object.skCoefs !== null)
       ? TensorHolder.fromPartial(object.skCoefs)
       : undefined;
+    return message;
+  },
+};
+
+function createBaseSerializedExtendedContext(): SerializedExtendedContext {
+  return { serializedContext: new Uint8Array(0), serializedRingSwitchContext: undefined };
+}
+
+export const SerializedExtendedContext: MessageFns<SerializedExtendedContext> = {
+  encode(message: SerializedExtendedContext, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.serializedContext.length !== 0) {
+      writer.uint32(10).bytes(message.serializedContext);
+    }
+    if (message.serializedRingSwitchContext !== undefined) {
+      writer.uint32(18).bytes(message.serializedRingSwitchContext);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SerializedExtendedContext {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSerializedExtendedContext();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 10) {
+            break;
+          }
+
+          message.serializedContext = reader.bytes();
+          continue;
+        }
+        case 2: {
+          if (tag !== 18) {
+            break;
+          }
+
+          message.serializedRingSwitchContext = reader.bytes();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SerializedExtendedContext {
+    return {
+      serializedContext: isSet(object.serializedContext)
+        ? bytesFromBase64(object.serializedContext)
+        : new Uint8Array(0),
+      serializedRingSwitchContext: isSet(object.serializedRingSwitchContext)
+        ? bytesFromBase64(object.serializedRingSwitchContext)
+        : undefined,
+    };
+  },
+
+  toJSON(message: SerializedExtendedContext): unknown {
+    const obj: any = {};
+    if (message.serializedContext.length !== 0) {
+      obj.serializedContext = base64FromBytes(message.serializedContext);
+    }
+    if (message.serializedRingSwitchContext !== undefined) {
+      obj.serializedRingSwitchContext = base64FromBytes(message.serializedRingSwitchContext);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SerializedExtendedContext>, I>>(base?: I): SerializedExtendedContext {
+    return SerializedExtendedContext.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SerializedExtendedContext>, I>>(object: I): SerializedExtendedContext {
+    const message = createBaseSerializedExtendedContext();
+    message.serializedContext = object.serializedContext ?? new Uint8Array(0);
+    message.serializedRingSwitchContext = object.serializedRingSwitchContext ?? undefined;
     return message;
   },
 };

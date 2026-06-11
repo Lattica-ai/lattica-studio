@@ -13,7 +13,8 @@ import {
 import * as toolkit from './toolkitWrapper';
 
 import { runInference } from './inference';
-import { ClientModel, ClientBlock, ClientData } from './serialization/hom_op';
+import { ClientModel, ClientBlock, ClientData, SerializedExtendedContext, ExtendedSecretKey } from './serialization/hom_op';
+import { TensorHolder } from './serialization/generic';
 
 import { triggerEvkCopy } from './dev_utils';
 import { initWasm, workerManagerSingleton, setLogCallback } from './wasm/wasm_worker_manager';
@@ -32,10 +33,11 @@ export class LatticaQueryClient {
   public readonly jwt: string;
   public readonly beUrl: string;
   protected initialized: boolean = false;
-  private serializedContext!: Uint8Array;
-  private serializedContextRingSwitch!: Uint8Array;
+  private extendedContext!: Uint8Array;
+  private context!: Uint8Array;
+  private ringSwitchContext?: Uint8Array;
   private secretKey!: [Uint8Array, Uint8Array];
-  private secretKeyRingSwitch!: [Uint8Array, Uint8Array];
+  private ringSwitchSecretKey?: [Uint8Array, Uint8Array];
   private preprocessingBlock!: Uint8Array;
   private postprocessingBlock!: Uint8Array;
   private modelMetadata: Uint8Array | undefined;
@@ -53,8 +55,11 @@ export class LatticaQueryClient {
 
     const clientData = ClientData.decode(serializedClientData);
 
-    this.serializedContext = clientData.serializedContext;
-    this.serializedContextRingSwitch = clientData.serializedContextRingSwitch;
+    this.extendedContext = clientData.serializedExtendedContext;
+    
+    const extendedContext = SerializedExtendedContext.decode(clientData.serializedExtendedContext);
+    this.context = extendedContext.serializedContext;
+    this.ringSwitchContext = extendedContext.serializedRingSwitchContext;
 
     const model = ClientModel.decode(clientData.serializedModel);
     this.modelMetadata = model.preprocessingData;
@@ -69,15 +74,24 @@ export class LatticaQueryClient {
   }
 
   protected async generateKey(serializedHomseq: Uint8Array) {
-    const [skRingSwitch, skRingSwitchCoefs, sk, skCoefs, evaluationKey] = await toolkit.generateKey(
+    const [serializedExtendedSecretKey, evaluationKey] = await toolkit.generateKey(
       serializedHomseq,
-      this.serializedContext,
-      this.serializedContextRingSwitch,
+      this.extendedContext,
     );
 
+    const extendedSecretKey = ExtendedSecretKey.decode(serializedExtendedSecretKey);
+    
+    // Extract main secret key
+    const sk = TensorHolder.encode(extendedSecretKey.secretKey!.sk!).finish();
+    const skCoefs = TensorHolder.encode(extendedSecretKey.secretKey!.skCoefs!).finish();
     this.secretKey = [sk, skCoefs];
-    this.secretKeyRingSwitch = [skRingSwitch, skRingSwitchCoefs];
-
+    
+    // Extract ring switch secret key if it exists
+    if (extendedSecretKey.ringSwitchSecretKey) {
+      const ringSwitchSk = TensorHolder.encode(extendedSecretKey.ringSwitchSecretKey.sk!).finish();
+      const ringSwitchSkCoefs = TensorHolder.encode(extendedSecretKey.ringSwitchSecretKey.skCoefs!).finish();
+      this.ringSwitchSecretKey = [ringSwitchSk, ringSwitchSkCoefs];
+    }
 
     console.log('PK size:', evaluationKey.length / (1024 * 1024), 'MB');
 
@@ -115,24 +129,17 @@ export class LatticaQueryClient {
 
     let serialized_pt = dumps_proto_tensor(pt);
     // apply first client block
+    const encContext = this.ringSwitchContext ?? this.context;
+    const encSecretKey = this.ringSwitchSecretKey ?? this.secretKey;
     serialized_pt = await toolkit.applyClientBlock(
       this.preprocessingBlock,
-      this.serializedContext,
+      encContext,
       serialized_pt,
     );
-    let secretKeyEnc: [Uint8Array, Uint8Array];
-    let serializedContextEnc: Uint8Array;
-    if (this.serializedContextRingSwitch) {
-      serializedContextEnc = this.serializedContextRingSwitch;
-      secretKeyEnc = this.secretKeyRingSwitch;
-    }
-    else {
-      serializedContextEnc = this.serializedContext;
-      secretKeyEnc = this.secretKey;
-    }
+
     return await toolkit.encrypt(
-      serializedContextEnc,
-      secretKeyEnc,
+      encContext,
+      encSecretKey,
       serialized_pt,
       true,
       this.ptAxisExternal,
@@ -155,8 +162,9 @@ export class LatticaQueryClient {
 
   async decrypt(encryptedResult: Uint8Array): Promise<Tensor> {
     if (!this.initialized) throw new Error('Client must be initialized first');
+    
     let decryptedOutput = await toolkit.decrypt(
-      this.serializedContext,
+      this.context,
       this.secretKey,
       encryptedResult,
       this.asComplex,
@@ -165,7 +173,7 @@ export class LatticaQueryClient {
     // apply last client block
     decryptedOutput = await toolkit.applyClientBlock(
       this.postprocessingBlock,
-      this.serializedContext,
+      this.context,
       decryptedOutput,
     );
 
@@ -177,15 +185,15 @@ export class LatticaQueryClient {
     return await runInference(
       this.jwt,
       this.beUrl,
-      this.serializedContext,
+      this.context,
       this.secretKey,
       pt,
       this.preprocessingBlock,
       this.postprocessingBlock,
       this.ptAxisExternal,
       this.asComplex,
-      this.serializedContextRingSwitch,
-      this.secretKeyRingSwitch,
+      this.ringSwitchContext,
+      this.ringSwitchSecretKey,
     );
   }
 }
