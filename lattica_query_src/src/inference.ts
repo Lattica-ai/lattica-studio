@@ -16,9 +16,12 @@ export const runInference = async (
   secretKeyRingSwitch: [Uint8Array, Uint8Array] | null = null,
 ): Promise<Tensor> => {
   let serialized_pt = dumps_proto_tensor(pt);
+  
+  const encContext = ringSwitchContext ?? context;
+  const encSecretKey = ringSwitchSecretKey ?? secretKey;
 
   console.log('Applying preprocessing client block');
-  serialized_pt = await toolkit.applyClientBlock(preBlock, context, serialized_pt);
+  serialized_pt = await toolkit.applyClientBlock(preBlock, encContext, serialized_pt);
 
   console.log('Encrypting input tensor');
   let contextEnc: Uint8Array;
