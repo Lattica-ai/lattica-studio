@@ -22,11 +22,48 @@ jest.mock('../src/wasm/wasm_worker_manager', () => ({
 }));
 
 jest.mock('../src/toolkitWrapper', () => ({
-  generateKey: jest.fn(() => [
-    new Uint8Array([11]), // sk
-    new Uint8Array([22]), // skCoefs
-    new Uint8Array([7]), // evaluation key to upload
-  ]),
+  generateKey: jest.fn(async () => {
+    // Create mock ExtendedSecretKey structure  
+    const { ExtendedSecretKey } = await import('../src/serialization/hom_op');
+    const { DataType } = await import('../src/serialization/generic');
+    const mockExtendedSecretKey = {
+      secretKey: {
+        sk: { 
+          sizes: [1], 
+          strides: [1], 
+          data: new Uint8Array([11]), 
+          dtype: DataType.FLOAT 
+        },
+        skCoefs: { 
+          sizes: [1], 
+          strides: [1], 
+          data: new Uint8Array([22]), 
+          dtype: DataType.FLOAT 
+        }
+      },
+      ringSwitchSecretKey: {
+        sk: { 
+          sizes: [1], 
+          strides: [1], 
+          data: new Uint8Array([33]), 
+          dtype: DataType.FLOAT 
+        },
+        skCoefs: { 
+          sizes: [1], 
+          strides: [1], 
+          data: new Uint8Array([44]), 
+          dtype: DataType.FLOAT 
+        }
+      }
+    };
+    
+    const serializedExtendedSecretKey = ExtendedSecretKey.encode(mockExtendedSecretKey).finish();
+    
+    return [
+      serializedExtendedSecretKey, // serialized ExtendedSecretKey
+      new Uint8Array([7]), // evaluation key to upload
+    ];
+  }),
   encrypt: jest.fn(() => dummySerializedCt),
   decrypt: jest.fn(() => dummySerializedTensor),
   applyClientBlock: jest.fn((...args: any[]) => args[2]), // return pt
