@@ -199,6 +199,10 @@ export interface ClampApplyClearParams {
   maxVal: number;
 }
 
+export interface RepeatApplyClearParams {
+  dim: number;
+}
+
 export interface ApplyClearParams {
   unfold?: UnfoldApplyClearParams | undefined;
   reshape?: ReshapeApplyClearParams | undefined;
@@ -207,6 +211,7 @@ export interface ApplyClearParams {
   constMatMul?: ConstMatMulApplyClearParams | undefined;
   softmax?: SoftmaxApplyClearParams | undefined;
   clamp?: ClampApplyClearParams | undefined;
+  repeat?: RepeatApplyClearParams | undefined;
 }
 
 export interface CrtPermutations {
@@ -244,7 +249,7 @@ export interface SecretKey {
   skCoefs?: TensorHolder | undefined;
 }
 
-export interface SerializedExtendedContext {
+export interface ExtendedContext {
   serializedContext: Uint8Array;
   serializedRingSwitchContext?: Uint8Array | undefined;
 }
@@ -786,6 +791,64 @@ export const ClampApplyClearParams: MessageFns<ClampApplyClearParams> = {
   },
 };
 
+function createBaseRepeatApplyClearParams(): RepeatApplyClearParams {
+  return { dim: 0 };
+}
+
+export const RepeatApplyClearParams: MessageFns<RepeatApplyClearParams> = {
+  encode(message: RepeatApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.dim !== 0) {
+      writer.uint32(8).int32(message.dim);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): RepeatApplyClearParams {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseRepeatApplyClearParams();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.dim = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): RepeatApplyClearParams {
+    return { dim: isSet(object.dim) ? globalThis.Number(object.dim) : 0 };
+  },
+
+  toJSON(message: RepeatApplyClearParams): unknown {
+    const obj: any = {};
+    if (message.dim !== 0) {
+      obj.dim = Math.round(message.dim);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<RepeatApplyClearParams>, I>>(base?: I): RepeatApplyClearParams {
+    return RepeatApplyClearParams.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<RepeatApplyClearParams>, I>>(object: I): RepeatApplyClearParams {
+    const message = createBaseRepeatApplyClearParams();
+    message.dim = object.dim ?? 0;
+    return message;
+  },
+};
+
 function createBaseApplyClearParams(): ApplyClearParams {
   return {
     unfold: undefined,
@@ -795,6 +858,7 @@ function createBaseApplyClearParams(): ApplyClearParams {
     constMatMul: undefined,
     softmax: undefined,
     clamp: undefined,
+    repeat: undefined,
   };
 }
 
@@ -820,6 +884,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.clamp !== undefined) {
       ClampApplyClearParams.encode(message.clamp, writer.uint32(58).fork()).join();
+    }
+    if (message.repeat !== undefined) {
+      RepeatApplyClearParams.encode(message.repeat, writer.uint32(66).fork()).join();
     }
     return writer;
   },
@@ -887,6 +954,14 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
           message.clamp = ClampApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
+        case 8: {
+          if (tag !== 66) {
+            break;
+          }
+
+          message.repeat = RepeatApplyClearParams.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -905,6 +980,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       constMatMul: isSet(object.constMatMul) ? ConstMatMulApplyClearParams.fromJSON(object.constMatMul) : undefined,
       softmax: isSet(object.softmax) ? SoftmaxApplyClearParams.fromJSON(object.softmax) : undefined,
       clamp: isSet(object.clamp) ? ClampApplyClearParams.fromJSON(object.clamp) : undefined,
+      repeat: isSet(object.repeat) ? RepeatApplyClearParams.fromJSON(object.repeat) : undefined,
     };
   },
 
@@ -930,6 +1006,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.clamp !== undefined) {
       obj.clamp = ClampApplyClearParams.toJSON(message.clamp);
+    }
+    if (message.repeat !== undefined) {
+      obj.repeat = RepeatApplyClearParams.toJSON(message.repeat);
     }
     return obj;
   },
@@ -959,6 +1038,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       : undefined;
     message.clamp = (object.clamp !== undefined && object.clamp !== null)
       ? ClampApplyClearParams.fromPartial(object.clamp)
+      : undefined;
+    message.repeat = (object.repeat !== undefined && object.repeat !== null)
+      ? RepeatApplyClearParams.fromPartial(object.repeat)
       : undefined;
     return message;
   },
@@ -1539,12 +1621,12 @@ export const SecretKey: MessageFns<SecretKey> = {
   },
 };
 
-function createBaseSerializedExtendedContext(): SerializedExtendedContext {
+function createBaseExtendedContext(): ExtendedContext {
   return { serializedContext: new Uint8Array(0), serializedRingSwitchContext: undefined };
 }
 
-export const SerializedExtendedContext: MessageFns<SerializedExtendedContext> = {
-  encode(message: SerializedExtendedContext, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const ExtendedContext: MessageFns<ExtendedContext> = {
+  encode(message: ExtendedContext, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.serializedContext.length !== 0) {
       writer.uint32(10).bytes(message.serializedContext);
     }
@@ -1554,10 +1636,10 @@ export const SerializedExtendedContext: MessageFns<SerializedExtendedContext> = 
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): SerializedExtendedContext {
+  decode(input: BinaryReader | Uint8Array, length?: number): ExtendedContext {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseSerializedExtendedContext();
+    const message = createBaseExtendedContext();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -1586,7 +1668,7 @@ export const SerializedExtendedContext: MessageFns<SerializedExtendedContext> = 
     return message;
   },
 
-  fromJSON(object: any): SerializedExtendedContext {
+  fromJSON(object: any): ExtendedContext {
     return {
       serializedContext: isSet(object.serializedContext)
         ? bytesFromBase64(object.serializedContext)
@@ -1597,7 +1679,7 @@ export const SerializedExtendedContext: MessageFns<SerializedExtendedContext> = 
     };
   },
 
-  toJSON(message: SerializedExtendedContext): unknown {
+  toJSON(message: ExtendedContext): unknown {
     const obj: any = {};
     if (message.serializedContext.length !== 0) {
       obj.serializedContext = base64FromBytes(message.serializedContext);
@@ -1608,11 +1690,11 @@ export const SerializedExtendedContext: MessageFns<SerializedExtendedContext> = 
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<SerializedExtendedContext>, I>>(base?: I): SerializedExtendedContext {
-    return SerializedExtendedContext.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<ExtendedContext>, I>>(base?: I): ExtendedContext {
+    return ExtendedContext.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<SerializedExtendedContext>, I>>(object: I): SerializedExtendedContext {
-    const message = createBaseSerializedExtendedContext();
+  fromPartial<I extends Exact<DeepPartial<ExtendedContext>, I>>(object: I): ExtendedContext {
+    const message = createBaseExtendedContext();
     message.serializedContext = object.serializedContext ?? new Uint8Array(0);
     message.serializedRingSwitchContext = object.serializedRingSwitchContext ?? undefined;
     return message;

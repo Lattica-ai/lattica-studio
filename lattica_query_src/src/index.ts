@@ -13,7 +13,7 @@ import {
 import * as toolkit from './toolkitWrapper';
 
 import { runInference } from './inference';
-import { ClientModel, ClientBlock, ClientData, SerializedExtendedContext, ExtendedSecretKey } from './serialization/hom_op';
+import { ClientModel, ClientBlock, ClientData, ExtendedContext, ExtendedSecretKey } from './serialization/hom_op';
 import { TensorHolder } from './serialization/generic';
 
 import { triggerEvkCopy } from './dev_utils';
@@ -57,7 +57,7 @@ export class LatticaQueryClient {
 
     this.extendedContext = clientData.serializedExtendedContext;
     
-    const extendedContext = SerializedExtendedContext.decode(clientData.serializedExtendedContext);
+    const extendedContext = ExtendedContext.decode(clientData.serializedExtendedContext);
     this.context = extendedContext.serializedContext;
     this.ringSwitchContext = extendedContext.serializedRingSwitchContext;
 
