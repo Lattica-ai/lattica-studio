@@ -24,7 +24,6 @@ export enum HomOpType {
   Softmax = 12,
   ReLU = 13,
   Clamp = 14,
-  CosineSimilarity = 15,
   Expand = 17,
   RunningSum = 18,
   PolyEval = 19,
@@ -84,9 +83,6 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 14:
     case "Clamp":
       return HomOpType.Clamp;
-    case 15:
-    case "CosineSimilarity":
-      return HomOpType.CosineSimilarity;
     case 17:
     case "Expand":
       return HomOpType.Expand;
@@ -153,8 +149,6 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "ReLU";
     case HomOpType.Clamp:
       return "Clamp";
-    case HomOpType.CosineSimilarity:
-      return "CosineSimilarity";
     case HomOpType.Expand:
       return "Expand";
     case HomOpType.RunningSum:
