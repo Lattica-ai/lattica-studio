@@ -19,7 +19,6 @@ export enum HomOpType {
   SumSlotsFullKey = 7,
   MatMulBaseKey = 8,
   MatMulFullKey = 9,
-  Unfold = 10,
   Reshape = 11,
   Softmax = 12,
   ReLU = 13,
@@ -68,9 +67,6 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 9:
     case "MatMulFullKey":
       return HomOpType.MatMulFullKey;
-    case 10:
-    case "Unfold":
-      return HomOpType.Unfold;
     case 11:
     case "Reshape":
       return HomOpType.Reshape;
@@ -139,8 +135,6 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "MatMulBaseKey";
     case HomOpType.MatMulFullKey:
       return "MatMulFullKey";
-    case HomOpType.Unfold:
-      return "Unfold";
     case HomOpType.Reshape:
       return "Reshape";
     case HomOpType.Softmax:
@@ -171,12 +165,6 @@ export function homOpTypeToJSON(object: HomOpType): string {
     default:
       return "UNRECOGNIZED";
   }
-}
-
-export interface UnfoldApplyClearParams {
-  kernelSize: number[];
-  padding: number[];
-  stride: number[];
 }
 
 export interface ReshapeApplyClearParams {
@@ -234,7 +222,6 @@ export interface RotateSumApplyClearParams {
 }
 
 export interface ApplyClearParams {
-  unfold?: UnfoldApplyClearParams | undefined;
   reshape?: ReshapeApplyClearParams | undefined;
   constAdd?: ConstAddApplyClearParams | undefined;
   constMul?: ConstMulApplyClearParams | undefined;
@@ -292,136 +279,6 @@ export interface ExtendedSecretKey {
   secretKey?: SecretKey | undefined;
   ringSwitchSecretKey?: SecretKey | undefined;
 }
-
-function createBaseUnfoldApplyClearParams(): UnfoldApplyClearParams {
-  return { kernelSize: [], padding: [], stride: [] };
-}
-
-export const UnfoldApplyClearParams: MessageFns<UnfoldApplyClearParams> = {
-  encode(message: UnfoldApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    writer.uint32(10).fork();
-    for (const v of message.kernelSize) {
-      writer.int32(v);
-    }
-    writer.join();
-    writer.uint32(18).fork();
-    for (const v of message.padding) {
-      writer.int32(v);
-    }
-    writer.join();
-    writer.uint32(26).fork();
-    for (const v of message.stride) {
-      writer.int32(v);
-    }
-    writer.join();
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): UnfoldApplyClearParams {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseUnfoldApplyClearParams();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1: {
-          if (tag === 8) {
-            message.kernelSize.push(reader.int32());
-
-            continue;
-          }
-
-          if (tag === 10) {
-            const end2 = reader.uint32() + reader.pos;
-            while (reader.pos < end2) {
-              message.kernelSize.push(reader.int32());
-            }
-
-            continue;
-          }
-
-          break;
-        }
-        case 2: {
-          if (tag === 16) {
-            message.padding.push(reader.int32());
-
-            continue;
-          }
-
-          if (tag === 18) {
-            const end2 = reader.uint32() + reader.pos;
-            while (reader.pos < end2) {
-              message.padding.push(reader.int32());
-            }
-
-            continue;
-          }
-
-          break;
-        }
-        case 3: {
-          if (tag === 24) {
-            message.stride.push(reader.int32());
-
-            continue;
-          }
-
-          if (tag === 26) {
-            const end2 = reader.uint32() + reader.pos;
-            while (reader.pos < end2) {
-              message.stride.push(reader.int32());
-            }
-
-            continue;
-          }
-
-          break;
-        }
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skip(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): UnfoldApplyClearParams {
-    return {
-      kernelSize: globalThis.Array.isArray(object?.kernelSize)
-        ? object.kernelSize.map((e: any) => globalThis.Number(e))
-        : [],
-      padding: globalThis.Array.isArray(object?.padding) ? object.padding.map((e: any) => globalThis.Number(e)) : [],
-      stride: globalThis.Array.isArray(object?.stride) ? object.stride.map((e: any) => globalThis.Number(e)) : [],
-    };
-  },
-
-  toJSON(message: UnfoldApplyClearParams): unknown {
-    const obj: any = {};
-    if (message.kernelSize?.length) {
-      obj.kernelSize = message.kernelSize.map((e) => Math.round(e));
-    }
-    if (message.padding?.length) {
-      obj.padding = message.padding.map((e) => Math.round(e));
-    }
-    if (message.stride?.length) {
-      obj.stride = message.stride.map((e) => Math.round(e));
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<UnfoldApplyClearParams>, I>>(base?: I): UnfoldApplyClearParams {
-    return UnfoldApplyClearParams.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<UnfoldApplyClearParams>, I>>(object: I): UnfoldApplyClearParams {
-    const message = createBaseUnfoldApplyClearParams();
-    message.kernelSize = object.kernelSize?.map((e) => e) || [];
-    message.padding = object.padding?.map((e) => e) || [];
-    message.stride = object.stride?.map((e) => e) || [];
-    return message;
-  },
-};
 
 function createBaseReshapeApplyClearParams(): ReshapeApplyClearParams {
   return { dims: [] };
@@ -1267,7 +1124,6 @@ export const RotateSumApplyClearParams: MessageFns<RotateSumApplyClearParams> = 
 
 function createBaseApplyClearParams(): ApplyClearParams {
   return {
-    unfold: undefined,
     reshape: undefined,
     constAdd: undefined,
     constMul: undefined,
@@ -1284,9 +1140,6 @@ function createBaseApplyClearParams(): ApplyClearParams {
 
 export const ApplyClearParams: MessageFns<ApplyClearParams> = {
   encode(message: ApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.unfold !== undefined) {
-      UnfoldApplyClearParams.encode(message.unfold, writer.uint32(10).fork()).join();
-    }
     if (message.reshape !== undefined) {
       ReshapeApplyClearParams.encode(message.reshape, writer.uint32(18).fork()).join();
     }
@@ -1330,14 +1183,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
-        case 1: {
-          if (tag !== 10) {
-            break;
-          }
-
-          message.unfold = UnfoldApplyClearParams.decode(reader, reader.uint32());
-          continue;
-        }
         case 2: {
           if (tag !== 18) {
             break;
@@ -1437,7 +1282,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
 
   fromJSON(object: any): ApplyClearParams {
     return {
-      unfold: isSet(object.unfold) ? UnfoldApplyClearParams.fromJSON(object.unfold) : undefined,
       reshape: isSet(object.reshape) ? ReshapeApplyClearParams.fromJSON(object.reshape) : undefined,
       constAdd: isSet(object.constAdd) ? ConstAddApplyClearParams.fromJSON(object.constAdd) : undefined,
       constMul: isSet(object.constMul) ? ConstMulApplyClearParams.fromJSON(object.constMul) : undefined,
@@ -1454,9 +1298,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
 
   toJSON(message: ApplyClearParams): unknown {
     const obj: any = {};
-    if (message.unfold !== undefined) {
-      obj.unfold = UnfoldApplyClearParams.toJSON(message.unfold);
-    }
     if (message.reshape !== undefined) {
       obj.reshape = ReshapeApplyClearParams.toJSON(message.reshape);
     }
@@ -1498,9 +1339,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
   },
   fromPartial<I extends Exact<DeepPartial<ApplyClearParams>, I>>(object: I): ApplyClearParams {
     const message = createBaseApplyClearParams();
-    message.unfold = (object.unfold !== undefined && object.unfold !== null)
-      ? UnfoldApplyClearParams.fromPartial(object.unfold)
-      : undefined;
     message.reshape = (object.reshape !== undefined && object.reshape !== null)
       ? ReshapeApplyClearParams.fromPartial(object.reshape)
       : undefined;
