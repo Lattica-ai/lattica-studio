@@ -32,6 +32,8 @@ export enum HomOpType {
   ExactSearchWithRingSwitch = 23,
   Conv = 24,
   RotateSum = 25,
+  Unsqueeze = 26,
+  Squeeze = 27,
   UNRECOGNIZED = -1,
 }
 
@@ -106,6 +108,12 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 25:
     case "RotateSum":
       return HomOpType.RotateSum;
+    case 26:
+    case "Unsqueeze":
+      return HomOpType.Unsqueeze;
+    case 27:
+    case "Squeeze":
+      return HomOpType.Squeeze;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -161,6 +169,10 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "Conv";
     case HomOpType.RotateSum:
       return "RotateSum";
+    case HomOpType.Unsqueeze:
+      return "Unsqueeze";
+    case HomOpType.Squeeze:
+      return "Squeeze";
     case HomOpType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -169,6 +181,10 @@ export function homOpTypeToJSON(object: HomOpType): string {
 
 export interface ReshapeApplyClearParams {
   dims: number[];
+}
+
+export interface UnsqueezeSqueezeApplyClearParams {
+  dim: number;
 }
 
 export interface ConstAddApplyClearParams {
@@ -233,6 +249,8 @@ export interface ApplyClearParams {
   axisModSum?: AxisModSumApplyClearParams | undefined;
   runningSum?: RunningSumApplyClearParams | undefined;
   rotateSum?: RotateSumApplyClearParams | undefined;
+  unsqueeze?: UnsqueezeSqueezeApplyClearParams | undefined;
+  squeeze?: UnsqueezeSqueezeApplyClearParams | undefined;
 }
 
 export interface CrtPermutations {
@@ -346,6 +364,68 @@ export const ReshapeApplyClearParams: MessageFns<ReshapeApplyClearParams> = {
   fromPartial<I extends Exact<DeepPartial<ReshapeApplyClearParams>, I>>(object: I): ReshapeApplyClearParams {
     const message = createBaseReshapeApplyClearParams();
     message.dims = object.dims?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseUnsqueezeSqueezeApplyClearParams(): UnsqueezeSqueezeApplyClearParams {
+  return { dim: 0 };
+}
+
+export const UnsqueezeSqueezeApplyClearParams: MessageFns<UnsqueezeSqueezeApplyClearParams> = {
+  encode(message: UnsqueezeSqueezeApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.dim !== 0) {
+      writer.uint32(8).int32(message.dim);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): UnsqueezeSqueezeApplyClearParams {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseUnsqueezeSqueezeApplyClearParams();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.dim = reader.int32();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): UnsqueezeSqueezeApplyClearParams {
+    return { dim: isSet(object.dim) ? globalThis.Number(object.dim) : 0 };
+  },
+
+  toJSON(message: UnsqueezeSqueezeApplyClearParams): unknown {
+    const obj: any = {};
+    if (message.dim !== 0) {
+      obj.dim = Math.round(message.dim);
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<UnsqueezeSqueezeApplyClearParams>, I>>(
+    base?: I,
+  ): UnsqueezeSqueezeApplyClearParams {
+    return UnsqueezeSqueezeApplyClearParams.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<UnsqueezeSqueezeApplyClearParams>, I>>(
+    object: I,
+  ): UnsqueezeSqueezeApplyClearParams {
+    const message = createBaseUnsqueezeSqueezeApplyClearParams();
+    message.dim = object.dim ?? 0;
     return message;
   },
 };
@@ -1135,6 +1215,8 @@ function createBaseApplyClearParams(): ApplyClearParams {
     axisModSum: undefined,
     runningSum: undefined,
     rotateSum: undefined,
+    unsqueeze: undefined,
+    squeeze: undefined,
   };
 }
 
@@ -1172,6 +1254,12 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.rotateSum !== undefined) {
       RotateSumApplyClearParams.encode(message.rotateSum, writer.uint32(98).fork()).join();
+    }
+    if (message.unsqueeze !== undefined) {
+      UnsqueezeSqueezeApplyClearParams.encode(message.unsqueeze, writer.uint32(106).fork()).join();
+    }
+    if (message.squeeze !== undefined) {
+      UnsqueezeSqueezeApplyClearParams.encode(message.squeeze, writer.uint32(114).fork()).join();
     }
     return writer;
   },
@@ -1271,6 +1359,22 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
           message.rotateSum = RotateSumApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
+        case 13: {
+          if (tag !== 106) {
+            break;
+          }
+
+          message.unsqueeze = UnsqueezeSqueezeApplyClearParams.decode(reader, reader.uint32());
+          continue;
+        }
+        case 14: {
+          if (tag !== 114) {
+            break;
+          }
+
+          message.squeeze = UnsqueezeSqueezeApplyClearParams.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1293,6 +1397,8 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       axisModSum: isSet(object.axisModSum) ? AxisModSumApplyClearParams.fromJSON(object.axisModSum) : undefined,
       runningSum: isSet(object.runningSum) ? RunningSumApplyClearParams.fromJSON(object.runningSum) : undefined,
       rotateSum: isSet(object.rotateSum) ? RotateSumApplyClearParams.fromJSON(object.rotateSum) : undefined,
+      unsqueeze: isSet(object.unsqueeze) ? UnsqueezeSqueezeApplyClearParams.fromJSON(object.unsqueeze) : undefined,
+      squeeze: isSet(object.squeeze) ? UnsqueezeSqueezeApplyClearParams.fromJSON(object.squeeze) : undefined,
     };
   },
 
@@ -1330,6 +1436,12 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.rotateSum !== undefined) {
       obj.rotateSum = RotateSumApplyClearParams.toJSON(message.rotateSum);
+    }
+    if (message.unsqueeze !== undefined) {
+      obj.unsqueeze = UnsqueezeSqueezeApplyClearParams.toJSON(message.unsqueeze);
+    }
+    if (message.squeeze !== undefined) {
+      obj.squeeze = UnsqueezeSqueezeApplyClearParams.toJSON(message.squeeze);
     }
     return obj;
   },
@@ -1371,6 +1483,12 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       : undefined;
     message.rotateSum = (object.rotateSum !== undefined && object.rotateSum !== null)
       ? RotateSumApplyClearParams.fromPartial(object.rotateSum)
+      : undefined;
+    message.unsqueeze = (object.unsqueeze !== undefined && object.unsqueeze !== null)
+      ? UnsqueezeSqueezeApplyClearParams.fromPartial(object.unsqueeze)
+      : undefined;
+    message.squeeze = (object.squeeze !== undefined && object.squeeze !== null)
+      ? UnsqueezeSqueezeApplyClearParams.fromPartial(object.squeeze)
       : undefined;
     return message;
   },
