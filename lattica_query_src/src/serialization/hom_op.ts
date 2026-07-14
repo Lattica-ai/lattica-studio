@@ -17,8 +17,7 @@ export enum HomOpType {
   ModSwitch = 5,
   SumSlotsBaseKey = 6,
   SumSlotsFullKey = 7,
-  MatMulBaseKey = 8,
-  MatMulFullKey = 9,
+  MatMul = 8,
   Reshape = 11,
   Softmax = 12,
   ReLU = 13,
@@ -34,6 +33,9 @@ export enum HomOpType {
   RotateSum = 25,
   Unsqueeze = 26,
   Squeeze = 27,
+  Bootstrap = 28,
+  MinMax = 29,
+  Compare = 30,
   UNRECOGNIZED = -1,
 }
 
@@ -64,11 +66,8 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case "SumSlotsFullKey":
       return HomOpType.SumSlotsFullKey;
     case 8:
-    case "MatMulBaseKey":
-      return HomOpType.MatMulBaseKey;
-    case 9:
-    case "MatMulFullKey":
-      return HomOpType.MatMulFullKey;
+    case "MatMul":
+      return HomOpType.MatMul;
     case 11:
     case "Reshape":
       return HomOpType.Reshape;
@@ -114,6 +113,15 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 27:
     case "Squeeze":
       return HomOpType.Squeeze;
+    case 28:
+    case "Bootstrap":
+      return HomOpType.Bootstrap;
+    case 29:
+    case "MinMax":
+      return HomOpType.MinMax;
+    case 30:
+    case "Compare":
+      return HomOpType.Compare;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -139,10 +147,8 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "SumSlotsBaseKey";
     case HomOpType.SumSlotsFullKey:
       return "SumSlotsFullKey";
-    case HomOpType.MatMulBaseKey:
-      return "MatMulBaseKey";
-    case HomOpType.MatMulFullKey:
-      return "MatMulFullKey";
+    case HomOpType.MatMul:
+      return "MatMul";
     case HomOpType.Reshape:
       return "Reshape";
     case HomOpType.Softmax:
@@ -173,6 +179,12 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "Unsqueeze";
     case HomOpType.Squeeze:
       return "Squeeze";
+    case HomOpType.Bootstrap:
+      return "Bootstrap";
+    case HomOpType.MinMax:
+      return "MinMax";
+    case HomOpType.Compare:
+      return "Compare";
     case HomOpType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -197,7 +209,7 @@ export interface ConstMulApplyClearParams {
 
 export interface ConstMatMulApplyClearParams {
   data?: TensorHolder | undefined;
-  ptMulAxis: number;
+  mulAxis: number;
 }
 
 export interface SoftmaxApplyClearParams {
@@ -551,7 +563,7 @@ export const ConstMulApplyClearParams: MessageFns<ConstMulApplyClearParams> = {
 };
 
 function createBaseConstMatMulApplyClearParams(): ConstMatMulApplyClearParams {
-  return { data: undefined, ptMulAxis: 0 };
+  return { data: undefined, mulAxis: 0 };
 }
 
 export const ConstMatMulApplyClearParams: MessageFns<ConstMatMulApplyClearParams> = {
@@ -559,8 +571,8 @@ export const ConstMatMulApplyClearParams: MessageFns<ConstMatMulApplyClearParams
     if (message.data !== undefined) {
       TensorHolder.encode(message.data, writer.uint32(10).fork()).join();
     }
-    if (message.ptMulAxis !== 0) {
-      writer.uint32(16).int32(message.ptMulAxis);
+    if (message.mulAxis !== 0) {
+      writer.uint32(16).int32(message.mulAxis);
     }
     return writer;
   },
@@ -585,7 +597,7 @@ export const ConstMatMulApplyClearParams: MessageFns<ConstMatMulApplyClearParams
             break;
           }
 
-          message.ptMulAxis = reader.int32();
+          message.mulAxis = reader.int32();
           continue;
         }
       }
@@ -600,7 +612,7 @@ export const ConstMatMulApplyClearParams: MessageFns<ConstMatMulApplyClearParams
   fromJSON(object: any): ConstMatMulApplyClearParams {
     return {
       data: isSet(object.data) ? TensorHolder.fromJSON(object.data) : undefined,
-      ptMulAxis: isSet(object.ptMulAxis) ? globalThis.Number(object.ptMulAxis) : 0,
+      mulAxis: isSet(object.mulAxis) ? globalThis.Number(object.mulAxis) : 0,
     };
   },
 
@@ -609,8 +621,8 @@ export const ConstMatMulApplyClearParams: MessageFns<ConstMatMulApplyClearParams
     if (message.data !== undefined) {
       obj.data = TensorHolder.toJSON(message.data);
     }
-    if (message.ptMulAxis !== 0) {
-      obj.ptMulAxis = Math.round(message.ptMulAxis);
+    if (message.mulAxis !== 0) {
+      obj.mulAxis = Math.round(message.mulAxis);
     }
     return obj;
   },
@@ -623,7 +635,7 @@ export const ConstMatMulApplyClearParams: MessageFns<ConstMatMulApplyClearParams
     message.data = (object.data !== undefined && object.data !== null)
       ? TensorHolder.fromPartial(object.data)
       : undefined;
-    message.ptMulAxis = object.ptMulAxis ?? 0;
+    message.mulAxis = object.mulAxis ?? 0;
     return message;
   },
 };
