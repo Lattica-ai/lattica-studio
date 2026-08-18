@@ -42,8 +42,8 @@ const _generateKey = (data) => {
   const wasmContext = _jsToWasm(data.extended_context);
   try {
     resultWasm = Module.generate_key(wasmHomseq, wasmContext);
-    const extendedSecretKey = _wasmToJs(resultWasm.first);
-    const pk = _wasmToJs(resultWasm.second);
+    const extendedSecretKey = _wasmToJs(resultWasm.extended_secret_key);
+    const pk = _wasmToJs(resultWasm.pk);
     res = [extendedSecretKey, pk];
   } catch (e) {
     console.log('Error:', e);
@@ -51,8 +51,7 @@ const _generateKey = (data) => {
   } finally {
     freeMemory([wasmHomseq.ptr, wasmContext.ptr]);
   }
-  Module.freeMemory(resultWasm.sk.ptr);
-  Module.freeMemory(resultWasm.sk_coefs.ptr);
+  Module.freeMemory(resultWasm.extended_secret_key.ptr);
   Module.freeMemory(resultWasm.pk.ptr);
   return res;
 };
