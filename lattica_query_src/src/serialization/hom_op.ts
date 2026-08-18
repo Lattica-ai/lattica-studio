@@ -9,41 +9,37 @@ import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
 import { TensorHolder } from "./generic";
 
 export enum HomOpType {
-  AuxPropagateKey = 0,
+  Slice = 0,
   ConstAdd = 1,
   ConstMul = 2,
   Mul = 3,
-  Square = 4,
+  Add = 4,
   ModSwitch = 5,
-  SumSlotsBaseKey = 6,
-  SumSlotsFullKey = 7,
+  SumSlots = 6,
+  Repeat = 7,
   MatMul = 8,
+  Conv = 9,
+  RotateSum = 10,
   Reshape = 11,
   Softmax = 12,
   ReLU = 13,
   Clamp = 14,
+  Unsqueeze = 15,
+  Squeeze = 16,
   Expand = 17,
   RunningSum = 18,
   PolyEval = 19,
   AxisModSum = 20,
-  Add = 21,
-  Repeat = 22,
-  ExactSearchWithRingSwitch = 23,
-  Conv = 24,
-  RotateSum = 25,
-  Unsqueeze = 26,
-  Squeeze = 27,
-  Bootstrap = 28,
-  MinMax = 29,
-  Compare = 30,
+  Bootstrap = 21,
+  RingSwitch = 22,
   UNRECOGNIZED = -1,
 }
 
 export function homOpTypeFromJSON(object: any): HomOpType {
   switch (object) {
     case 0:
-    case "AuxPropagateKey":
-      return HomOpType.AuxPropagateKey;
+    case "Slice":
+      return HomOpType.Slice;
     case 1:
     case "ConstAdd":
       return HomOpType.ConstAdd;
@@ -54,20 +50,26 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case "Mul":
       return HomOpType.Mul;
     case 4:
-    case "Square":
-      return HomOpType.Square;
+    case "Add":
+      return HomOpType.Add;
     case 5:
     case "ModSwitch":
       return HomOpType.ModSwitch;
     case 6:
-    case "SumSlotsBaseKey":
-      return HomOpType.SumSlotsBaseKey;
+    case "SumSlots":
+      return HomOpType.SumSlots;
     case 7:
-    case "SumSlotsFullKey":
-      return HomOpType.SumSlotsFullKey;
+    case "Repeat":
+      return HomOpType.Repeat;
     case 8:
     case "MatMul":
       return HomOpType.MatMul;
+    case 9:
+    case "Conv":
+      return HomOpType.Conv;
+    case 10:
+    case "RotateSum":
+      return HomOpType.RotateSum;
     case 11:
     case "Reshape":
       return HomOpType.Reshape;
@@ -80,6 +82,12 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 14:
     case "Clamp":
       return HomOpType.Clamp;
+    case 15:
+    case "Unsqueeze":
+      return HomOpType.Unsqueeze;
+    case 16:
+    case "Squeeze":
+      return HomOpType.Squeeze;
     case 17:
     case "Expand":
       return HomOpType.Expand;
@@ -93,35 +101,11 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case "AxisModSum":
       return HomOpType.AxisModSum;
     case 21:
-    case "Add":
-      return HomOpType.Add;
-    case 22:
-    case "Repeat":
-      return HomOpType.Repeat;
-    case 23:
-    case "ExactSearchWithRingSwitch":
-      return HomOpType.ExactSearchWithRingSwitch;
-    case 24:
-    case "Conv":
-      return HomOpType.Conv;
-    case 25:
-    case "RotateSum":
-      return HomOpType.RotateSum;
-    case 26:
-    case "Unsqueeze":
-      return HomOpType.Unsqueeze;
-    case 27:
-    case "Squeeze":
-      return HomOpType.Squeeze;
-    case 28:
     case "Bootstrap":
       return HomOpType.Bootstrap;
-    case 29:
-    case "MinMax":
-      return HomOpType.MinMax;
-    case 30:
-    case "Compare":
-      return HomOpType.Compare;
+    case 22:
+    case "RingSwitch":
+      return HomOpType.RingSwitch;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -131,24 +115,28 @@ export function homOpTypeFromJSON(object: any): HomOpType {
 
 export function homOpTypeToJSON(object: HomOpType): string {
   switch (object) {
-    case HomOpType.AuxPropagateKey:
-      return "AuxPropagateKey";
+    case HomOpType.Slice:
+      return "Slice";
     case HomOpType.ConstAdd:
       return "ConstAdd";
     case HomOpType.ConstMul:
       return "ConstMul";
     case HomOpType.Mul:
       return "Mul";
-    case HomOpType.Square:
-      return "Square";
+    case HomOpType.Add:
+      return "Add";
     case HomOpType.ModSwitch:
       return "ModSwitch";
-    case HomOpType.SumSlotsBaseKey:
-      return "SumSlotsBaseKey";
-    case HomOpType.SumSlotsFullKey:
-      return "SumSlotsFullKey";
+    case HomOpType.SumSlots:
+      return "SumSlots";
+    case HomOpType.Repeat:
+      return "Repeat";
     case HomOpType.MatMul:
       return "MatMul";
+    case HomOpType.Conv:
+      return "Conv";
+    case HomOpType.RotateSum:
+      return "RotateSum";
     case HomOpType.Reshape:
       return "Reshape";
     case HomOpType.Softmax:
@@ -157,6 +145,10 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "ReLU";
     case HomOpType.Clamp:
       return "Clamp";
+    case HomOpType.Unsqueeze:
+      return "Unsqueeze";
+    case HomOpType.Squeeze:
+      return "Squeeze";
     case HomOpType.Expand:
       return "Expand";
     case HomOpType.RunningSum:
@@ -165,26 +157,10 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "PolyEval";
     case HomOpType.AxisModSum:
       return "AxisModSum";
-    case HomOpType.Add:
-      return "Add";
-    case HomOpType.Repeat:
-      return "Repeat";
-    case HomOpType.ExactSearchWithRingSwitch:
-      return "ExactSearchWithRingSwitch";
-    case HomOpType.Conv:
-      return "Conv";
-    case HomOpType.RotateSum:
-      return "RotateSum";
-    case HomOpType.Unsqueeze:
-      return "Unsqueeze";
-    case HomOpType.Squeeze:
-      return "Squeeze";
     case HomOpType.Bootstrap:
       return "Bootstrap";
-    case HomOpType.MinMax:
-      return "MinMax";
-    case HomOpType.Compare:
-      return "Compare";
+    case HomOpType.RingSwitch:
+      return "RingSwitch";
     case HomOpType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";
@@ -249,6 +225,14 @@ export interface RotateSumApplyClearParams {
   performSum: boolean;
 }
 
+export interface SliceApplyClearParams {
+  dim: number;
+  start: number;
+  end: number;
+  step: number;
+  dropDim: boolean;
+}
+
 export interface ApplyClearParams {
   reshape?: ReshapeApplyClearParams | undefined;
   constAdd?: ConstAddApplyClearParams | undefined;
@@ -263,6 +247,7 @@ export interface ApplyClearParams {
   rotateSum?: RotateSumApplyClearParams | undefined;
   unsqueeze?: UnsqueezeSqueezeApplyClearParams | undefined;
   squeeze?: UnsqueezeSqueezeApplyClearParams | undefined;
+  slice?: SliceApplyClearParams | undefined;
 }
 
 export interface CrtPermutations {
@@ -1214,6 +1199,130 @@ export const RotateSumApplyClearParams: MessageFns<RotateSumApplyClearParams> = 
   },
 };
 
+function createBaseSliceApplyClearParams(): SliceApplyClearParams {
+  return { dim: 0, start: 0, end: 0, step: 0, dropDim: false };
+}
+
+export const SliceApplyClearParams: MessageFns<SliceApplyClearParams> = {
+  encode(message: SliceApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.dim !== 0) {
+      writer.uint32(8).int32(message.dim);
+    }
+    if (message.start !== 0) {
+      writer.uint32(16).int32(message.start);
+    }
+    if (message.end !== 0) {
+      writer.uint32(24).int32(message.end);
+    }
+    if (message.step !== 0) {
+      writer.uint32(32).int32(message.step);
+    }
+    if (message.dropDim !== false) {
+      writer.uint32(40).bool(message.dropDim);
+    }
+    return writer;
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): SliceApplyClearParams {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSliceApplyClearParams();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.dim = reader.int32();
+          continue;
+        }
+        case 2: {
+          if (tag !== 16) {
+            break;
+          }
+
+          message.start = reader.int32();
+          continue;
+        }
+        case 3: {
+          if (tag !== 24) {
+            break;
+          }
+
+          message.end = reader.int32();
+          continue;
+        }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.step = reader.int32();
+          continue;
+        }
+        case 5: {
+          if (tag !== 40) {
+            break;
+          }
+
+          message.dropDim = reader.bool();
+          continue;
+        }
+      }
+      if ((tag & 7) === 4 || tag === 0) {
+        break;
+      }
+      reader.skip(tag & 7);
+    }
+    return message;
+  },
+
+  fromJSON(object: any): SliceApplyClearParams {
+    return {
+      dim: isSet(object.dim) ? globalThis.Number(object.dim) : 0,
+      start: isSet(object.start) ? globalThis.Number(object.start) : 0,
+      end: isSet(object.end) ? globalThis.Number(object.end) : 0,
+      step: isSet(object.step) ? globalThis.Number(object.step) : 0,
+      dropDim: isSet(object.dropDim) ? globalThis.Boolean(object.dropDim) : false,
+    };
+  },
+
+  toJSON(message: SliceApplyClearParams): unknown {
+    const obj: any = {};
+    if (message.dim !== 0) {
+      obj.dim = Math.round(message.dim);
+    }
+    if (message.start !== 0) {
+      obj.start = Math.round(message.start);
+    }
+    if (message.end !== 0) {
+      obj.end = Math.round(message.end);
+    }
+    if (message.step !== 0) {
+      obj.step = Math.round(message.step);
+    }
+    if (message.dropDim !== false) {
+      obj.dropDim = message.dropDim;
+    }
+    return obj;
+  },
+
+  create<I extends Exact<DeepPartial<SliceApplyClearParams>, I>>(base?: I): SliceApplyClearParams {
+    return SliceApplyClearParams.fromPartial(base ?? ({} as any));
+  },
+  fromPartial<I extends Exact<DeepPartial<SliceApplyClearParams>, I>>(object: I): SliceApplyClearParams {
+    const message = createBaseSliceApplyClearParams();
+    message.dim = object.dim ?? 0;
+    message.start = object.start ?? 0;
+    message.end = object.end ?? 0;
+    message.step = object.step ?? 0;
+    message.dropDim = object.dropDim ?? false;
+    return message;
+  },
+};
+
 function createBaseApplyClearParams(): ApplyClearParams {
   return {
     reshape: undefined,
@@ -1229,6 +1338,7 @@ function createBaseApplyClearParams(): ApplyClearParams {
     rotateSum: undefined,
     unsqueeze: undefined,
     squeeze: undefined,
+    slice: undefined,
   };
 }
 
@@ -1272,6 +1382,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.squeeze !== undefined) {
       UnsqueezeSqueezeApplyClearParams.encode(message.squeeze, writer.uint32(114).fork()).join();
+    }
+    if (message.slice !== undefined) {
+      SliceApplyClearParams.encode(message.slice, writer.uint32(122).fork()).join();
     }
     return writer;
   },
@@ -1387,6 +1500,14 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
           message.squeeze = UnsqueezeSqueezeApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
+        case 15: {
+          if (tag !== 122) {
+            break;
+          }
+
+          message.slice = SliceApplyClearParams.decode(reader, reader.uint32());
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1411,6 +1532,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       rotateSum: isSet(object.rotateSum) ? RotateSumApplyClearParams.fromJSON(object.rotateSum) : undefined,
       unsqueeze: isSet(object.unsqueeze) ? UnsqueezeSqueezeApplyClearParams.fromJSON(object.unsqueeze) : undefined,
       squeeze: isSet(object.squeeze) ? UnsqueezeSqueezeApplyClearParams.fromJSON(object.squeeze) : undefined,
+      slice: isSet(object.slice) ? SliceApplyClearParams.fromJSON(object.slice) : undefined,
     };
   },
 
@@ -1454,6 +1576,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.squeeze !== undefined) {
       obj.squeeze = UnsqueezeSqueezeApplyClearParams.toJSON(message.squeeze);
+    }
+    if (message.slice !== undefined) {
+      obj.slice = SliceApplyClearParams.toJSON(message.slice);
     }
     return obj;
   },
@@ -1501,6 +1626,9 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       : undefined;
     message.squeeze = (object.squeeze !== undefined && object.squeeze !== null)
       ? UnsqueezeSqueezeApplyClearParams.fromPartial(object.squeeze)
+      : undefined;
+    message.slice = (object.slice !== undefined && object.slice !== null)
+      ? SliceApplyClearParams.fromPartial(object.slice)
       : undefined;
     return message;
   },
