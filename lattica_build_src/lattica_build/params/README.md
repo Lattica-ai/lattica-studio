@@ -183,7 +183,8 @@ For staged slot ops (`HomRunningSum`, `HomExpand`, `HomSumSlots`):
 
 `HomSumSlots` follows the staged structure but does not consume levels.
 
-See `src/lattica_build/operators/slots/README.md` for worked examples.
+See the [slot-operator guide](../operators/slots/README.md) for a worked
+example.
 
 ## Practical workflow
 

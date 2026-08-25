@@ -15,10 +15,12 @@ from lattica_query.logging import (
     log_size_info,
     log_status,
 )
+from lattica_query.storage.tokens import invalidate_local_key_cache
 
 from .exceptions import (
     CompilationError,
     CompilationTimeoutError,
+    InvalidResourceResponseError,
 )
 from .resources.models import ModelsAPI
 from .resources.workers import WorkersAPI
@@ -41,7 +43,7 @@ class DeploymentAPI:
             self,
             artifact: BuildArtifact,
             model_name: str,
-            instance_type: InstanceType = InstanceType.G6E_2XLARGE,
+            instance_type: InstanceType = InstanceType.G7E_2XLARGE,
             num_devices: int = 1,
     ) -> ModelId:
 
@@ -79,7 +81,7 @@ class DeploymentAPI:
                 hom_pipeline,
                 hom_params,
                 tmp_file.name,
-                print_graph_after_build=display_graph
+                display_graph=display_graph
             )
 
             return self.deploy(
@@ -122,17 +124,18 @@ class DeploymentAPI:
 
                 return model_id
 
-            model_id = existing_model["modelId"]
+            model_id = existing_model.id
+            if model_id is None:
+                raise InvalidResourceResponseError(
+                    f"Model '{model_name}' does not contain a model ID"
+                )
 
             log_info(
                 f"model '{model_name}' already exists; "
                 f"redeploying into model {model_id}"
             )
 
-            existing_num_devices = existing_model.get(
-                "numDevices",
-                1,
-            )
+            existing_num_devices = existing_model.num_devices or 1
 
             if existing_num_devices != num_devices:
                 raise ValueError(
@@ -150,9 +153,7 @@ class DeploymentAPI:
                 model_id=model_id,
             )
 
-            current_instance_type = existing_model.get(
-                "instanceTypeId"
-            )
+            current_instance_type = existing_model.instance_type
 
             if current_instance_type != instance_type.value:
                 log_info(
@@ -164,6 +165,9 @@ class DeploymentAPI:
                     model_id,
                     instance_type=instance_type,
                 )
+
+            # Redeploy may change preprocessing/model metadata; drop stale local key bundle.
+            invalidate_local_key_cache()
 
             return model_id
 
@@ -228,7 +232,7 @@ class DeploymentAPI:
                     model_id
                 )
 
-                if model.get("is_compiled", False):
+                if model.is_compiled:
                     log_status(
                         "compilation complete"
                     )
@@ -239,15 +243,13 @@ class DeploymentAPI:
 
                     return
 
-                if model.get("status") == "INACTIVE":
+                if model.status == "INACTIVE":
                     message = (
                         f"Model {model_id} compilation failed "
                         "(model status: INACTIVE)"
                     )
 
-                    compilation_error = model.get(
-                        "compilation_error"
-                    )
+                    compilation_error = model.compilation_error
 
                     if compilation_error:
                         message += (
@@ -258,7 +260,7 @@ class DeploymentAPI:
                         message
                     )
 
-                status = model.get("status")
+                status = model.status
 
                 if status:
                     log_status(

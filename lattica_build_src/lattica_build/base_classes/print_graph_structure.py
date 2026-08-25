@@ -16,9 +16,6 @@ import lattica_build.serialization.hom_op_pb2 as hom_op_pb2
 
 _GRAPH_FILENAME = "hom_pipeline.json"
 
-# Absolute terminal column at which q= should ideally begin.
-_Q_COLUMN = 78
-
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -48,6 +45,7 @@ class Style:
 class Renderer:
     color: bool = True
     verbose: bool = False
+    hom_metadata: bool = True
 
     def style(self, text: str, *styles: str) -> str:
         if not self.color:
@@ -90,29 +88,6 @@ class Scope:
 
 def _visible_len(text: str) -> int:
     return len(_ANSI_RE.sub("", text))
-
-
-def _pad_to_absolute_column(
-    text: str,
-    *,
-    start_column: int,
-    target_column: int,
-    min_gap: int = 2,
-) -> str:
-    """
-    Pad text so that the next token starts at target_column.
-
-    If the line is already too deep/long to reach target_column, preserve
-    at least min_gap spaces instead.
-    """
-    end_column = start_column + _visible_len(text)
-
-    gap = target_column - end_column
-
-    if gap < min_gap:
-        gap = min_gap
-
-    return text + " " * gap
 
 
 # ---------------------------------------------------------------------------
@@ -244,19 +219,6 @@ def _modulus_chain_info(
 # ---------------------------------------------------------------------------
 
 
-def _normalize_axis(
-    axis: int,
-    ndim: int,
-) -> int | None:
-    if axis < 0:
-        axis += ndim
-
-    if 0 <= axis < ndim:
-        return axis
-
-    return None
-
-
 def _format_scale(scale: Any) -> str:
     try:
         value = float(scale)
@@ -303,26 +265,11 @@ def _format_hom_shape(
             Style.DIM,
         )
 
-    n_axis = None
-
-    if value.n_axis is not None:
-        n_axis = _normalize_axis(
-            value.n_axis,
-            len(value.shape),
-        )
-
-    dims: list[str] = []
-
-    for axis, dim in enumerate(value.shape):
-        text = str(dim)
-
-        if axis == n_axis:
-            text = f"@{text}"
-
-        dims.append(text)
-
     return renderer.style(
-        "(" + ", ".join(dims) + ")",
+        "(" + ", ".join(
+            str(dim)
+            for dim in value.shape
+        ) + ")",
         Style.BLUE,
     )
 
@@ -414,22 +361,41 @@ def _format_hom_value_main(
         )
     ]
 
-    if value.shape is not None:
-        parts.append(
-            "shape="
-            + _format_hom_shape(
-                value,
-                renderer=renderer,
+    parts.append(
+        "shape="
+        + _format_hom_shape(
+            value,
+            renderer=renderer,
+        )
+    )
+
+    if renderer.hom_metadata:
+        rendered_n_axis = (
+            renderer.style(
+                str(value.n_axis),
+                Style.BLUE,
             )
+            if value.n_axis is not None
+            else renderer.style("—", Style.DIM)
         )
 
-    if value.scale is not None:
         parts.append(
-            "scale="
-            + renderer.style(
+            "n_axis="
+            + rendered_n_axis
+        )
+
+        rendered_scale = (
+            renderer.style(
                 _format_scale(value.scale),
                 Style.BRIGHT_GREEN,
             )
+            if value.scale is not None
+            else renderer.style("—", Style.DIM)
+        )
+
+        parts.append(
+            "scale="
+            + rendered_scale
         )
 
     return "  ".join(parts)
@@ -438,29 +404,26 @@ def _format_hom_value_main(
 def _format_hom_value(
     value: ValueInfo,
     *,
-    start_column: int,
     modulus_chain: ModulusChainInfo | None,
     renderer: Renderer,
-) -> str:
+) -> tuple[str, str | None]:
     main = _format_hom_value_main(
         value,
         renderer=renderer,
     )
 
-    q_chain = _format_q_chain(
-        value,
-        modulus_chain=modulus_chain,
-        renderer=renderer,
+    q_chain = (
+        _format_q_chain(
+            value,
+            modulus_chain=modulus_chain,
+            renderer=renderer,
+        )
+        if renderer.hom_metadata
+        else None
     )
 
     if q_chain is None:
-        return main
-
-    main = _pad_to_absolute_column(
-        main,
-        start_column=start_column,
-        target_column=_Q_COLUMN,
-    )
+        return main, None
 
     q_label = renderer.style(
         "q=",
@@ -468,11 +431,7 @@ def _format_hom_value(
         Style.MAGENTA,
     )
 
-    return (
-        main
-        + q_label
-        + q_chain
-    )
+    return main, q_label + q_chain
 
 
 def _format_scalar(
@@ -576,15 +535,9 @@ def _print_input(
     value_id = str(value_ref)
     value = scope.values.get(value_id)
 
-    start_column = (
-        _visible_len(line_prefix)
-        + _visible_len(rendered_label)
-    )
-
     if value is not None:
-        rendered_value = _format_hom_value(
+        rendered_value, rendered_q = _format_hom_value(
             value,
-            start_column=start_column,
             modulus_chain=modulus_chain,
             renderer=renderer,
         )
@@ -593,12 +546,20 @@ def _print_input(
             value_ref,
             renderer=renderer,
         )
+        rendered_q = None
 
     print(
         line_prefix
         + rendered_label
         + rendered_value
     )
+
+    if rendered_q is not None:
+        print(
+            f"{prefix}│  "
+            + " " * _visible_len(rendered_label)
+            + rendered_q
+        )
 
     if renderer.verbose:
         producer = scope.producers.get(value_id)
@@ -633,9 +594,8 @@ def _print_output(
         + arrow
     )
 
-    rendered_value = _format_hom_value(
+    rendered_value, rendered_q = _format_hom_value(
         value,
-        start_column=_visible_len(line_prefix),
         modulus_chain=modulus_chain,
         renderer=renderer,
     )
@@ -645,10 +605,79 @@ def _print_output(
         + rendered_value
     )
 
+    if rendered_q is not None:
+        value_indent = (
+            _visible_len(line_prefix)
+            - _visible_len(prefix)
+        )
+
+        print(
+            prefix
+            + " " * value_indent
+            + rendered_q
+        )
+
 
 # ---------------------------------------------------------------------------
 # Scope handling
 # ---------------------------------------------------------------------------
+
+
+def _value_with_id(
+    value: ValueInfo,
+    value_id: Any,
+) -> ValueInfo:
+    return ValueInfo(
+        id=str(value_id),
+        shape=value.shape,
+        n_axis=value.n_axis,
+        active_rows=value.active_rows,
+        active_cols=value.active_cols,
+        scale=value.scale,
+    )
+
+
+def _seed_section_inputs(
+    section: Any,
+    *,
+    scope: Scope,
+) -> None:
+    if not isinstance(section, dict):
+        return
+
+    raw_values = section.get("input_values")
+
+    if not isinstance(raw_values, list):
+        return
+
+    caller_inputs = section.get("inputs", [])
+    body_inputs = section.get("body_inputs", [])
+
+    aliases = [
+        values
+        if isinstance(values, list)
+        else []
+        for values in (
+            caller_inputs,
+            body_inputs,
+        )
+    ]
+
+    for index, raw_value in enumerate(raw_values):
+        value = _value_info(raw_value)
+
+        if value is None:
+            continue
+
+        scope.values[value.id] = value
+
+        for names in aliases:
+            if index < len(names):
+                alias = _value_with_id(
+                    value,
+                    names[index],
+                )
+                scope.values[alias.id] = alias
 
 
 def _make_local_composite_scope(
@@ -1207,11 +1236,8 @@ def _print_pipeline_header(
         )
 
         if value is not None:
-            rendered_value = _format_hom_value(
+            rendered_value, rendered_q = _format_hom_value(
                 value,
-                start_column=_visible_len(
-                    line_prefix
-                ),
                 modulus_chain=modulus_chain,
                 renderer=renderer,
             )
@@ -1230,6 +1256,7 @@ def _print_pipeline_header(
                     renderer=renderer,
                 )
             )
+            rendered_q = None
 
         role = (
             "primary"
@@ -1247,6 +1274,12 @@ def _print_pipeline_header(
             )
         )
 
+        if rendered_q is not None:
+            print(
+                " " * _visible_len(line_prefix)
+                + rendered_q
+            )
+
 
 def _print_section(
     *,
@@ -1256,6 +1289,12 @@ def _print_section(
     modulus_chain: ModulusChainInfo | None,
     renderer: Renderer,
 ) -> None:
+    section_renderer = Renderer(
+        color=renderer.color,
+        verbose=renderer.verbose,
+        hom_metadata=(section_name == "hom"),
+    )
+
     _print_section_header(
         section_name,
         renderer=renderer,
@@ -1283,7 +1322,7 @@ def _print_section(
         is_last=True,
         scope=scope,
         modulus_chain=modulus_chain,
-        renderer=renderer,
+        renderer=section_renderer,
     )
 
 
@@ -1293,6 +1332,8 @@ def print_graph(
     color: bool,
     verbose: bool,
 ) -> None:
+    print()
+
     renderer = Renderer(
         color=color,
         verbose=verbose,
@@ -1307,6 +1348,17 @@ def print_graph(
         modulus_chain=modulus_chain,
     )
 
+    sections = graph.get(
+        "pipeline_sections",
+        {},
+    )
+
+    if isinstance(sections, dict):
+        _seed_section_inputs(
+            sections.get("hom"),
+            scope=scope,
+        )
+
     _print_pipeline_header(
         graph,
         scope=scope,
@@ -1314,15 +1366,11 @@ def print_graph(
         renderer=renderer,
     )
 
-    sections = graph.get(
-        "pipeline_sections",
-        {},
-    )
-
     if not isinstance(
         sections,
         dict,
     ):
+        print()
         return
 
     for section_name in (
@@ -1337,6 +1385,11 @@ def print_graph(
         if section is None:
             continue
 
+        _seed_section_inputs(
+            section,
+            scope=scope,
+        )
+
         _print_section(
             section_name=section_name,
             section=section,
@@ -1344,6 +1397,8 @@ def print_graph(
             modulus_chain=modulus_chain,
             renderer=renderer,
         )
+
+    print()
 
 
 # ---------------------------------------------------------------------------

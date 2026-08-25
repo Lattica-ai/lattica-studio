@@ -11,6 +11,7 @@ and runtime lifecycle operations.
 ## Installation
 
 Requirements:
+
 - Python `>=3.11`
 
 Install:
@@ -22,6 +23,7 @@ pip install lattica-build
 ## What this produces
 
 The output is a serialized pipeline artifact (zip) containing:
+
 - `hom_pipeline.json`
 - `hom_pipeline.safetensors`
 
@@ -36,6 +38,7 @@ lattica-build --pipeline-module lattica_build.examples.example_branching --out /
 ```
 
 Expected result:
+
 - command exits successfully,
 - `/tmp/quickstart_branching.zip` exists,
 - command prints a JSON summary including members `hom_pipeline.json` and `hom_pipeline.safetensors`.
@@ -45,10 +48,32 @@ Expected result:
 
 | Topic | Doc |
 | --- | --- |
-| Quickstart and runnable examples | [`examples/README.md`](src/lattica_build/examples/README.md) |
-| Pipeline API and data binding (`HomomorphicPipeline`, `set_data`, serialization) | [`base_classes/README.md`](src/lattica_build/base_classes/README.md) |
-| Operator composition model | [`operators/README.md`](src/lattica_build/operators/README.md) |
-| Level/scale budget planning | [`params/README.md`](src/lattica_build/params/README.md) |
+| Repository overview and end-to-end workflow | [`../README.md`](../README.md) |
+| Quickstart and runnable examples | [`examples/README.md`](lattica_build/examples/README.md) |
+| Pipeline API and data binding (`HomomorphicPipeline`, `set_data`, serialization) | [`base_classes/README.md`](lattica_build/base_classes/README.md) |
+| Operator composition model | [`operators/README.md`](lattica_build/operators/README.md) |
+| Level/scale budget planning | [`params/README.md`](lattica_build/params/README.md) |
+
+## Python API
+
+The same build flow is available without the CLI:
+
+```python
+from lattica_build import build
+from lattica_build.examples import example_branching
+
+artifact = build(
+    example_branching.build_pipeline(),
+    example_branching.build_params(),
+    "branching.zip",
+    display_graph=True,
+)
+
+print(artifact.path)
+```
+
+`build(...)` returns a `BuildArtifact`; pass that object directly to
+`LatticaStudio.deploy(...)`.
 
 ## Build-to-deploy workflow
 
