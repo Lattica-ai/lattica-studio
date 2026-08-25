@@ -51,6 +51,9 @@ class HomomorphicPipeline:
     # Optional per-input plaintext scales for additional encrypted inputs.
     # Keys must match names from input_shape when input_shape is a dict.
     custom_scales: Dict[str, int]    = field(default_factory=dict)
+    # Optional per-input sub-ring sizes, overriding hom_params.n_slots.
+    # Keys must match names from input_shape when input_shape is a dict.
+    custom_n_slots: Dict[str, int]   = field(default_factory=dict)
     n_axis: Optional[int]  = None
 
     # Verification runs by default (the compiler derives an expected output from the clear
@@ -86,6 +89,11 @@ class HomomorphicPipeline:
         if unknown_scale_names:
             raise ValueError(f"custom_scales contains unknown inputs: {unknown_scale_names}")
 
+        if len(self.custom_n_slots.keys()) > 0:
+            assert set(self.custom_n_slots.keys()).issubset(
+                set(self.input_shape.keys())),(
+                ValueError("custom_n_slots contains names that are not in input_shape.\n"))
+
     def _get_pipe_section(self, section: PipeSec) -> Optional[HomOp]:
         match section:
             case PipeSec.CLIENT_PRE:
@@ -117,7 +125,7 @@ class HomomorphicPipeline:
         of this section.
 
         :param tensors: Tensor registry used to collect tensors referenced by the pipeline.
-        :param hom_params: Homomorphic encryption parameters used during serialization (e.g. n_slots).
+        :param hom_params: Homomorphic encryption parameters used during serialization (e.g. internal_n).
         """
 
         enc_params = hom_params.ring_switch_params or hom_params
@@ -130,7 +138,7 @@ class HomomorphicPipeline:
                 n_axis=resolve_n_axis(
                     tensor_shape=self.input_shape[name],
                     n_axis=self.n_axis,
-                    n_slots=(enc_params if name == self.primary_input_name else hom_params).n_slots,
+                    internal_n=(enc_params if name == self.primary_input_name else hom_params).internal_n,
                 ),
                 active_rows=copy.deepcopy(active_rows),
                 active_cols=copy.deepcopy(active_cols),
@@ -154,7 +162,7 @@ class HomomorphicPipeline:
             first_input.n_axis = resolve_n_axis(
                     tensor_shape=first_input.tensor_shape,
                     n_axis=self.n_axis,
-                    n_slots=enc_params.n_slots,
+                    internal_n=enc_params.internal_n,
                 )
             hom_inputs[0] = first_input
 
@@ -232,10 +240,21 @@ class HomomorphicPipeline:
         )
         hom_params.mod_chain = ModulusChain(hom_params)
 
+        # Resolve the n_slots for all the pipeline inputs.
+        # Unlisted inputs fall back to the pipeline-wide hom_params.n_slots.
+        resolved_n_slots = {
+            name: self.custom_n_slots.get(name, hom_params.n_slots)
+            for name in self.input_shape
+        }
+        # Overwrite hom_params.n_slots with the primary input n_slots so that enc()
+        # can use it. All the other inputs carry their own sub-ring on their CtMetadata.
+        hom_params.n_slots = resolved_n_slots[self.primary_input_name]
+
         tensors = {}
         attributes_dict = {
             "as_complex":                    self.as_complex,
             "custom_scales":                 self.custom_scales,
+            "custom_n_slots":                resolved_n_slots,
             "primary_input_name":            self.primary_input_name,
             "input_shape":                   self.input_shape,
             "n_axis":                        self.n_axis,

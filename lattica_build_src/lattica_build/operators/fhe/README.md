@@ -18,7 +18,7 @@ This folder contains FHE lifecycle operators that change ciphertext state (level
 
 ## Shape and scale notes
 
-- `HomRingSwitch` updates the packed axis size to `n_slots` (requires packed-axis metadata).
+- `HomRingSwitch` updates the packed axis size to `internal_n` (requires packed-axis metadata).
 - `Bootstrap`/`HomRingSwitch` use refreshed level state from bootstrap tracing.
 - `HomModSwitch` consumes level by dropping primes and scales down by dropped-prime product.
 

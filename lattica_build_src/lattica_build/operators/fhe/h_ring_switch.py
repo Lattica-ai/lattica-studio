@@ -27,16 +27,16 @@ class HomRingSwitch(HomOp):
     def infer_output_shape(
         self,
         input: HomValue,
-        n_slots: int | None = None,
+        internal_n: int | None = None,
         **kwargs,
     ) -> HomValue:
-        """Replace packed axis size with full-ring `n_slots` shape."""
-        if n_slots is None:
-            raise ValueError("RingSwitch output shape requires n_slots.")
+        """Replace packed axis size with full-ring `internal_n` shape."""
+        if internal_n is None:
+            raise ValueError("RingSwitch output shape requires internal_n.")
         if input.n_axis is None:
             raise ValueError("RingSwitch requires an input with an n-axis.")
         axis = input.n_axis
-        output_shape = input.tensor_shape[:axis] + (n_slots,) + input.tensor_shape[axis + 1:]
+        output_shape = input.tensor_shape[:axis] + (internal_n,) + input.tensor_shape[axis + 1:]
         return input.make_copy(tensor_shape=output_shape)
 
     def infer_output_level_and_scale(

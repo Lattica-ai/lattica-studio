@@ -42,10 +42,16 @@ class HomExpand(HomOp):
         self.stages_per_level = stages_per_level
         self.rows_budget = rows_budget
 
-    def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
+    def infer_output_shape(self, input: HomValue, internal_n: int | None = None, **kwargs) -> HomValue:
         """Infer shape by inserting axis `k_axis` with dimension `k`."""
         axis = to_pos_axis(self.k_axis, input.tensor_shape)
-        return infer_insert_axis_output_shape(input, axis, self.k)
+        output = infer_insert_axis_output_shape(input, axis, self.k)
+        if internal_n is None or output.n_axis is None:
+            return output
+
+        output_shape = list(output.tensor_shape)
+        output_shape[output.n_axis] = internal_n
+        return output.make_copy(tensor_shape=output_shape)
 
     def infer_output_level_and_scale(
         self,

@@ -82,7 +82,7 @@ class Tracer:
             inputs[i] = input
             self.custom_input_values[input.custom_input_ref] = input.make_copy()
 
-        inferred_output = op.infer_output_shape(*inputs, n_slots=self.hom_params.n_slots)
+        inferred_output = op.infer_output_shape(*inputs, internal_n=self.hom_params.internal_n)
         if (not self.client_mode):
             inferred_output = op.infer_output_level_and_scale(inferred_output, *inputs[1:], hom_params=self.hom_params)
 

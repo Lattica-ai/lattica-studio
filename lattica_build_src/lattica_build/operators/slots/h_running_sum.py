@@ -14,7 +14,7 @@ class HomRunningSum(HomOp):
     Args:
         cumsum_axis: Optional logical axis hint for cumulative summation.
         blocks_axis_external: Optional external blocking-axis hint.
-        k: Optional slot span to aggregate (defaults to full `n_slots`).
+        k: Optional slot span to aggregate (defaults to full `internal_n`).
         stage_sizes: Optional explicit stage schedule. When provided, it
             defines stage count as `len(stage_sizes)` and should satisfy
             `prod(stage_sizes) == k`.
@@ -54,7 +54,7 @@ class HomRunningSum(HomOp):
         levels.
         """
         if self.stage_sizes is None:
-            k = self.k if self.k is not None else hom_params.n_slots
+            k = self.k if self.k is not None else hom_params.internal_n
             num_levels = int(math.log2(k))
         else:
             num_levels = len(self.stage_sizes)

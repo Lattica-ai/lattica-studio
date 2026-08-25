@@ -14,17 +14,17 @@ def to_pos_axis(axis: int, shape: TensorShape) -> int:
     else:
         return axis + len(shape)
 
-def resolve_n_axis(tensor_shape: TensorShape, n_axis: int | None, n_slots: int | None) -> int | None:
+def resolve_n_axis(tensor_shape: TensorShape, n_axis: int | None, internal_n: int | None) -> int | None:
     rank = len(tensor_shape)
 
     if n_axis is not None:
         return to_pos_axis(n_axis, tensor_shape)
 
-    if n_slots is None:  # No n_slots provided, cannot infer n-axis
+    if internal_n is None:  # No internal_n provided, cannot infer n-axis
         return None
 
     pads = [
-        (n_slots - dim) % n_slots
+        (internal_n - dim) % internal_n
         for dim in tensor_shape
     ]
 

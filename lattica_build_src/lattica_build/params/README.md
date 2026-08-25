@@ -24,7 +24,7 @@ Main fields you will tune:
 
 | Field | Why it matters |
 | --- | --- |
-| `n` | Ring size (`n_slots = n // 2`); controls packing capacity and cost envelope. |
+| `n` | Ring size (`internal_n = n // 2`); controls packing capacity and cost envelope. |
 | `full_q_list_precision` | Level-budget blueprint (rows/cols structure). |
 | `pt_scale` | Default plaintext scale for the primary encrypted input. |
 | `decomposition_type` | Key-switch decomposition mode (`BV` or `HYBRID`). |
