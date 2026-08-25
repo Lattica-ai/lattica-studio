@@ -1,13 +1,13 @@
 [project]
 name = "lattica-studio"
-version = "0.1.1"
+version = "0.1.2"
 description = "Lattica Studio"
 authors = [
     {name = "LatticaAI Inc.", email = "support@lattica.ai"},
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "lattica-query>=2.0.0",
+    "lattica-query>=2.0.1",
     "lattica-build>=0.1.1",
     "pyyaml",
 ]
@@ -15,6 +15,12 @@ dependencies = [
 [build-system]
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.uv.sources]
+# Cross-repo dependencies (defined here so all members can reference them)
+lattica-query = { path = "../../client/lattica_query_src", editable = true }
+lattica-build = { path = "../lattica_build_src", editable = true }
+
 
 [tool.setuptools.packages.find]
 where = ["."]
