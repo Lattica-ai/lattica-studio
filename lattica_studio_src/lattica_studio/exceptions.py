@@ -12,3 +12,11 @@ class CompilationTimeoutError(LatticaStudioError):
 
 class WorkerStartupTimeoutError(LatticaStudioError):
     """Raised when a worker does not become ready in time."""
+
+
+class ResourceNotFoundError(LatticaStudioError):
+    """Raised when a requested Studio resource does not exist."""
+
+
+class InvalidResourceResponseError(LatticaStudioError):
+    """Raised when a backend resource payload is incomplete or malformed."""

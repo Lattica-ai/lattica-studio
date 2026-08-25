@@ -39,7 +39,7 @@ class Tracer:
         op_ir, inferred_output = self.serialize_op(op, *inputs)
         output = self._allocate_value(inferred_output)
         op_ir["inputs"] = [value.id for value in inputs]
-        op_ir["output"] = self._serialize_hom_val(output)
+        op_ir["output"] = self.serialize_hom_val(output)
         self.recorded_ops.append(op_ir)
         return output
 
@@ -127,14 +127,14 @@ class Tracer:
                 val.id: val.custom_input_ref for val in body_input_values if val.is_custom
             },
             "body_inputs": body_input_names,
-            "body_output": self._serialize_hom_val(body_output),
+            "body_output": self.serialize_hom_val(body_output),
             "child_ops": body_tracer.recorded_ops,
         }
 
         return op_ir, body_output
 
     @staticmethod
-    def _serialize_hom_val(hom_val):
+    def serialize_hom_val(hom_val):
         return {
             "id": hom_val.id,
             "tensor_shape": hom_val.tensor_shape,

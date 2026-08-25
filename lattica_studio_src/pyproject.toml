@@ -10,6 +10,7 @@ dependencies = [
     "lattica-query>=2.0.1",
     "lattica-build>=0.1.1",
     "pyyaml",
+    "mnist",
 ]
 
 [build-system]

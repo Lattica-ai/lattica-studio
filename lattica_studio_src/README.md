@@ -1,83 +1,94 @@
 # Lattica Studio
 
-Lattica Studio is the deployment client for [Lattica](https://www.lattica.ai)
+`lattica-studio` is the control-plane client for [Lattica](https://www.lattica.ai)
 homomorphic workloads.
 
-This package focuses on the full model-lifecycle flow around a homomorphic
-pipeline: deploy/compile, worker management, token management, and encrypted
-query execution.
+It handles model lifecycle operations:
 
-## Installation
+- deploy and compile encrypted pipelines
+- start and stop worker sessions
+- create and manage query tokens
+- coordinate first-time encrypted query setup
+
+Encrypted inference requests are executed by `lattica-query` after this setup.
+
+## Requirements
+
+- Python `>=3.11`
+- A valid Lattica account license key
+
+## Install
+
+Published package:
 
 ```bash
 pip install lattica-studio
 ```
 
-Requires Python `>=3.11`.
+## Quickstart
 
-## End-to-end flow (what must happen)
+Set your license key:
 
-To use a homomorphic pipeline in Lattica, the flow is:
+```bash
+export LATTICA_LICENSE_KEY="<your-license-key>"
+```
 
-1. **Deploy + compile**
-   - Register or update a model in the Lattica platform.
-   - Associate the model with the homomorphic pipeline.
-   - Trigger backend compilation.
+Run the end-to-end MNIST example:
 
-2. **Start a worker before serving encrypted queries**
-   - A worker must be up to process queries.
-   - Worker runtime can be slow to start and incurs cost.
-   - Start workers only when needed and stop them when done.
+```bash
+python -m lattica_studio.example
+```
 
-3. **Create a query token (model owner step)**
-   - The model owner creates a query token.
-   - Query clients use this token to access the model.
+The example in [`lattica_studio/example.py`](lattica_studio/example.py) builds a
+pipeline artifact, deploys it, starts a worker, creates a token, generates keys,
+and sends encrypted queries.
 
-4. **Query-client one-time setup per token/model context**
-   - Generate keys.
-   - Register the evaluation key (EK).
-   - Keep the secret key (SK) client-side for encrypt/decrypt.
+## Core workflow
 
-5. **Send encrypted queries**
-   - Encrypt inputs with SK-side client logic.
-   - Send encrypted payload to the model worker.
-   - Decrypt returned encrypted outputs with SK.
+Use this sequence in production and development:
 
-## Important development guidance
+1. Deploy and compile a model pipeline.
+2. Start a worker session for that model.
+3. Create a query token (owner/admin step).
+4. In query clients, generate keys and upload evaluation key (EK).
+5. Send encrypted queries and decrypt responses client-side.
 
-If the **pipeline architecture changes**, redeploy/compile is required and you
-should run the full setup flow again for that new compiled model context.
+## Practical iteration strategy
 
-Because worker runtime costs money, we recommend staged development rather than
-running the entire flow every iteration.
+Worker runtime is billed while active, so keep workers up only when needed.
 
-## Single source-of-truth script
+Recommended staged iteration:
 
-Use this script as the canonical flow reference:
+- **Stage A (pipeline changes):** deploy and compile.
+- **Stage B (one-time per compiled context):** create token, generate keys,
+  register EK.
+- **Stage C (repeated queries):** start worker only for query windows, then stop.
 
-- `lattica_studio/example.py`
+If the pipeline architecture changes, treat it as a new encrypted context:
+redeploy, create a fresh token, and regenerate keys.
 
-The script is intentionally staged, so you can run only subsets of operations
-by toggling stage flags (for example, deploy/compile only, or query only on an
-already-running model).
+## Resource inspection helper
 
-It also uses `try/finally` to ensure workers are stopped when requested.
+Use the table-printing helper to inspect account resources:
 
-## Suggested stage-by-stage usage
+```bash
+python -m lattica_studio.list_and_display models
+python -m lattica_studio.list_and_display workers
+python -m lattica_studio.list_and_display tokens
+python -m lattica_studio.list_and_display all
+```
 
-During development, use these stages incrementally:
+`list_and_display` reads `LATTICA_LICENSE_KEY` by default, or accepts
+`--license-key`.
 
-- Stage A: deploy + compile only.
-- Stage B (one-time setup per compiled pipeline context): create query token, start worker,
-  generate keys, register EK, then stop worker.
-- Stage C (recurring query runs): when needed, start worker and send encrypted queries,
-  encrypting/decrypting with the already registered key context.
+## More docs
 
-This gives fast feedback while minimizing unnecessary worker runtime.
+- [Monorepo overview and broader quickstart](../README.md)
+- [`lattica-build` source package docs](../lattica_build_src/README.md)
 
 ## License
 
-Distributed under the [LatticaAI Internal Use License](./LICENSE.md) — internal,
+Distributed under the [Lattica Studio License](./LICENSE.md): internal,
 non-commercial, research, or evaluation use only.
 
-Copyright © LatticaAI Inc. All rights reserved.
+Copyright (c) LatticaAI Inc. All rights reserved.

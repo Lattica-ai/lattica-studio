@@ -39,7 +39,7 @@ def build(
     params,
     out: str | Path,
     *,
-    print_graph_after_build: bool = False,
+    display_graph: bool = False,
 ) -> BuildArtifact:
     """Build a deployable artifact from a homomorphic pipeline and its params."""
     out = Path(out)
@@ -47,7 +47,7 @@ def build(
 
     pipeline.save(out, params)
 
-    if print_graph_after_build:
+    if display_graph:
         graph = _load_graph_json(out)
         print_graph(
             graph,
@@ -65,7 +65,7 @@ def build_module(
     module: ModuleType,
     out: str | Path,
     *,
-    print_graph_after_build: bool = False,
+    display_graph: bool = False,
 ) -> BuildArtifact:
     """Build an artifact from a module defining build_pipeline() and build_params()."""
     build_pipeline = getattr(module, "build_pipeline", None)
@@ -81,7 +81,7 @@ def build_module(
         build_pipeline(),
         build_params(),
         out,
-        print_graph_after_build=print_graph_after_build,
+        display_graph=display_graph,
     )
 
 
@@ -89,7 +89,7 @@ def build_file(
     pipeline_file: str | Path,
     out: str | Path,
     *,
-    print_graph_after_build: bool = False,
+    display_graph: bool = False,
 ) -> BuildArtifact:
     """Build an artifact from a standalone Python pipeline file."""
     module = _load_pipeline_module(Path(pipeline_file))
@@ -97,7 +97,7 @@ def build_file(
     return build_module(
         module,
         out,
-        print_graph_after_build=print_graph_after_build,
+        display_graph=display_graph,
     )
 
 
@@ -105,7 +105,7 @@ def build_module_name(
     module_name: str,
     out: str | Path,
     *,
-    print_graph_after_build: bool = False,
+    display_graph: bool = False,
 ) -> BuildArtifact:
     """Build an artifact from an importable pipeline-definition module."""
     module = importlib.import_module(module_name)
@@ -113,7 +113,7 @@ def build_module_name(
     return build_module(
         module,
         out,
-        print_graph_after_build=print_graph_after_build,
+        display_graph=display_graph,
     )
 
 
@@ -222,7 +222,7 @@ def main() -> None:
         artifact = build_module_name(
             args.pipeline_module,
             args.out,
-            print_graph_after_build=args.print_graph,
+            display_graph=args.print_graph,
         )
     else:
         pipeline_file = (
@@ -236,7 +236,7 @@ def main() -> None:
         artifact = build_file(
             pipeline_file,
             args.out,
-            print_graph_after_build=args.print_graph,
+            display_graph=args.print_graph,
         )
 
     print(
