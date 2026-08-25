@@ -1,0 +1,37 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:  # allows manual triggering
+    inputs:
+      package:
+        description: 'Which package to publish'
+        required: true
+        type: choice
+        options:
+          - lattica_build_src
+          - lattica_studio_src
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+
+      - name: Resolve package directory
+        id: resolve
+        run: |
+          PACKAGE="${{ github.event.inputs.package }}"
+          echo "package_path=$PACKAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to PyPI
+        uses: Lattica-ai/github-actions-templates/actions/publish-simple-python-package@main
+        with:
+          package_path: ${{ steps.resolve.outputs.package_path }}
+          pypi_token: ${{ secrets.PYPI_API_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

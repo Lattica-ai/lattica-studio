@@ -1,0 +1,38 @@
+name: Run integration tests
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+  workflow_dispatch:
+    inputs:
+      branch_name:
+        description: "Branch name to test (used for all repos where branch exists)"
+        required: true
+        default: "main"
+        type: string
+      run_toolkit_tests:
+        description: "Run toolkit unit tests"
+        required: false
+        default: false
+        type: boolean
+      test_instance_recovery:
+        description: "Test instance recovery"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  integration:
+    uses: lattica-ai/lattice-toolkit/.github/workflows/integration-tests.yml@main
+    secrets: inherit
+    with:
+      branch_name: ${{ inputs.branch_name || 'main' }}
+      run_toolkit_tests: ${{ inputs.run_toolkit_tests || false }}
+      test_instance_recovery: ${{ inputs.test_instance_recovery || false }}

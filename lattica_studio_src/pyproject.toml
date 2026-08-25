@@ -1,0 +1,22 @@
+[project]
+name = "lattica-studio"
+version = "0.1.1"
+description = "Lattica Studio"
+authors = [
+    {name = "LatticaAI Inc.", email = "support@lattica.ai"},
+]
+requires-python = ">=3.11"
+dependencies = [
+    "lattica-query",
+    "lattica-build",
+    "pyyaml",
+]
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lattica_studio*"]
+exclude = ["lattica_studio.internal_demos*"]
