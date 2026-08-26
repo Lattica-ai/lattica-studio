@@ -40,6 +40,12 @@ Practical section behavior:
 `custom_scales` is for additional encrypted inputs (not the primary input).
 Keys must match input names in `input_shape`.
 
+`custom_n_slots` sets a per-input sub-ring slot count. Keys must match input names in
+`input_shape`, and inputs that are not listed fall back to `HomParams.n_slots`
+(which itself defaults to the full ring, `internal_n = n // 2`). The primary input's
+resolved value is what encryption uses; every other input carries its own sub-ring in
+its ciphertext metadata. See [`params/README.md`](../params/README.md#slot-packing-internal_n-vs-n_slots).
+
 `n_axis` controls slot-axis interpretation for homomorphic layout-sensitive ops.
 
 When to set `n_axis`:
@@ -114,6 +120,9 @@ Common issues you will see while serializing:
   - call `set_data(...)` on all required leaf ops.
 - Invalid custom scales:
   - `custom_scales` cannot override the primary input name.
+- Invalid custom slot counts:
+  - `custom_n_slots` keys must all appear in `input_shape` (checked at construction),
+  - values should be powers of two, as for `HomParams.n_slots`.
 - Shape incompatibility:
   - broadcast or axis constraints fail in operator inference.
 - Level/scale incompatibility:
@@ -128,7 +137,7 @@ Debug workflow when validation fails:
 
 1. Construct `hom` graph (and optional client sections).
 2. Bind required data with `set_data(...)`.
-3. Define `input_shape` (and optional `custom_scales`).
+3. Define `input_shape` (and optional `custom_scales` / `custom_n_slots`).
 4. Choose `HomParams` (see [`params/README.md`](../params/README.md)).
 5. Serialize with `pipeline.save(...)`.
 6. Hand artifact to `lattica-studio`.
