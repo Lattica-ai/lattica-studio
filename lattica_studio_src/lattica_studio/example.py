@@ -6,7 +6,7 @@ import mnist
 import torch
 
 from lattica_build import build
-from lattica_build.examples import example_mnist_fc
+from lattica_build.examples.advanced import mnist_fc
 from lattica_query import QueryClient
 from lattica_studio import LatticaStudio
 
@@ -24,9 +24,9 @@ def load_mnist_test_data() -> tuple[torch.Tensor, torch.Tensor]:
     images = mnist.test_images()
     labels = mnist.test_labels()
 
-    x = torch.tensor(images, dtype=torch.float32).reshape((-1, *example_mnist_fc.INPUT_SHAPE))
+    x = torch.tensor(images, dtype=torch.float32).reshape((-1, *mnist_fc.INPUT_SHAPE))
     x = ((x / 255.0) - 0.1307) / 0.3081
-    y = torch.tensor(labels, dtype=torch.long).reshape((-1, example_mnist_fc.BATCH))
+    y = torch.tensor(labels, dtype=torch.long).reshape((-1, mnist_fc.BATCH))
 
     return x, y
 
@@ -42,14 +42,21 @@ def main() -> None:
 
     # Build the pipeline locally, then deploy and compile it.
     artifact = build(
-        example_mnist_fc.build_pipeline(),
-        example_mnist_fc.build_params(),
+        mnist_fc.build_pipeline(),
+        mnist_fc.build_params(),
         ARTIFACT_PATH,
         display_graph=True,
     )
 
-    # Optional, display the list of models in the Lattica Studio account.
-    # studio.models.display(studio.models.list())
+    # Optional, display the list of all models in the account.
+    # models = studio.models.list()
+    # studio.models.display(models)
+    # Optional, stop all workers of all models in the account.
+    # for model in models:
+    #     studio.workers.stop(model.id)
+    # Optional, deactivate all models in the account.
+    # for model in models:
+    #     studio.models.deactivate(model.id)
 
     model_id = studio.deploy(artifact, MODEL_NAME)
 
@@ -70,7 +77,7 @@ def main() -> None:
             result = client.run_query(sk, x[i])
 
             prediction = result.argmax(dim=-1)
-            accuracy = (prediction == y[i]).sum().item() / example_mnist_fc.BATCH
+            accuracy = (prediction == y[i]).sum().item() / mnist_fc.BATCH
 
             print(f"Query {i + 1}: accuracy {accuracy * 100:.1f}%")
 

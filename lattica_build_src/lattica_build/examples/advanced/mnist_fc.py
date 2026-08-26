@@ -59,4 +59,3 @@ def build_params() -> HomParams:
         pt_scale=2**20,
         decomposition_type=DecompositionType.BV,
     )
-

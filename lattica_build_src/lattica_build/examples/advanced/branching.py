@@ -34,4 +34,3 @@ def build_params() -> HomParams:
         decomposition_type=DecompositionType.HYBRID,
         num_special_primes=2,
     )
-

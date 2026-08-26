@@ -34,7 +34,7 @@ You hand this artifact to `lattica-studio`.
 Build the packaged branching example:
 
 ```bash
-lattica-build --pipeline-module lattica_build.examples.example_branching --out /tmp/quickstart_branching.zip
+lattica-build --pipeline-module lattica_build.examples.advanced.branching --out /tmp/quickstart_branching.zip
 ```
 
 Expected result:
@@ -60,11 +60,11 @@ The same build flow is available without the CLI:
 
 ```python
 from lattica_build import build
-from lattica_build.examples import example_branching
+from lattica_build.examples.advanced import branching
 
 artifact = build(
-    example_branching.build_pipeline(),
-    example_branching.build_params(),
+    branching.build_pipeline(),
+    branching.build_params(),
     "branching.zip",
     display_graph=True,
 )
