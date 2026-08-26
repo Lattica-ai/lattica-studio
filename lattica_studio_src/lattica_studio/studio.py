@@ -31,3 +31,7 @@ class LatticaStudio:
 
     def deploy_pipeline(self, *args, **kwargs):
         return self._deployment.deploy_pipeline(*args, **kwargs)
+
+    def deploy(self, *args, **kwargs):
+        """Deploy and compile an existing local build artifact."""
+        return self._deployment.deploy(*args, **kwargs)

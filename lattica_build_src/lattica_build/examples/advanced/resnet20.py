@@ -15,7 +15,7 @@ from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.params import HomParams
 
-N = 2 ** 11
+N = 2 ** 11         # Note: not secure for production use, run with 2**16 for secure parameters.
 LOG_N_SUBRING = 11
 PT_SCALE = 2 ** 30
 

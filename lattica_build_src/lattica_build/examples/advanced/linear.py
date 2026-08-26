@@ -23,7 +23,7 @@ def build_pipeline() -> HomomorphicPipeline:
     )
     bias = torch.tensor([0.1, -0.2, 0.3, 0.0], dtype=torch.float32)
     hom.set_data(weight, bias)
-    return HomomorphicPipeline(hom=hom, input_shape=(3,))
+    return HomomorphicPipeline(hom=hom, input_shape=(17, 1, 3,), n_axis=-1)
 
 
 def build_params() -> HomParams:
@@ -34,4 +34,3 @@ def build_params() -> HomParams:
         pt_scale=2**30,
         decomposition_type=DecompositionType.BV,
     )
-

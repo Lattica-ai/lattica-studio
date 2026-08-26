@@ -1,4 +1,5 @@
 import os
+from collections.abc import Iterable
 from typing import Optional
 
 from lattica_query.api.app import AppAPI
@@ -9,7 +10,9 @@ from lattica_query.logging import (
     log_size_info,
 )
 
-from ..types import JsonDict, ModelId, ModelInfo
+from ..display import display_table
+from ..exceptions import InvalidResourceResponseError, ResourceNotFoundError
+from ..types import JsonDict, Model, ModelId
 
 
 class ModelsAPI:
@@ -35,7 +38,7 @@ class ModelsAPI:
 
         return model_id
 
-    def get(self, model_id: ModelId) -> ModelInfo:
+    def get(self, model_id: ModelId) -> Model:
         """Retrieve information about a model."""
         response = self._http.send_http_request(
             "api/model/get_model_info",
@@ -44,13 +47,18 @@ class ModelsAPI:
             },
         )
 
-        return response.get("model", {})
+        if not isinstance(response, dict):
+            raise InvalidResourceResponseError("Model response is malformed")
+        data = response.get("model")
+        if not isinstance(data, dict):
+            raise InvalidResourceResponseError("Model response does not contain a model object")
+        return Model.from_api(data)
 
     def list(
         self,
         *,
         visibility: Optional[str] = None,
-    ) -> list[ModelInfo]:
+    ) -> list[Model]:
         """List models."""
         params = {}
 
@@ -62,18 +70,23 @@ class ModelsAPI:
             req_params=params,
         )
 
-        return response.get("models", [])
+        if not isinstance(response, dict):
+            raise InvalidResourceResponseError("Model list response is malformed")
+        models = response.get("models", [])
+        if not isinstance(models, list) or not all(isinstance(model, dict) for model in models):
+            raise InvalidResourceResponseError("Model list response is malformed")
+        return [Model.from_api(model) for model in models]
 
     def find_by_name(
         self,
         name: str,
-    ) -> Optional[ModelInfo]:
+    ) -> Optional[Model]:
         """Return a model with the given name, if one exists."""
         return next(
             (
                 model
                 for model in self.list()
-                if model.get("modelName") == name
+                if model.name == name
             ),
             None,
         )
@@ -82,18 +95,36 @@ class ModelsAPI:
         model = self.find_by_name(name)
 
         if model is None:
-            raise ValueError(
+            raise ResourceNotFoundError(
                 f"Model '{name}' does not exist."
             )
 
-        model_id = model.get("modelId")
+        model_id = model.id
 
         if model_id is None:
-            raise RuntimeError(
+            raise InvalidResourceResponseError(
                 f"Model '{name}' does not contain a modelId."
             )
 
         return model_id
+
+    @staticmethod
+    def display(models: Iterable[Model]) -> None:
+        """Print an easy-to-scan table of models."""
+        display_table(
+            ("NAME", "MODEL ID", "STATUS", "COMPILED", "INSTANCE"),
+            (
+                (
+                    model.name,
+                    model.id,
+                    model.status,
+                    "yes" if model.is_compiled else "no" if model.is_compiled is False else None,
+                    model.instance_type,
+                )
+                for model in models
+            ),
+            empty_message="No models found.",
+        )
 
     def update(
         self,

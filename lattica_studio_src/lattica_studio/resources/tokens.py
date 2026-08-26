@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Optional
 
 from lattica_query.api.app import (
@@ -6,6 +7,8 @@ from lattica_query.api.app import (
 )
 from lattica_query.storage.tokens import save_query_token, load_query_token
 
+from ..display import display_table
+from ..exceptions import InvalidResourceResponseError
 from ..types import JsonDict, ModelId, Token, TokenInfo
 
 
@@ -31,10 +34,12 @@ class TokensAPI:
             },
         )
 
+        if not isinstance(response, dict):
+            raise InvalidResourceResponseError("Token creation response is malformed")
         token = response.get("token")
 
         if token is None:
-            raise ValueError(
+            raise InvalidResourceResponseError(
                 "The server response does not contain a token."
             )
 
@@ -134,20 +139,29 @@ class TokensAPI:
             },
         )
 
+        if not isinstance(response, dict):
+            raise InvalidResourceResponseError("Token information response is malformed")
         token_data = response.get("token") or {}
         model_data = response.get("model") or {}
         worker_data = response.get("worker") or {}
         evaluation_key_data = response.get("evaluationKey") or {}
+        if not all(
+            isinstance(data, dict)
+            for data in (token_data, model_data, worker_data, evaluation_key_data)
+        ):
+            raise InvalidResourceResponseError("Token information response is malformed")
 
-        return {
-            "tokenStatus": token_data.get("status"),
-            "tokenName": token_data.get("tokenName"),
-            "tokenExpiration": token_data.get("expirationDate"),
-            "modelName": model_data.get("modelName"),
-            "modelStatus": model_data.get("status"),
-            "workerStatus": worker_data.get("status"),
-            "evalKeyCreatedAt": evaluation_key_data.get("createdAt"),
-        }
+        return TokenInfo(
+            id=token_data.get("tokenId"),
+            status=token_data.get("status"),
+            name=token_data.get("tokenName"),
+            expiration=token_data.get("expirationDate"),
+            model_id=model_data.get("modelId"),
+            model_name=model_data.get("modelName"),
+            model_status=model_data.get("status"),
+            worker_status=worker_data.get("status"),
+            evaluation_key_created_at=evaluation_key_data.get("createdAt"),
+        )
 
     def list(
         self,
@@ -155,7 +169,7 @@ class TokensAPI:
         status: Optional[str] = None,
         model_id: Optional[ModelId] = None,
         issue_date: Optional[str] = None,
-    ) -> list[JsonDict]:
+    ) -> list[TokenInfo]:
         """List tokens, optionally applying server-side filters."""
         params = {}
 
@@ -173,4 +187,21 @@ class TokensAPI:
             req_params=params,
         )
 
-        return response.get("tokens", [])
+        if not isinstance(response, dict):
+            raise InvalidResourceResponseError("Token list response is malformed")
+        tokens = response.get("tokens", [])
+        if not isinstance(tokens, list) or not all(isinstance(token, dict) for token in tokens):
+            raise InvalidResourceResponseError("Token list response is malformed")
+        return [TokenInfo.from_api(token) for token in tokens]
+
+    @staticmethod
+    def display(tokens: Iterable[TokenInfo]) -> None:
+        """Print an easy-to-scan table of query tokens."""
+        display_table(
+            ("NAME", "TOKEN ID", "STATUS", "MODEL", "EXPIRES"),
+            (
+                (token.name, token.id, token.status, token.model_name, token.expiration)
+                for token in tokens
+            ),
+            empty_message="No tokens found.",
+        )

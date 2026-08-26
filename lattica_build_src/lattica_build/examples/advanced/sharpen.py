@@ -3,7 +3,6 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 
-from lattica_build.examples.abstract import Example
 from lattica_build.operators.client_ops import Clamp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.operators.ml.h_conv import HomConv

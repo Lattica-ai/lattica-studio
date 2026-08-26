@@ -1,91 +1,86 @@
-"""Staged workflow for deploying and querying a model.
-
-Stages:
-- Stage A: deploy + compile only.
-- Stage B: create query token, start worker, generate keys, register EK, stop worker.
-- Stage C: recurring query runs using the already registered key context.
-"""
-
-from __future__ import annotations
+"""Build, deploy, and query an encrypted MNIST model end to end."""
 
 import os
-from asyncio import sleep
-from typing import Any
-from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
 
+import mnist
+import torch
 
-from lattica_build.examples import example_mnist_fc
-from lattica_studio import LatticaStudio
+from lattica_build import build
+from lattica_build.examples.advanced import mnist_fc
 from lattica_query import QueryClient
+from lattica_studio import LatticaStudio
 
 
-# Set explicitly, or keep empty to read LATTICA_LICENSE_KEY from environment.
-LICENSE_KEY = ""
-if not LICENSE_KEY:
-    LICENSE_KEY = os.getenv("LATTICA_LICENSE_KEY", "")
-if not LICENSE_KEY:
-    raise ValueError("Set LICENSE_KEY or LATTICA_LICENSE_KEY before running this script")
-MODEL_NAME = "MY_SHARPEN_MODEL"
-
-# Run stages selectively during development.
-RUN_DEPLOY_AND_COMPILE                   = True
-RUN_CREATE_QUERY_TOKEN_AND_GENERATE_KEYS = True
-RUN_ENCRYPTED_QUERY                      = True
+MODEL_NAME = "MNIST_FC"
+ARTIFACT_PATH = "mnist_fc_pipeline.zip"
+NUM_QUERIES = 3
 
 
-# Load MNIST test data for a single batch to query the model.
-print(f'Loading MNIST test data for a single batch to query the model...')
-test_dataset = datasets.MNIST(
-    "../data", train=False, download=True,
-    transform=transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,)),
-    ])
-)
-loader = DataLoader(test_dataset, batch_size=example_mnist_fc.BATCH, shuffle=True)
-input_data = iter(loader)
+def load_mnist_test_data() -> tuple[torch.Tensor, torch.Tensor]:
+    """Load MNIST test data, normalized and batched for the pipeline input."""
+    print("Loading MNIST test data...")
+    mnist.datasets_url = "https://raw.githubusercontent.com/fgnt/mnist/master/"
 
+    images = mnist.test_images()
+    labels = mnist.test_labels()
+
+    x = torch.tensor(images, dtype=torch.float32).reshape((-1, *mnist_fc.INPUT_SHAPE))
+    x = ((x / 255.0) - 0.1307) / 0.3081
+    y = torch.tensor(labels, dtype=torch.long).reshape((-1, mnist_fc.BATCH))
+
+    return x, y
 
 
 def main() -> None:
+    license_key = os.getenv("LATTICA_LICENSE_KEY", "")
+    if not license_key:
+        raise ValueError("Set LATTICA_LICENSE_KEY to run this example")
 
-    studio = LatticaStudio(LICENSE_KEY)
+    x, y = load_mnist_test_data()
 
-    if RUN_DEPLOY_AND_COMPILE:
-        model_id = studio.deploy_pipeline(
-            example_mnist_fc.build_pipeline(),
-            example_mnist_fc.build_params(),
-            MODEL_NAME,
-            display_graph=True,
-        )
-    else:
-        model_id = studio.models.get_id_by_name(MODEL_NAME)
+    studio = LatticaStudio(license_key)
 
+    # Build the pipeline locally, then deploy and compile it.
+    artifact = build(
+        mnist_fc.build_pipeline(),
+        mnist_fc.build_params(),
+        ARTIFACT_PATH,
+        display_graph=True,
+    )
 
-    if RUN_CREATE_QUERY_TOKEN_AND_GENERATE_KEYS:
+    # Optional, display the list of all models in the account.
+    # models = studio.models.list()
+    # studio.models.display(models)
+    # Optional, stop all workers of all models in the account.
+    # for model in models:
+    #     studio.workers.stop(model.id)
+    # Optional, deactivate all models in the account.
+    # for model in models:
+    #     studio.models.deactivate(model.id)
+
+    model_id = studio.deploy(artifact, MODEL_NAME)
+
+    # A worker must be running to serve encrypted queries.
+    with studio.workers.running(model_id, stop_on_exit=True):
         token = studio.tokens.create(model_id, save_as=MODEL_NAME)
-        with studio.workers.running(model_id, stop_on_exit=not RUN_ENCRYPTED_QUERY):
-            query_client = QueryClient(token)
-            query_client.generate_key(load_if_exists=False)
-    else:
-        token = studio.tokens.load(MODEL_NAME)
-        query_client = QueryClient(token)
 
+        client = QueryClient(token)
 
-    if RUN_ENCRYPTED_QUERY:
-        with studio.workers.running(model_id, stop_on_exit=True):
-            sk = query_client.generate_key(load_if_exists=True)
+        # Generates FHE keys and uploads the evaluation key.
+        # The secret key never leaves this machine.
+        sk = client.generate_key()
 
-            for _ in range(3):
-                pt, ground_truth = next(input_data)
-                # Run the query and print accuracy.
-                res = query_client.run_query(sk, pt)
-                y_pred = res.argmax(dim=-1)
-                print(f"Accuracy: {(y_pred == ground_truth).sum().item() / example_mnist_fc.BATCH * 100:.1f}%")
+        for i in range(NUM_QUERIES):
+            print(f"Running encrypted query {i + 1}...")
+            print(f"{x[i].shape=}...")
 
+            result = client.run_query(sk, x[i])
+
+            prediction = result.argmax(dim=-1)
+            accuracy = (prediction == y[i]).sum().item() / mnist_fc.BATCH
+
+            print(f"Query {i + 1}: accuracy {accuracy * 100:.1f}%")
 
 
 if __name__ == "__main__":
     main()
-

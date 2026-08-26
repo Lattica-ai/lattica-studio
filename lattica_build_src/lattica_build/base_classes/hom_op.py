@@ -26,6 +26,16 @@ class HomOp:
 
         with Tracer(tensors, **kwargs) as tracer:
             serialized_op, out_val = tracer.serialize_op(self, *inputs)
+
+        # Top-level section inputs are otherwise represented only by IDs. Keep
+        # their resolved shape, packing axis, level, and scale at the section
+        # boundary so graph consumers do not need to reconstruct that state.
+        serialized_op["inputs"] = [value.id for value in inputs]
+        serialized_op["input_values"] = [
+            tracer.serialize_hom_val(value)
+            for value in inputs
+        ]
+
         tracer.finalize()
         return serialized_op, out_val
 
