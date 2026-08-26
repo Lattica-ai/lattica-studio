@@ -1,0 +1,29 @@
+[project]
+name = "lattica-build"
+version = "0.1.2"
+description = "Lattica AI Build Client"
+authors = [{name = "LatticaAI Inc.", email = "hello@lattica.ai"}]
+readme = "README.md"
+license = "LicenseRef-LatticaAI-Evaluation"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.11"
+dependencies = [
+    "protobuf==5.27.1",
+    "torch==2.9.1",
+    "safetensors>=0.8.0",
+    "scipy>=1.17.1",
+]
+
+[project.scripts]
+lattica-build = "lattica_build.build:main"
+
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lattica_build*"]
+
+[tool.setuptools.package-data]
+lattica_build = ["params/*.json", "examples/advanced/*.pt"]
