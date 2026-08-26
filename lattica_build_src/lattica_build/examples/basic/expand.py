@@ -22,7 +22,5 @@ def build_params() -> HomParams:
         full_q_list_precision=((60,), (60,)),
         pt_scale=2**30,
         num_special_primes=1,
-        # Packing the (K,) input into a K-slot sub-ring already repeats it over the
-        # ring, so the explicit client-side Repeat() is no longer needed.
         n_slots=K,
     )
