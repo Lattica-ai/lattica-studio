@@ -4,14 +4,14 @@ from lattica_build.params.params import HomParams
 
 
 K = 8
-K_AXIS = 1
+EXPAND_AXIS = 1
 STAGE_SIZES = [2, 4]
 STAGES_PER_LEVEL = 2
 
 
 def build_pipeline() -> HomomorphicPipeline:
     return HomomorphicPipeline(
-        hom=HomExpand(K, K_AXIS, STAGE_SIZES, STAGES_PER_LEVEL),
+        hom=HomExpand(K, EXPAND_AXIS, STAGE_SIZES, STAGES_PER_LEVEL),
         input_shape=(K,),
     )
 

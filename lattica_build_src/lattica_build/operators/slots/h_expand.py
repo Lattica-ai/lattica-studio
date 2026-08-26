@@ -16,7 +16,7 @@ class HomExpand(HomOp):
     Args:
         k: Expansion span in slots (conceptually, produces `k` expanded
             positions/copies per slot pattern).
-        k_axis: Axis where the expanded dimension is inserted.
+        expand_axis: Axis where the expanded dimension is inserted.
         stage_sizes: Optional explicit stage schedule. When provided, it
             defines stage count as `len(stage_sizes)` and should satisfy
             `prod(stage_sizes) == k`.
@@ -30,21 +30,21 @@ class HomExpand(HomOp):
     def __init__(
         self,
         k: int,
-        k_axis: int = 0,
+        expand_axis: int = 0,
         stage_sizes: Sequence[int] | None = None,
         stages_per_level: int | None = None,
         rows_budget: Sequence[int] | None = None,
     ) -> None:
         super().__init__()
         self.k = k
-        self.k_axis = k_axis
+        self.expand_axis = expand_axis
         self.stage_sizes = stage_sizes
         self.stages_per_level = stages_per_level
         self.rows_budget = rows_budget
 
     def infer_output_shape(self, input: HomValue, internal_n: int | None = None, **kwargs) -> HomValue:
-        """Infer shape by inserting axis `k_axis` with dimension `k`."""
-        axis = to_pos_axis(self.k_axis, input.tensor_shape)
+        """Infer shape by inserting axis `expand_axis` with dimension `k`."""
+        axis = to_pos_axis(self.expand_axis, input.tensor_shape)
         output = infer_insert_axis_output_shape(input, axis, self.k)
         if internal_n is None or output.n_axis is None:
             return output
