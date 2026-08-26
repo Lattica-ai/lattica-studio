@@ -93,11 +93,8 @@ class HomParams:
         if not isinstance(self.pt_scale, int) or self.pt_scale < 1:
             raise ValueError(f"pt_scale must be an int >= 1; got {self.pt_scale!r}.")
 
-        if self.n_slots is None:
-            self.n_slots = self.internal_n
-        else:
-            if self.n_slots is not None and not (
-                    isinstance(self.n_slots, int) and _is_power_of_two(self.n_slots)):
+        if self.n_slots is not None:
+            if not (isinstance(self.n_slots, int) and _is_power_of_two(self.n_slots)):
                 raise ValueError(
                     f"n_slots must be None or a positive power of two; got {self.n_slots!r}.")
             if self.n_slots > self.internal_n:
