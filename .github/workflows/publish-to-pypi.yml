@@ -21,7 +21,7 @@ jobs:
     environment: pypi
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Fetch all history for tags
 
@@ -32,12 +32,12 @@ jobs:
           echo "package_path=$PACKAGE" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v9
 
       - name: Get package info
         id: pkg_info
@@ -52,7 +52,7 @@ jobs:
         working-directory: ${{ steps.resolve.outputs.package_path }}
         run: |
           uv build --wheel --out-dir dist
-          uv publish dist/*.whl
+          uv publish --verbose dist/*.whl
 
       - name: Create Git tag
         uses: Lattica-ai/github-actions-templates/actions/create-git-tag@main
