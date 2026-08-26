@@ -228,8 +228,8 @@ def main() -> None:
         pipeline_file = (
             args.pipeline_file
             or Path(
-                "src/lattica_build/examples/"
-                "example_branching.py"
+                "lattica_build/examples/"
+                "advanced/branching.py"
             )
         )
 

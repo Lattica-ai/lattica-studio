@@ -66,7 +66,7 @@ pip install -e ./lattica_studio_src
 No account needed for this step. Build the packaged MNIST example:
 
 ```bash
-lattica-build --pipeline-module lattica_build.examples.example_mnist_fc --out mnist.zip
+lattica-build --pipeline-module lattica_build.examples.advanced.mnist_fc --out mnist.zip
 ```
 
 On success the command writes `mnist.zip` and prints a JSON summary listing
@@ -99,17 +99,17 @@ import os
 import torch
 
 from lattica_build import build
-from lattica_build.examples import example_mnist_fc
+from lattica_build.examples.advanced import mnist_fc
 from lattica_query import QueryClient
 from lattica_studio import LatticaStudio
 
 studio = LatticaStudio(os.environ["LATTICA_LICENSE_KEY"])
-x = torch.zeros(example_mnist_fc.INPUT_SHAPE)
+x = torch.zeros(mnist_fc.INPUT_SHAPE)
 
 # Build locally, then deploy and compile on the platform.
 artifact = build(
-    example_mnist_fc.build_pipeline(),
-    example_mnist_fc.build_params(),
+    mnist_fc.build_pipeline(),
+    mnist_fc.build_params(),
     "mnist.zip",
 )
 model_id = studio.deploy(artifact, "my-mnist-model")
@@ -134,8 +134,8 @@ need the artifact on disk:
 
 ```python
 model_id = studio.deploy_pipeline(
-    example_mnist_fc.build_pipeline(),
-    example_mnist_fc.build_params(),
+    mnist_fc.build_pipeline(),
+    mnist_fc.build_params(),
     "my-mnist-model",
 )
 ```

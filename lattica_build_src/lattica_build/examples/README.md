@@ -1,105 +1,126 @@
-# Examples
+# Lattica Build examples
 
-This folder contains build-only examples for `lattica-build`.
+These examples define and serialize homomorphic pipelines using only
+`lattica-build`. They do not deploy workloads and do not depend on
+`lattica-studio` or the Lattica backend runtime.
 
-Use these modules to construct and serialize homomorphic pipelines. For deployment
-and runtime lifecycle, pass the resulting artifact to `lattica-studio`.
+Every runnable module exposes the two functions accepted by the build CLI:
 
-## What the examples compute
+- `build_pipeline()` constructs a `HomomorphicPipeline` and binds constants.
+- `build_params()` returns the matching `HomParams`.
 
-- `lattica_build.examples.example_branching`: defines a branching graph for `compare(x**2, x - 0.2)` on input shape `(4,)`.
-- `lattica_build.examples.example_linear`: defines a linear graph `y = W x + b` with explicit `set_data(weight, bias)` on input shape `(3,)`.
-- `lattica_build.examples.example_mnist_fc`: defines the MNIST FC demo graph (reshape -> linear -> square -> linear -> softmax) with packaged weights.
-- `lattica_build.build`: CLI entrypoint that accepts a pipeline-definition module or file and builds it.
+## Start with a small example
 
-Each example writes a zip artifact containing:
-- `hom_pipeline.json`
-- `hom_pipeline.safetensors`
-
-## How to run
+Build a single-operator pipeline:
 
 ```bash
-lattica-build --pipeline-module lattica_build.examples.example_branching --out /tmp/quickstart_branching.zip
-lattica-build --pipeline-module lattica_build.examples.example_linear --out /tmp/quickstart_linear.zip
-lattica-build --pipeline-module lattica_build.examples.example_mnist_fc --out /tmp/quickstart_mnist_fc.zip
+lattica-build \
+  --pipeline-module lattica_build.examples.basic.power \
+  --out /tmp/power.zip \
+  --print_graph
 ```
 
-## Module vs file input
-
-`lattica-build` supports two ways to point at a pipeline definition:
-
-- `--pipeline-module <import.path>`: use this when the pipeline lives in an importable module
-  (packaged examples, or your own installed package).
-- `pipeline_file.py` (positional path): use this when you have a standalone local script.
-
-Both forms require the target to define:
-- `build_pipeline()`
-- `build_params()`
-
-Example using your own local file:
+Build an example with bound matrix data:
 
 ```bash
-lattica-build /path/to/my_pipeline.py --out /tmp/my_pipeline.zip
+lattica-build \
+  --pipeline-module lattica_build.examples.basic.matmul \
+  --out /tmp/matmul.zip
 ```
 
-Expected result:
-- command exits successfully,
-- output zip file exists,
-- JSON summary prints artifact path, graph size, tensor size, and zip members.
+Each output zip contains `hom_pipeline.json` and
+`hom_pipeline.safetensors`. The command also prints a JSON summary with the
+artifact path, graph size, tensor size, and zip members.
 
-## Print the compiled graph
+## Example catalog
 
-You have two ways to print the graph.
+### Basic operators and composition
 
-1) Print immediately after build:
+These examples use an explicit ring degree of `n=2**13`.
+Their module names begin with `lattica_build.examples.basic`.
 
-```bash
-lattica-build --pipeline-module lattica_build.examples.example_branching --out /tmp/quickstart_branching.zip --print_graph
-lattica-build --pipeline-module lattica_build.examples.example_linear --out /tmp/quickstart_linear.zip --print_graph
-lattica-build --pipeline-module lattica_build.examples.example_mnist_fc --out /tmp/quickstart_mnist_fc.zip --print_graph
+| Module | Demonstrates |
+| --- | --- |
+| `power` | Squaring without an automatic modulus switch |
+| `add_sub` | Two named inputs and a branch of add/subtract operations |
+| `const_mul` | Multiplication by a bound plaintext tensor |
+| `matmul` | Matrix multiplication with deterministic bound data |
+| `axis_sum` | Reduction along one tensor axis |
+| `rotate_sum` | Rotation and summation over selected offsets |
+| `running_sum` | Staged running sums across packed slots |
+| `sum_slots` | Staged slot summation |
+| `expand` | Client-side repeat followed by slot expansion |
+| `reshape` | Tensor reshape with an explicit slots axis |
+| `squeeze` | Removing a size-one tensor dimension |
+| `unsqueeze` | Adding a size-one tensor dimension |
+| `slice` | Client and homomorphic tensor slicing |
+| `mod_switch` | An explicit modulus switch after a square |
+| `ring_switch` | Ring switching followed by square and constant multiply |
+| `module_list` | A dynamically populated `ModuleListHomOp` |
+
+### Guided and application examples
+
+These modules live under `lattica_build.examples.advanced`.
+
+| Module | Demonstrates |
+| --- | --- |
+| `linear` | A linear layer with explicit weight and bias data |
+| `branching` | Branch/rejoin topology with a comparison |
+| `sharpen` | Grouped convolution for image sharpening |
+| `mnist_fc` | Reshape, two FC layers, square, and client softmax |
+| `bootstrap` | Two bootstrapping operations |
+| `bitonic_sort` | Composite compare/exchange stages with bootstrapping |
+| `resnet20` | A full ResNet-20 pipeline using downloaded weights |
+
+`resnet20` downloads a pretrained model when its pipeline is built. All basic
+examples are self-contained.
+
+## Use the Python API
+
+```python
+from lattica_build import build
+from lattica_build.examples.advanced import mnist_fc
+
+artifact = build(
+    mnist_fc.build_pipeline(),
+    mnist_fc.build_params(),
+    "mnist-fc.zip",
+    display_graph=True,
+)
+print(artifact.path)
 ```
 
-2) Print from an existing artifact or standalone JSON:
+## Build a local file
+
+The CLI accepts either an importable module or a standalone Python file. A
+local file must define the same `build_pipeline()` and `build_params()` hooks:
 
 ```bash
-python -m lattica_build.base_classes.print_graph_structure /tmp/quickstart_branching.zip
+lattica-build /path/to/my_pipeline.py --out /tmp/my-pipeline.zip
+```
+
+Use `--pipeline-module` for installed packages and the positional file form
+while iterating on a script.
+
+## Inspect a compiled graph
+
+Print during a build with `--print_graph`, or inspect an existing artifact:
+
+```bash
+python -m lattica_build.base_classes.print_graph_structure /tmp/power.zip
 python -m lattica_build.base_classes.print_graph_structure /path/to/hom_pipeline.json
 ```
 
-The graph printer implementation lives in [`base_classes/print_graph_structure.py`](../base_classes/print_graph_structure.py).
+The output is grouped into `client_pre`, `hom`, and `client_post`. Node ids
+show composition order, value ids show data flow, `shape` includes the traced
+slots axis (`@`), and `scale` shows plaintext scale metadata.
 
-## How to interpret graph output
+For debugging, set a breakpoint in an example's `build_pipeline()` or an
+operator's `forward()` method and inspect `tensor_shape`, `n_axis`,
+`active_rows`, `active_cols`, and `pt_scale`.
 
-- Section headers (`client_pre`, `hom`, `client_post`) show where each operation runs.
-- Tree indentation and node ids (`[0.1]`, `[0.4.2]`) show composition and execution order.
-- Op names (`MatMul`, `ConstAdd`, `Compare`, `PolyEval`, ...) identify the primitive/composite steps used by your graph.
-- `inputs`/`output` value ids (`v0`, `v1`, ...) show how values flow between nodes.
-- `shape=(...)` is the traced ciphertext/value shape; `@` marks the slots axis (`n_axis`).
-- `scale=...` is the plaintext scale metadata (`pt_scale`) at that point in the graph.
+## Deployment boundary
 
-Use this output to answer practical questions such as:
-- where scales change,
-- where branch outputs reconnect,
-- and which op introduces an unexpected shape or metadata transition.
-
-## Debugging with breakpoints in `forward`
-
-You can debug value propagation by stepping through `forward` code in the example ops.
-
-- Branching example: set breakpoints in `BranchRejoinCompare.forward` in [`examples/example_branching.py`](example_branching.py).
-- Linear example: set breakpoints in `build_pipeline` in [`examples/example_linear.py`](example_linear.py), and in `HomLinear` internals if needed.
-- Run `python -m lattica_build.build` in debug mode with the target pipeline file argument.
-
-When inspecting intermediate values, focus on:
-- `tensor_shape`,
-- `n_axis`,
-- `active_rows` / `active_cols`,
-- `pt_scale`.
-
-This is often the fastest way to understand why a composed graph behaves differently than expected.
-
-## After examples
-
-Once an example artifact builds successfully, the next step is to hand that artifact
-to `lattica-studio` for deployment/runtime lifecycle operations.
-
+Building ends with the serialized artifact. Pass that artifact to
+`lattica-studio` only in deployment code; consumers that merely construct or
+test pipelines need `lattica-build` but not `lattica-studio`.

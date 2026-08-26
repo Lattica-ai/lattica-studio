@@ -5,42 +5,46 @@ from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.params import HomParams
 
+
 LOG_N = 10
 LOG_N_SUBRING = 8
 INPUT_SCALE = 2 ** 45
 
 
-def build_pipeline() -> HomomorphicPipeline:
+class _BootstrapTwice(HomOp):
+    def __init__(self, log_n_subring: int) -> None:
+        super().__init__()
+        self.first = Bootstrap(log_n_subring=log_n_subring)
+        self.second = Bootstrap(log_n_subring=log_n_subring)
+
+    def forward(self, x: HomValue) -> HomValue:
+        return self.second(self.first(x))
+
+
+def build_pipeline(
+    log_n: int = LOG_N,
+    log_n_subring: int = LOG_N_SUBRING,
+) -> HomomorphicPipeline:
     """Construct a bootstrapping homomorphic pipeline."""
-    class g(HomOp):
-        def __init__(self, log_n_subring):
-            super().__init__()
-            self.boot_1 = Bootstrap(log_n_subring=log_n_subring)
-            self.boot_2 = Bootstrap(log_n_subring=log_n_subring)
-
-        def forward(self, x: HomValue) -> HomValue:
-            x = self.boot_1(x)
-            x = self.boot_2(x)
-            return x
-
-    hom_pipeline = HomomorphicPipeline(
-        hom=g(log_n_subring=LOG_N_SUBRING),
-        input_shape=(2 ** (LOG_N - 1),)
+    return HomomorphicPipeline(
+        hom=_BootstrapTwice(log_n_subring),
+        input_shape=(2 ** (log_n - 1),),
     )
 
-    return hom_pipeline
 
-
-def build_params() -> HomParams:
+def build_params(
+    log_n: int = LOG_N,
+    input_scale: int = INPUT_SCALE,
+) -> HomParams:
     return HomParams(
-        n=2 ** LOG_N,
+        n=2 ** log_n,
         full_q_list_precision=(
             (60,),
             (60,),
             (60,),
             (60,),
         ),
-        pt_scale=INPUT_SCALE,
+        pt_scale=input_scale,
         sk_hw=192,
         num_special_primes=6,
         num_init_rows=2,
