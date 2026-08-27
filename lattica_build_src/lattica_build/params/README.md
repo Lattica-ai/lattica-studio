@@ -165,7 +165,7 @@ Pick decomposition settings with your backend performance profile in mind.
 
 Two distinct quantities describe slot capacity:
 
-- `internal_n` (read-only property, `n // 2`): the number of slots in a
+- `internal_n` (read-only property, `n // 2`): the number of physical slots in a
   ciphertext. It is fixed by the ring size.
 - `n_slots` (optional field, default `None`): the sub-ring the input is
   packed into. Must be a power of two. When it is smaller than `internal_n`, the

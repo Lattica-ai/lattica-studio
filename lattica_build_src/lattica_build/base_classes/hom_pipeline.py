@@ -115,7 +115,7 @@ class HomomorphicPipeline:
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
         self.client_preprocessing_data = binary_data
 
-    def _serialize_pipeline_sections(self, tensors, hom_params):
+    def _serialize_pipeline_sections(self, tensors, hom_params, resolved_n_slots):
         """
         Serialize the pipeline into its execution sections.
 
@@ -126,6 +126,7 @@ class HomomorphicPipeline:
 
         :param tensors: Tensor registry used to collect tensors referenced by the pipeline.
         :param hom_params: Homomorphic encryption parameters used during serialization (e.g. internal_n).
+        :param resolved_n_slots: Sub-ring per input name.
         """
 
         enc_params = hom_params.ring_switch_params or hom_params
@@ -139,6 +140,7 @@ class HomomorphicPipeline:
                     tensor_shape=self.input_shape[name],
                     n_axis=self.n_axis,
                     internal_n=(enc_params if name == self.primary_input_name else hom_params).internal_n,
+                    n_slots=resolved_n_slots[name]
                 ),
                 active_rows=copy.deepcopy(active_rows),
                 active_cols=copy.deepcopy(active_cols),
@@ -163,6 +165,7 @@ class HomomorphicPipeline:
                     tensor_shape=first_input.tensor_shape,
                     n_axis=self.n_axis,
                     internal_n=enc_params.internal_n,
+                    n_slots=resolved_n_slots[self.primary_input_name]
                 )
             hom_inputs[0] = first_input
 
@@ -261,8 +264,8 @@ class HomomorphicPipeline:
             "client_preprocessing_data_b64": base64.b64encode(self.client_preprocessing_data).decode("ascii"),
             "skip_verification":             self.skip_verification,
             "verification_data":             self._serialize_verification_data(tensors),
-            "modulus_chain":                self._serialize_modulus_chain(hom_params),
-            "pipeline_sections":             self._serialize_pipeline_sections(tensors, hom_params)
+            "modulus_chain":                 self._serialize_modulus_chain(hom_params),
+            "pipeline_sections":             self._serialize_pipeline_sections(tensors, hom_params, resolved_n_slots)
         }
         graph_bytes = json.dumps(attributes_dict).encode("utf-8")
         tensors_bytes = safetensors_save(tensors)
