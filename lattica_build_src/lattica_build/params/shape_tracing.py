@@ -32,7 +32,7 @@ def resolve_n_axis(tensor_shape: TensorShape, n_axis: int | None, internal_n: in
     if n_slots is not None:
         if n_slots != internal_n and tensor_shape[resolved_n_axis] > n_slots:
             raise ValueError(
-                f"Cannot resolve n_axis: tensor_shape={tensor_shape}, internal_n={internal_n}, n_slots={n_slots}. "
+                f"Cannot resolve n_axis: tensor_shape={tensor_shape}, internal_n={internal_n}, n_slots={n_slots}."
                 f"Resolved axis {resolved_n_axis} has size {tensor_shape[resolved_n_axis]} which exceeds n_slots={n_slots}."
             )
     return resolved_n_axis
