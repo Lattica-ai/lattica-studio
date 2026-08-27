@@ -166,13 +166,12 @@ Pick decomposition settings with your backend performance profile in mind.
 Two distinct quantities describe slot capacity:
 
 - `internal_n` (read-only property, `n // 2`): the number of slots in a
-  ciphertext. It is fixed by the ring size and is what shape tracing uses to
-  locate the packed axis (`n_axis`).
+  ciphertext. It is fixed by the ring size.
 - `n_slots` (optional field, default `None`): the sub-ring the input is
-  packed on. Must be a power of two. When it is smaller than `internal_n`, the
-  data is repeated `internal_n // n_slots` times across the ring.
+  packed into. Must be a power of two. When it is smaller than `internal_n`, the
+  data is repeated `internal_n // n_slots` times across the full ring physical slots.
 
-Leave `n_slots` unset to pack on the full ring. Set it when your vector is shorter than `internal_n`.
+Leave `n_slots` unset to pack on the full ring.
 
 `HomParams.n_slots` applies to the primary encrypted input. Additional encrypted
 inputs can be packed on their own sub-rings via `HomomorphicPipeline.custom_n_slots`

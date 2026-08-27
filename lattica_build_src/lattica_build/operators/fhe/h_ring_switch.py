@@ -24,20 +24,8 @@ class HomRingSwitch(HomOp):
         self.log_n_subring = log_n_subring
         self.log_n_boot_subring = log_n_boot_subring
 
-    def infer_output_shape(
-        self,
-        input: HomValue,
-        internal_n: int | None = None,
-        **kwargs,
-    ) -> HomValue:
-        """Replace packed axis size with full-ring `internal_n` shape."""
-        if internal_n is None:
-            raise ValueError("RingSwitch output shape requires internal_n.")
-        if input.n_axis is None:
-            raise ValueError("RingSwitch requires an input with an n-axis.")
-        axis = input.n_axis
-        output_shape = input.tensor_shape[:axis] + (internal_n,) + input.tensor_shape[axis + 1:]
-        return input.make_copy(tensor_shape=output_shape)
+    def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
+        return input.make_copy()
 
     def infer_output_level_and_scale(
         self,
