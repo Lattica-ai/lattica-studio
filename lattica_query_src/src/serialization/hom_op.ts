@@ -29,7 +29,7 @@ export enum HomOpType {
   Expand = 17,
   RunningSum = 18,
   PolyEval = 19,
-  AxisModSum = 20,
+  AxisSum = 20,
   Bootstrap = 21,
   RingSwitch = 22,
   UNRECOGNIZED = -1,
@@ -98,8 +98,8 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case "PolyEval":
       return HomOpType.PolyEval;
     case 20:
-    case "AxisModSum":
-      return HomOpType.AxisModSum;
+    case "AxisSum":
+      return HomOpType.AxisSum;
     case 21:
     case "Bootstrap":
       return HomOpType.Bootstrap;
@@ -155,8 +155,8 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "RunningSum";
     case HomOpType.PolyEval:
       return "PolyEval";
-    case HomOpType.AxisModSum:
-      return "AxisModSum";
+    case HomOpType.AxisSum:
+      return "AxisSum";
     case HomOpType.Bootstrap:
       return "Bootstrap";
     case HomOpType.RingSwitch:
@@ -203,11 +203,11 @@ export interface RepeatApplyClearParams {
 
 export interface ExpandApplyClearParams {
   k: number;
-  kAxis: number;
+  expandAxis: number;
   nAxisExternal: number;
 }
 
-export interface AxisModSumApplyClearParams {
+export interface AxisSumApplyClearParams {
   dim: number;
   keepDim: boolean;
 }
@@ -242,7 +242,7 @@ export interface ApplyClearParams {
   clamp?: ClampApplyClearParams | undefined;
   repeat?: RepeatApplyClearParams | undefined;
   expand?: ExpandApplyClearParams | undefined;
-  axisModSum?: AxisModSumApplyClearParams | undefined;
+  axisSum?: AxisSumApplyClearParams | undefined;
   runningSum?: RunningSumApplyClearParams | undefined;
   rotateSum?: RotateSumApplyClearParams | undefined;
   unsqueeze?: UnsqueezeSqueezeApplyClearParams | undefined;
@@ -818,7 +818,7 @@ export const RepeatApplyClearParams: MessageFns<RepeatApplyClearParams> = {
 };
 
 function createBaseExpandApplyClearParams(): ExpandApplyClearParams {
-  return { k: 0, kAxis: 0, nAxisExternal: 0 };
+  return { k: 0, expandAxis: 0, nAxisExternal: 0 };
 }
 
 export const ExpandApplyClearParams: MessageFns<ExpandApplyClearParams> = {
@@ -826,8 +826,8 @@ export const ExpandApplyClearParams: MessageFns<ExpandApplyClearParams> = {
     if (message.k !== 0) {
       writer.uint32(8).int32(message.k);
     }
-    if (message.kAxis !== 0) {
-      writer.uint32(16).int32(message.kAxis);
+    if (message.expandAxis !== 0) {
+      writer.uint32(16).int32(message.expandAxis);
     }
     if (message.nAxisExternal !== 0) {
       writer.uint32(24).int32(message.nAxisExternal);
@@ -855,7 +855,7 @@ export const ExpandApplyClearParams: MessageFns<ExpandApplyClearParams> = {
             break;
           }
 
-          message.kAxis = reader.int32();
+          message.expandAxis = reader.int32();
           continue;
         }
         case 3: {
@@ -878,7 +878,7 @@ export const ExpandApplyClearParams: MessageFns<ExpandApplyClearParams> = {
   fromJSON(object: any): ExpandApplyClearParams {
     return {
       k: isSet(object.k) ? globalThis.Number(object.k) : 0,
-      kAxis: isSet(object.kAxis) ? globalThis.Number(object.kAxis) : 0,
+      expandAxis: isSet(object.expandAxis) ? globalThis.Number(object.expandAxis) : 0,
       nAxisExternal: isSet(object.nAxisExternal) ? globalThis.Number(object.nAxisExternal) : 0,
     };
   },
@@ -888,8 +888,8 @@ export const ExpandApplyClearParams: MessageFns<ExpandApplyClearParams> = {
     if (message.k !== 0) {
       obj.k = Math.round(message.k);
     }
-    if (message.kAxis !== 0) {
-      obj.kAxis = Math.round(message.kAxis);
+    if (message.expandAxis !== 0) {
+      obj.expandAxis = Math.round(message.expandAxis);
     }
     if (message.nAxisExternal !== 0) {
       obj.nAxisExternal = Math.round(message.nAxisExternal);
@@ -903,18 +903,18 @@ export const ExpandApplyClearParams: MessageFns<ExpandApplyClearParams> = {
   fromPartial<I extends Exact<DeepPartial<ExpandApplyClearParams>, I>>(object: I): ExpandApplyClearParams {
     const message = createBaseExpandApplyClearParams();
     message.k = object.k ?? 0;
-    message.kAxis = object.kAxis ?? 0;
+    message.expandAxis = object.expandAxis ?? 0;
     message.nAxisExternal = object.nAxisExternal ?? 0;
     return message;
   },
 };
 
-function createBaseAxisModSumApplyClearParams(): AxisModSumApplyClearParams {
+function createBaseAxisSumApplyClearParams(): AxisSumApplyClearParams {
   return { dim: 0, keepDim: false };
 }
 
-export const AxisModSumApplyClearParams: MessageFns<AxisModSumApplyClearParams> = {
-  encode(message: AxisModSumApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+export const AxisSumApplyClearParams: MessageFns<AxisSumApplyClearParams> = {
+  encode(message: AxisSumApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
     if (message.dim !== 0) {
       writer.uint32(8).int32(message.dim);
     }
@@ -924,10 +924,10 @@ export const AxisModSumApplyClearParams: MessageFns<AxisModSumApplyClearParams> 
     return writer;
   },
 
-  decode(input: BinaryReader | Uint8Array, length?: number): AxisModSumApplyClearParams {
+  decode(input: BinaryReader | Uint8Array, length?: number): AxisSumApplyClearParams {
     const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseAxisModSumApplyClearParams();
+    const message = createBaseAxisSumApplyClearParams();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -956,14 +956,14 @@ export const AxisModSumApplyClearParams: MessageFns<AxisModSumApplyClearParams> 
     return message;
   },
 
-  fromJSON(object: any): AxisModSumApplyClearParams {
+  fromJSON(object: any): AxisSumApplyClearParams {
     return {
       dim: isSet(object.dim) ? globalThis.Number(object.dim) : 0,
       keepDim: isSet(object.keepDim) ? globalThis.Boolean(object.keepDim) : false,
     };
   },
 
-  toJSON(message: AxisModSumApplyClearParams): unknown {
+  toJSON(message: AxisSumApplyClearParams): unknown {
     const obj: any = {};
     if (message.dim !== 0) {
       obj.dim = Math.round(message.dim);
@@ -974,11 +974,11 @@ export const AxisModSumApplyClearParams: MessageFns<AxisModSumApplyClearParams> 
     return obj;
   },
 
-  create<I extends Exact<DeepPartial<AxisModSumApplyClearParams>, I>>(base?: I): AxisModSumApplyClearParams {
-    return AxisModSumApplyClearParams.fromPartial(base ?? ({} as any));
+  create<I extends Exact<DeepPartial<AxisSumApplyClearParams>, I>>(base?: I): AxisSumApplyClearParams {
+    return AxisSumApplyClearParams.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<AxisModSumApplyClearParams>, I>>(object: I): AxisModSumApplyClearParams {
-    const message = createBaseAxisModSumApplyClearParams();
+  fromPartial<I extends Exact<DeepPartial<AxisSumApplyClearParams>, I>>(object: I): AxisSumApplyClearParams {
+    const message = createBaseAxisSumApplyClearParams();
     message.dim = object.dim ?? 0;
     message.keepDim = object.keepDim ?? false;
     return message;
@@ -1333,7 +1333,7 @@ function createBaseApplyClearParams(): ApplyClearParams {
     clamp: undefined,
     repeat: undefined,
     expand: undefined,
-    axisModSum: undefined,
+    axisSum: undefined,
     runningSum: undefined,
     rotateSum: undefined,
     unsqueeze: undefined,
@@ -1368,8 +1368,8 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     if (message.expand !== undefined) {
       ExpandApplyClearParams.encode(message.expand, writer.uint32(74).fork()).join();
     }
-    if (message.axisModSum !== undefined) {
-      AxisModSumApplyClearParams.encode(message.axisModSum, writer.uint32(82).fork()).join();
+    if (message.axisSum !== undefined) {
+      AxisSumApplyClearParams.encode(message.axisSum, writer.uint32(82).fork()).join();
     }
     if (message.runningSum !== undefined) {
       RunningSumApplyClearParams.encode(message.runningSum, writer.uint32(90).fork()).join();
@@ -1465,7 +1465,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
             break;
           }
 
-          message.axisModSum = AxisModSumApplyClearParams.decode(reader, reader.uint32());
+          message.axisSum = AxisSumApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
         case 11: {
@@ -1527,7 +1527,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       clamp: isSet(object.clamp) ? ClampApplyClearParams.fromJSON(object.clamp) : undefined,
       repeat: isSet(object.repeat) ? RepeatApplyClearParams.fromJSON(object.repeat) : undefined,
       expand: isSet(object.expand) ? ExpandApplyClearParams.fromJSON(object.expand) : undefined,
-      axisModSum: isSet(object.axisModSum) ? AxisModSumApplyClearParams.fromJSON(object.axisModSum) : undefined,
+      axisSum: isSet(object.axisSum) ? AxisSumApplyClearParams.fromJSON(object.axisSum) : undefined,
       runningSum: isSet(object.runningSum) ? RunningSumApplyClearParams.fromJSON(object.runningSum) : undefined,
       rotateSum: isSet(object.rotateSum) ? RotateSumApplyClearParams.fromJSON(object.rotateSum) : undefined,
       unsqueeze: isSet(object.unsqueeze) ? UnsqueezeSqueezeApplyClearParams.fromJSON(object.unsqueeze) : undefined,
@@ -1562,8 +1562,8 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     if (message.expand !== undefined) {
       obj.expand = ExpandApplyClearParams.toJSON(message.expand);
     }
-    if (message.axisModSum !== undefined) {
-      obj.axisModSum = AxisModSumApplyClearParams.toJSON(message.axisModSum);
+    if (message.axisSum !== undefined) {
+      obj.axisSum = AxisSumApplyClearParams.toJSON(message.axisSum);
     }
     if (message.runningSum !== undefined) {
       obj.runningSum = RunningSumApplyClearParams.toJSON(message.runningSum);
@@ -1612,8 +1612,8 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     message.expand = (object.expand !== undefined && object.expand !== null)
       ? ExpandApplyClearParams.fromPartial(object.expand)
       : undefined;
-    message.axisModSum = (object.axisModSum !== undefined && object.axisModSum !== null)
-      ? AxisModSumApplyClearParams.fromPartial(object.axisModSum)
+    message.axisSum = (object.axisSum !== undefined && object.axisSum !== null)
+      ? AxisSumApplyClearParams.fromPartial(object.axisSum)
       : undefined;
     message.runningSum = (object.runningSum !== undefined && object.runningSum !== null)
       ? RunningSumApplyClearParams.fromPartial(object.runningSum)
