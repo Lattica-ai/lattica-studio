@@ -6,10 +6,10 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 
 | Operator | Operational intent |
 | --- | --- |
-| `HomExpand` | Assumes an input pattern of length `k` repeated `n_slots // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots. |
+| `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots. |
 | `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration. |
-| `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `n_slots // k` groups (columns) induced by slot layout. |
-| `HomSumSlots` | Performs slot-axis reduction over consecutive `k` elements, simultaneously across all `n_slots // k` groups (columns). |
+| `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns) induced by slot layout. |
+| `HomSumSlots` | Performs slot-axis reduction over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns). |
 
 ## What `k` means
 

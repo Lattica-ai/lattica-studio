@@ -18,27 +18,30 @@ def build_pipeline(
     log_n_subring: int = LOG_N_SUBRING,
 ) -> HomomorphicPipeline:
     input_shape = (3, 2 ** (log_n_subring - 1))
-    switched_shape = (3, 2 ** (log_n - 1))
     pipeline = HomomorphicPipeline(
         hom=SequentialHomOp(
             HomRingSwitch(log_n_subring=log_n_subring),
             HomSquare(),
-            HomConstMul(dims=switched_shape),
+            HomConstMul(dims=input_shape),
         ),
         input_shape=input_shape,
     )
     generator = torch.Generator().manual_seed(0)
-    pipeline.set_data(2, torch.rand(switched_shape, generator=generator))
+    pipeline.set_data(2, torch.rand(input_shape, generator=generator))
     return pipeline
 
 
 def build_params(
     log_n: int = LOG_N,
     input_scale: int = INPUT_SCALE,
+    log_n_subring: int = LOG_N_SUBRING,
 ) -> HomParams:
     return HomParams(
         full_q_list_precision=((60, 30),),
         n=2**log_n,
+        # The input is encrypted in the sub-ring HomRingSwitch switches up from,
+        # so its logical period is that sub-ring rather than n/2.
+        n_slots=2 ** (log_n_subring - 1),
         sk_hw=192,
         pt_scale=input_scale,
         num_special_primes=6,

@@ -39,7 +39,7 @@ class HomOp:
         tracer.finalize()
         return serialized_op, out_val
 
-    def infer_output_shape(self, *inputs, n_slots=None):
+    def infer_output_shape(self, *inputs, internal_n=None):
         if not self.is_leaf_op():
             raise RuntimeError("infer_output_shape should only be called directly on leaf ops")
         return inputs[0]

@@ -28,16 +28,20 @@ def build_pipeline(
     """Construct a bootstrapping homomorphic pipeline."""
     return HomomorphicPipeline(
         hom=_BootstrapTwice(log_n_subring),
-        input_shape=(2 ** (log_n - 1),),
+        # The logical shape is one sub-ring period; repeating it across the
+        # log_n ring is enc()'s job, driven by HomParams.n_slots below.
+        input_shape=(2 ** (log_n_subring - 1),),
     )
 
 
 def build_params(
     log_n: int = LOG_N,
     input_scale: int = INPUT_SCALE,
+    log_n_subring: int = LOG_N_SUBRING,
 ) -> HomParams:
     return HomParams(
         n=2 ** log_n,
+        n_slots=2 ** (log_n_subring - 1),
         full_q_list_precision=(
             (60,),
             (60,),
