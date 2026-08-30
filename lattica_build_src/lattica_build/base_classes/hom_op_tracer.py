@@ -142,6 +142,7 @@ class Tracer:
             "active_rows": hom_val.active_rows if hom_val.active_rows is not None else None,
             "active_cols": hom_val.active_cols if hom_val.active_cols is not None else None,
             "pt_scale": f"{hom_val.pt_scale:.10f}",
+            "n_slots": hom_val.n_slots,
         }
 
     @staticmethod

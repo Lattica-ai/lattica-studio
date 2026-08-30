@@ -144,13 +144,13 @@ class HomomorphicPipeline:
                     tensor_shape=self.input_shape[name],
                     n_axis=self.n_axis,
                     internal_n=(enc_params if name == self.primary_input_name else hom_params).internal_n,
-                    n_slots=(hom_params.n_slots if name == self.primary_input_name
-                             else self.custom_n_slots.get(name))
+                    n_slots=self.custom_n_slots.get(name, hom_params.n_slots),
                 ),
                 active_rows=copy.deepcopy(active_rows),
                 active_cols=copy.deepcopy(active_cols),
                 pt_scale=self.custom_scales.get(name, hom_params.pt_scale),
-                custom_input_ref=None if name == self.primary_input_name else name
+                custom_input_ref=None if name == self.primary_input_name else name,
+                n_slots=self.custom_n_slots.get(name, hom_params.n_slots),
             ) for name in hom_input_names
         ]
 
@@ -170,7 +170,7 @@ class HomomorphicPipeline:
                     tensor_shape=first_input.tensor_shape,
                     n_axis=self.n_axis,
                     internal_n=enc_params.internal_n,
-                    n_slots=hom_params.n_slots
+                    n_slots=first_input.n_slots
                 )
             hom_inputs[0] = first_input
 
