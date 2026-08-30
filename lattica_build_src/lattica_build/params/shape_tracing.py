@@ -14,21 +14,28 @@ def to_pos_axis(axis: int, shape: TensorShape) -> int:
     else:
         return axis + len(shape)
 
-def resolve_n_axis(tensor_shape: TensorShape, n_axis: int | None, n_slots: int | None) -> int | None:
+def resolve_n_axis(tensor_shape: TensorShape, n_axis: int | None, internal_n: int | None, n_slots: int | None) -> int | None:
     rank = len(tensor_shape)
 
     if n_axis is not None:
         return to_pos_axis(n_axis, tensor_shape)
 
-    if n_slots is None:  # No n_slots provided, cannot infer n-axis
+    if internal_n is None:  # No internal_n provided, cannot infer n-axis
         return None
 
     pads = [
-        (n_slots - dim) % n_slots
+        (internal_n - dim) % internal_n
         for dim in tensor_shape
     ]
 
-    return int(min(range(rank), key=lambda i: pads[i]))
+    resolved_n_axis = int(min(range(rank), key=lambda i: pads[i]))
+    if n_slots is not None:
+        if n_slots != internal_n and tensor_shape[resolved_n_axis] > n_slots:
+            raise ValueError(
+                f"Cannot resolve n_axis: tensor_shape={tensor_shape}, internal_n={internal_n}, n_slots={n_slots}."
+                f"Resolved axis {resolved_n_axis} has size {tensor_shape[resolved_n_axis]} which exceeds n_slots={n_slots}."
+            )
+    return resolved_n_axis
 
 def to_neg_axis(axis: int, shape: TensorShape) -> int:
     if axis < 0:

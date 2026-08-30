@@ -31,9 +31,10 @@ class HomParams:
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
     num_init_rows: int | None = None
     bootstrapping_variant: BootstrappingVariant = BootstrappingVariant.REAL
+    n_slots: int | None = None
 
     @property
-    def n_slots(self) -> int:
+    def internal_n(self) -> int:
         return self.n // 2
 
     @property
@@ -92,6 +93,16 @@ class HomParams:
         if not isinstance(self.pt_scale, int) or self.pt_scale < 1:
             raise ValueError(f"pt_scale must be an int >= 1; got {self.pt_scale!r}.")
 
+        if self.n_slots is None:
+            self.n_slots = self.internal_n
+        else:
+            if not (isinstance(self.n_slots, int) and _is_power_of_two(self.n_slots)):
+                raise ValueError(
+                    f"n_slots must be None or a positive power of two; got {self.n_slots!r}.")
+            if self.n_slots > self.internal_n:
+                raise ValueError(
+                    f"n_slots={self.n_slots} is larger than the {self.internal_n} available slots.")
+
         if not ((isinstance(self.num_init_rows, int) and self.num_init_rows >= 0) or self.num_init_rows is None):
             raise ValueError(f"num_init_rows must be None or an int >= 0; got {self.num_init_rows!r}.")
         if isinstance(self.bootstrapping_variant, int):
@@ -120,6 +131,7 @@ class HomParams:
             "bootstrapping": self.bootstrapping,
             "num_init_rows": self.num_init_rows,
             "bootstrapping_variant": self.bootstrapping_variant.value,
+            "n_slots": self.n_slots,
         }
 
     @classmethod

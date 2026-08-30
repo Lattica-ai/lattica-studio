@@ -24,7 +24,8 @@ Main fields you will tune:
 
 | Field | Why it matters |
 | --- | --- |
-| `n` | Ring size (`n_slots = n // 2`); controls packing capacity and cost envelope. |
+| `n` | Ring size; `internal_n = n // 2` is the derived physical slot count, and controls packing capacity and cost envelope. |
+| `n_slots` | Optional sub-ring slot count for the primary input (power of two). `None` means pack on the full ring (`internal_n`). |
 | `full_q_list_precision` | Level-budget blueprint (rows/cols structure). |
 | `pt_scale` | Default plaintext scale for the primary encrypted input. |
 | `decomposition_type` | Key-switch decomposition mode (`BV` or `HYBRID`). |
@@ -159,6 +160,23 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
   - derives `g_base_bits` from special-prime count.
 
 Pick decomposition settings with your backend performance profile in mind.
+
+## Slot packing: `internal_n` vs `n_slots`
+
+Two distinct quantities describe slot capacity:
+
+- `internal_n` (read-only property, `n // 2`): the number of physical slots in a
+  ciphertext. It is fixed by the ring size.
+- `n_slots` (optional field, default `None`): the sub-ring the input is
+  packed into. Must be a power of two. When it is smaller than `internal_n`, the
+  data is repeated `internal_n // n_slots` times across the full ring physical slots.
+
+Leave `n_slots` unset to pack on the full ring.
+
+`HomParams.n_slots` is the sub-ring of the primary encrypted input. Additional
+encrypted inputs get theirs from `HomomorphicPipeline.custom_n_slots`
+(see [`base_classes/README.md`](../base_classes/README.md)); any input left
+unspecified, primary or not, is packed on the full ring.
 
 ## Bootstrapping and ring-switch interaction
 

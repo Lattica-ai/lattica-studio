@@ -30,9 +30,9 @@ class Repeat(ClientOp):
         super().__init__()
         self.dim = dim
 
-    def infer_output_shape(self, input: HomValue, n_slots: int | None = None, **kwargs) -> HomValue:
-        if n_slots is None:
-            raise ValueError("Repeat output shape requires n_slots.")
+    def infer_output_shape(self, input: HomValue, internal_n: int | None = None, **kwargs) -> HomValue:
+        if internal_n is None:
+            raise ValueError("Repeat output shape requires internal_n.")
         axis = to_pos_axis(self.dim, input.tensor_shape)
-        output_shape = input.tensor_shape[:axis] + (n_slots,) + input.tensor_shape[axis + 1:]
+        output_shape = input.tensor_shape[:axis] + (internal_n,) + input.tensor_shape[axis + 1:]
         return input.make_copy(tensor_shape=output_shape)
