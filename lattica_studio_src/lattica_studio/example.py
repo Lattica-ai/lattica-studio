@@ -49,7 +49,7 @@ def main() -> None:
     )
 
     # Optional, display the list of all models in the account.
-    models = studio.models.list()
+    # models = studio.models.list()
     # studio.models.display(models)
     # Optional, stop all workers of all models in the account.
     # for model in models:
