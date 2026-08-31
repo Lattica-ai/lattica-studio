@@ -70,3 +70,17 @@ jobs:
               }
             }' |
             gh api               --method POST               /repos/Lattica-ai/github-actions-templates/dispatches               --input -
+
+          if [[ "$EVENT_TYPE" == "integration_tests" ]]; then
+            CENTRAL_WORKFLOW_URL="${GITHUB_SERVER_URL}/Lattica-ai/github-actions-templates/actions/workflows/centralized-integration-tests.yml"
+            CENTRAL_WORKFLOW_LABEL="centralized integration tests"
+          else
+            CENTRAL_WORKFLOW_URL="${GITHUB_SERVER_URL}/Lattica-ai/github-actions-templates/actions/workflows/invalidate-centralized-integration-tests.yml"
+            CENTRAL_WORKFLOW_LABEL="centralized integration-test invalidation"
+          fi
+
+          {
+            echo "### Central workflow"
+            echo "Triggered: [$CENTRAL_WORKFLOW_LABEL]($CENTRAL_WORKFLOW_URL)"
+            echo "Branch: \`$BRANCH\`"
+          } >> "$GITHUB_STEP_SUMMARY"
