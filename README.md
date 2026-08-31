@@ -146,6 +146,52 @@ creating a duplicate. Active workers are stopped and the model is recompiled.
 A complete, runnable version of the flow above lives in
 [`lattica_studio_src/lattica_studio/example.py`](./lattica_studio_src/lattica_studio/example.py).
 
+The encrypted SQL `SELECT ... WHERE` build definition is
+[`lattica_build.examples.advanced.sql_select_where`](./lattica_build_src/lattica_build/examples/advanced/sql_select_where.py).
+Its full internal-demo runner (with result verification) lives in the `client`
+repository at `tests/src/run_sql_select_where.py`.
+
+SQL is a **two-input** pipeline: the query `parameters` are sent with
+`run_query`, and the encrypted `database` is uploaded separately as custom data.
+The query structure (SQL text, schema, dimensions) is baked in at compile time,
+but the threshold **values** are runtime inputs — pick them per query with
+`prepare_parameters(...)`; no recompilation is needed to change them. To run it
+from this repository (the parser dependency stays ephemeral):
+
+```python
+# uv run --project lattica_studio_src --with sqlglot python
+from lattica_build.examples.advanced import sql_select_where as sql
+from lattica_query import QueryClient
+from lattica_studio import LatticaStudio
+from lattica_studio.types import InstanceType
+
+# Structure is fixed at compile time; threshold VALUES are runtime inputs.
+compiled = sql.compile_example(sql.generate_example_table())
+
+studio = LatticaStudio(license_key)
+model_id = studio.deploy_pipeline(
+    compiled.pipeline, compiled.hom_params, "sql_select_where",
+    instance_type=InstanceType.G4DN_XLARGE, num_devices=1,
+)
+with studio.workers.running(model_id, stop_on_exit=True):
+    client = QueryClient(studio.tokens.create(model_id))
+    sk = client.generate_key(load_if_exists=False)
+
+    parameters = compiled.prepare_parameters(          # pick your own thresholds
+        {"threshold1": 90.0, "threshold2": 80.0, "threshold3": 85.0}
+    )
+    client.encrypt_and_upload_custom_data(             # the "database" = second encrypted input
+        sk, {compiled.DATABASE_INPUT_NAME: compiled.prepared_database}
+    )
+    result = compiled.decode_result(client.run_query(sk, parameters))
+    print(result)
+```
+
+For a different database or query, compile with
+`compile_sql_select(query, schema=..., database=..., hom_params=..., options=...)`
+and supply your rows via `compiled.prepare_database(...)`; recompilation is only
+required for such structural changes, not for new threshold values.
+
 ### Display tables quickly
 
 If you just want to inspect resources in a printable table, use the helper
