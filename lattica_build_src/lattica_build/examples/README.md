@@ -71,9 +71,20 @@ These modules live under `lattica_build.examples.advanced`.
 | `bootstrap` | Two bootstrapping operations |
 | `bitonic_sort` | Composite compare/exchange stages with bootstrapping |
 | `resnet20` | A full ResNet-20 pipeline using downloaded weights |
+| `sql_select_where` | Compile a numeric `SELECT ... WHERE` subset into an encrypted multi-input pipeline |
 
 `resnet20` downloads a pretrained model when its pipeline is built. All basic
 examples are self-contained.
+
+The SQL parser is intentionally not a package dependency. Build the SQL example
+from a repository checkout with an ephemeral dependency:
+
+```bash
+uv run --project lattica_build_src --with sqlglot \
+  python -m lattica_build.build \
+  --pipeline-module lattica_build.examples.advanced.sql_select_where \
+  --out /tmp/sql-select-where.zip
+```
 
 ## Use the Python API
 
