@@ -1,38 +1,86 @@
-name: Run integration tests
+name: Centralized integration test controls
 
 on:
+  issue_comment:
+    types: [created]
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-  workflow_dispatch:
-    inputs:
-      branch_name:
-        description: "Branch name to test (used for all repos where branch exists)"
-        required: true
-        default: "main"
-        type: string
-      run_toolkit_tests:
-        description: "Run toolkit unit tests"
-        required: false
-        default: false
-        type: boolean
-      test_instance_recovery:
-        description: "Test instance recovery"
-        required: false
-        default: false
-        type: boolean
+    types: [synchronize]
 
 permissions:
-  id-token: write
   contents: read
+  pull-requests: read
 
 jobs:
-  integration:
-    uses: lattica-ai/lattice-toolkit/.github/workflows/integration-tests.yml@main
-    secrets: inherit
-    with:
-      branch_name: ${{ inputs.branch_name || 'main' }}
-      run_toolkit_tests: ${{ inputs.run_toolkit_tests || false }}
-      test_instance_recovery: ${{ inputs.test_instance_recovery || false }}
+  dispatch:
+    if: >
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       github.event.comment.body == '/runtests' &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Dispatch centralized integration workflow
+        env:
+          GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
+          API_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          DISPATCH_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "issue_comment" ]]; then
+            PR_NUMBER="$DISPATCH_PR_NUMBER"
+            PR_JSON="$(GH_TOKEN="$API_TOKEN" gh api "/repos/${REPOSITORY}/pulls/${PR_NUMBER}")"
+            HEAD_REPOSITORY="$(jq -r '.head.repo.full_name // empty' <<< "$PR_JSON")"
+            BRANCH="$(jq -r '.head.ref // empty' <<< "$PR_JSON")"
+            SHA="$(jq -r '.head.sha // empty' <<< "$PR_JSON")"
+
+            if [[ "$HEAD_REPOSITORY" != "$REPOSITORY" ]]; then
+              echo "Ignoring fork PR: $HEAD_REPOSITORY"
+              exit 0
+            fi
+
+            EVENT_TYPE="integration_tests"
+          else
+            PR_NUMBER="$DISPATCH_PR_NUMBER"
+            BRANCH="$PR_BRANCH"
+            SHA="$PR_SHA"
+            EVENT_TYPE="integration_tests_invalidated"
+          fi
+
+          test -n "$GH_TOKEN"
+          test -n "$BRANCH"
+          test -n "$SHA"
+
+          jq -n             --arg event_type "$EVENT_TYPE"             --arg repository "$REPOSITORY"             --arg branch "$BRANCH"             --arg sha "$SHA"             --arg pr_number "$PR_NUMBER"             '{
+              event_type: $event_type,
+              client_payload: {
+                dispatcher: {
+                  repository: $repository,
+                  branch: $branch,
+                  sha: $sha,
+                  pr_number: ($pr_number | tonumber)
+                }
+              }
+            }' |
+            gh api               --method POST               /repos/Lattica-ai/github-actions-templates/dispatches               --input -
+
+          if [[ "$EVENT_TYPE" == "integration_tests" ]]; then
+            CENTRAL_WORKFLOW_URL="${GITHUB_SERVER_URL}/Lattica-ai/github-actions-templates/actions/workflows/centralized-integration-tests.yml"
+            CENTRAL_WORKFLOW_LABEL="centralized integration tests"
+          else
+            CENTRAL_WORKFLOW_URL="${GITHUB_SERVER_URL}/Lattica-ai/github-actions-templates/actions/workflows/invalidate-centralized-integration-tests.yml"
+            CENTRAL_WORKFLOW_LABEL="centralized integration-test invalidation"
+          fi
+
+          {
+            echo "### Central workflow"
+            echo "Triggered: [$CENTRAL_WORKFLOW_LABEL]($CENTRAL_WORKFLOW_URL)"
+            echo "Branch: \`$BRANCH\`"
+          } >> "$GITHUB_STEP_SUMMARY"
