@@ -57,9 +57,8 @@ class HomomorphicPipeline:
     custom_n_slots: Dict[str, int]   = field(default_factory=dict)
     n_axis: Optional[int]  = None
 
-    # Verification runs by default (the compiler derives an expected output from the clear
-    # pipeline when none is supplied). Set True only to explicitly opt out of verification.
-    skip_verification: bool = True # TODO: fix verification flow and set to default False
+    # Set True to skip compile-time verification.
+    skip_verification: bool = False
     verification_data: dict  = field(default_factory=dict)
 
 
@@ -193,7 +192,21 @@ class HomomorphicPipeline:
         return ser_sections
 
 
+    def _validate_verification_data_keys(self):
+        """
+        Verify the verification data keys are ones the compiler knows how to use.
+        Fail on unknown keys instead of silently dropping them - which will cause an
+        'accuracy verification failed' error.
+        """
+        unknown_keys = set(self.verification_data) - set(self.input_shape) - {'accuracy', 'expected_output'}
+        if unknown_keys:
+            raise ValueError(
+                f"verification_data has unknown keys: {sorted(unknown_keys)}. "
+                f"Valid keys: input names {list(self.input_shape)}, 'accuracy', 'expected_output'.")
+
     def _serialize_verification_data(self, tensors):
+        self._validate_verification_data_keys()
+        
         res = {}
         if 'accuracy' in self.verification_data.keys():
             accuracy = self.verification_data['accuracy']
