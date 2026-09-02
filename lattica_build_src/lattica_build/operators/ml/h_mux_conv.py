@@ -49,7 +49,7 @@ class HomMuxConv(HomOp):
                  stride: Union[int, Tuple[int, int]] = (1, 1),
                  padding: Union[int, Tuple[int, int]] = (0, 0),
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
-                 with_modswitch: bool = True, use_bsgs: bool = True, n_cosets: int = 1,
+                 with_modswitch: bool = True, n_cosets: int = 1,
                  t_out: Optional[int] = None) -> None:
         super().__init__()
         self.kernel_shape = tuple(kernel_shape)
@@ -59,7 +59,6 @@ class HomMuxConv(HomOp):
         self.padding = _normalize_tuple(padding, 2, 'padding')
         self.dilation = _normalize_tuple(dilation, 2, 'dilation')
         self.with_modswitch = with_modswitch
-        self.use_bsgs = use_bsgs
         self.n_cosets = n_cosets
         # t_out: single-shot fused transition -- run strided and re-interleave at
         # t_out (=stride*t_in), so the decimation costs no separate repack level.
@@ -93,8 +92,7 @@ class HomMuxConvBn(HomOp):
 
     def __init__(self, in_channels, out_channels, kernel_size, t_in, image_hw,
                  stride=(1, 1), padding=(0, 0), dilation=(1, 1),
-                 use_bsgs: bool = True, t_out: Optional[int] = None,
-                 n_cosets: int = 1) -> None:
+                 t_out: Optional[int] = None, n_cosets: int = 1) -> None:
         super().__init__()
         self.n_cosets = n_cosets
         kh, kw = _normalize_tuple(kernel_size, 2, 'kernel_size')
@@ -105,7 +103,7 @@ class HomMuxConvBn(HomOp):
         self.conv = HomMuxConv(
             kernel_shape=(out_channels, in_channels, kh, kw), image_hw=image_hw,
             t_in=t_in, stride=stride, padding=padding, dilation=dilation,
-            use_bsgs=use_bsgs, t_out=t_out, n_cosets=n_cosets)
+            t_out=t_out, n_cosets=n_cosets)
         # bias sits on the conv's OUTPUT layout. For an aligned conv (t_out None)
         # the output gap follows the compiler's gap policy (conv_output_layout):
         # keep t_in if it divides C_out, else fall back to gcd(t_in, C_out) -- e.g.
@@ -145,8 +143,7 @@ class HomMuxStrideRepack(HomOp):
 
     def __init__(self, channels, image_hw, t_in,
                  stride: Union[int, Tuple[int, int]], t_new: int,
-                 with_modswitch: bool = True, use_bsgs: bool = True,
-                 n_cosets: int = 1) -> None:
+                 with_modswitch: bool = True, n_cosets: int = 1) -> None:
         super().__init__()
         self.channels = channels
         self.image_hw = _normalize_tuple(image_hw, 2, 'image_hw')
@@ -154,7 +151,6 @@ class HomMuxStrideRepack(HomOp):
         self.stride = _normalize_tuple(stride, 2, 'stride')
         self.t_new = t_new
         self.with_modswitch = with_modswitch
-        self.use_bsgs = use_bsgs
         self.n_cosets = n_cosets
 
     def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
