@@ -6,7 +6,6 @@ corresponding backend op's constructor (see
     HomMuxConv          -> BackendHomMuxConv          (weight-only leaf)
     HomMuxStrideRepack  -> BackendHomMuxStrideRepack  (no data; geometric masks)
     HomMuxBiasAdd       -> BackendHomMuxBiasAdd       (per-channel bias leaf)
-    HomMuxGlobalAvgPool -> BackendHomMuxGlobalAvgPool (no data; geometric masks)
 
 LAYOUT CONTRACT: input and output are ONE ciphertext in the mux gap layout, so the
 ciphertext shape (external_shape == (n_slots,)) is unchanged by every op -- only the
@@ -102,11 +101,6 @@ class HomMuxConvBn(HomOp):
             kernel_shape=(out_channels, in_channels, kh, kw), image_hw=image_hw,
             t_in=t_in, stride=stride, padding=padding, dilation=dilation,
             t_out=t_out)
-        # bias sits on the conv's OUTPUT layout. For an aligned conv (t_out None)
-        # the output gap follows the compiler's gap policy (conv_output_layout):
-        # keep t_in if it divides C_out, else fall back to gcd(t_in, C_out) -- e.g.
-        # the 64->10 FC head keeps t=gcd(64,10)=2, not t_in=64 (which wouldn't
-        # divide C_out and is not a valid mux layout).
         if t_out is None:
             out_hw = image_hw
             out_t = t_in if out_channels % t_in == 0 else math.gcd(t_in, out_channels)
@@ -174,21 +168,3 @@ class HomMuxBiasAdd(HomOp):
         assert bias.ndim == 1 and len(bias) == self.channels, (
             f"mux bias should be 1D of length {self.channels}, got {tuple(bias.shape)}")
         super().set_data(bias)
-
-
-class HomMuxGlobalAvgPool(HomOp):
-    """Global average pool over H x W on the mux layout (group count 1, square,
-    power-of-two). Output: channel c's average in slot c."""
-
-    OP_TYPE = HomOpType.MuxGlobalAvgPool
-
-    def __init__(self, channels, image_hw, t_in, with_modswitch: bool = True) -> None:
-        super().__init__()
-        self.channels = channels
-        self.image_hw = _normalize_tuple(image_hw, 2, 'image_hw')
-        self.t_in = t_in
-        self.with_modswitch = with_modswitch
-
-    def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
-        return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
-                                        rows_budget=None, op_scale_up=None)
