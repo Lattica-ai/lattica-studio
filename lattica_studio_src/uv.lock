@@ -281,7 +281,6 @@ source = { editable = "." }
 dependencies = [
     { name = "lattica-build" },
     { name = "lattica-query" },
-    { name = "mnist" },
     { name = "pyyaml" },
 ]
 
@@ -289,7 +288,6 @@ dependencies = [
 requires-dist = [
     { name = "lattica-build", editable = "../lattica_build_src" },
     { name = "lattica-query", editable = "../../client/lattica_query_src" },
-    { name = "mnist" },
     { name = "pyyaml" },
 ]
 

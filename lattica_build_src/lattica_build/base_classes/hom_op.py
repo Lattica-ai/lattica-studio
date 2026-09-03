@@ -3,7 +3,11 @@
 import torch
 from torch import Tensor
 from typing import ClassVar
+import contextvars
 from lattica_build.serialization.hom_op_pb2 import HomOpType
+
+_clear_execution = contextvars.ContextVar("hom_clear_execution", default=False)
+_clear_options = contextvars.ContextVar("hom_clear_options", default={})
 
 
 class HomOp:
@@ -13,10 +17,50 @@ class HomOp:
     def forward(self, *inputs):
         raise NotImplementedError
 
+    def forward_clear(self, *inputs, **kwargs):
+        """Evaluate this operator on ordinary clear ``torch.Tensor`` values."""
+        if self.is_leaf_op():
+            if len(inputs) != 1:
+                raise TypeError(
+                    f"Default clear execution for leaf {type(self).__name__} "
+                    "requires exactly one input"
+                )
+            return inputs[0]
+
+        options = dict(_clear_options.get())
+        options.update(kwargs)
+        execution_token = _clear_execution.set(True)
+        options_token = _clear_options.set(options)
+        try:
+            return self.forward(*inputs)
+        finally:
+            _clear_options.reset(options_token)
+            _clear_execution.reset(execution_token)
+
+    @staticmethod
+    def _clear_option(name, default=None):
+        return _clear_options.get().get(name, default)
+
     def __call__(self, *inputs):
         from lattica_build.base_classes.hom_op_tracer import Tracer
 
-        return Tracer.current().call(self, *inputs)
+        if _clear_execution.get() and all(torch.is_tensor(value) for value in inputs):
+            return self.forward_clear(*inputs)
+        tracer = Tracer.current_or_none()
+        if tracer is not None:
+            return tracer.call(self, *inputs)
+        if all(torch.is_tensor(value) for value in inputs):
+            return self.forward_clear(*inputs)
+        raise RuntimeError(
+            "HomOp called outside tracing context: provide HomValue inputs "
+            "inside Tracer or torch.Tensor inputs for clear execution."
+        )
+
+    def _require_clear_data(self):
+        data = getattr(self, "data", None)
+        if data is None:
+            raise ValueError(f"{type(self).__name__} requires data before clear execution")
+        return data
 
     def is_leaf_op(self) -> bool:
         return self.OP_TYPE is not None
@@ -84,12 +128,15 @@ class HomOp:
             raise KeyError(f"{name!r} is not a HomOp.")
         return child
 
-    def set_data(self, *data,  name: str | int | tuple[int, ...] | None = None) -> None:
-        """Parse a path and set data on the corresponding op."""
+    def set_data(self, *data,  name: str | int | tuple[int, ...] | None = None) -> "HomOp":
+        """Parse a path and set data on the corresponding op.
+
+        Returns this operator so data setup can be chained during construction.
+        """
 
         if name is None or (self.is_leaf_op() and name in (0, "0")):
             self._set_data_here(*data)
-            return
+            return self
 
         if isinstance(name, int):
             name = str(name)
@@ -109,6 +156,7 @@ class HomOp:
 
         child = self._get_child(child_name)
         child.set_data(*data, name=remaining_path if separator else None)
+        return self
 
     # =============== enf of methods related to set_data ================== #
 

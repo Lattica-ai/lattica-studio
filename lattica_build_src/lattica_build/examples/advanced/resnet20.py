@@ -7,10 +7,13 @@ from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.client_ops import Repeat
+from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
+from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.ml.conv_bn_fused import HomConvBnFused
 from lattica_build.operators.ml.h_linear import HomLinear
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
+from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.params import HomParams
@@ -24,12 +27,13 @@ N_SPECIAL_PRIMES = 9
 
 RELU_DEG = 119
 IMAGE_HW = (32, 32)
-INIT_SHAPE = (3, IMAGE_HW[0] * IMAGE_HW[1])
+HOM_INPUT_SHAPE = (3, IMAGE_HW[0] * IMAGE_HW[1])
+INPUT_SHAPE = (3, *IMAGE_HW)
 FINAL_PITCH = 4
 
 # The pretrained cifar10 models expect normalized inputs
-CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
-CIFAR10_STD = (0.2023, 0.1994, 0.2010)
+CIFAR10_MEAN = torch.tensor((0.4914, 0.4822, 0.4465))
+CIFAR10_STD = torch.tensor((0.2023, 0.1994, 0.2010))
 
 DELTA_INITIAL = 0.1806
 DELTAS = [
@@ -42,7 +46,7 @@ def build_pipeline(
         log_n_subring=LOG_N_SUBRING,
         relu_deg=RELU_DEG,
         image_hw=IMAGE_HW,
-        init_shape=INIT_SHAPE,
+        hom_input_shape=HOM_INPUT_SHAPE,
         final_pitch=FINAL_PITCH,
         delta_initial=DELTA_INITIAL,
         deltas=DELTAS,
@@ -214,9 +218,14 @@ def build_pipeline(
     final_kwargs = _final_layer_kwargs()
 
     hom_pipeline = HomomorphicPipeline(
-        client_pre=[Repeat(dim=1)],
+        client_pre=[
+            HomConstMul(dims=(3, 1, 1)).set_data(1.0 / (255.0 * CIFAR10_STD)),
+            HomConstAdd(dims=(3, 1, 1)).set_data(-CIFAR10_MEAN / CIFAR10_STD),
+            HomReshape(hom_input_shape),
+            Repeat(dim=1),
+        ],
         hom=_ResnetPipeline(initial_kwargs, block_kwargs, final_kwargs),
-        input_shape=init_shape,
+        input_shape=(3, *image_hw),
     )
 
     hom_pipeline.set_data('initial_layer.convBN', *initial_kwargs['set_data_kwargs'].values())

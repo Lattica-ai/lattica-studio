@@ -61,3 +61,11 @@ class HomSlice(HomOp):
         new_shape = list(input.tensor_shape)
         new_shape[dim] = new_len
         return input.make_copy(tensor_shape=new_shape)
+
+    def forward_clear(self, input):
+        index = [slice(None)] * input.ndim
+        if self.drop_dim:
+            index[self.dim] = self.start
+        else:
+            index[self.dim] = slice(self.start, self.end, self.step)
+        return input[tuple(index)]

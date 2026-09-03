@@ -28,4 +28,6 @@ class HomSqueeze(HomOp):
             )
         return infer_remove_axis_output_shape(input, axis)
 
+    def forward_clear(self, input):
+        return input.squeeze(self.dim)
 
