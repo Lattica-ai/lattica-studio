@@ -146,17 +146,13 @@ export class LatticaQueryClient {
     );
   }
 
-  async apply_query(
-    encryptedInput: Uint8Array,
-    return_new_state: boolean = false,
-  ): Promise<Uint8Array> {
+  async apply_query(encryptedInput: Uint8Array): Promise<Uint8Array> {
     if (!this.initialized) throw new Error('Client must be initialized first');
 
     return await workerApi.apply_hom_pipeline(
       this.jwt,
       this.beUrl,
       encryptedInput,
-      return_new_state,
     );
   }
 

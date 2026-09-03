@@ -95,16 +95,13 @@ export const apply_hom_pipeline = async (
   jwt: string,
   beUrl: string,
   serialized_ct: Uint8Array,
-  return_new_state: boolean = false,
 ): Promise<Uint8Array> => {
   workerManagerSingleton.logConsole('Sending encrypted data to server...');
   const response = await sendHttpRequest(
     jwt,
     beUrl,
     'apply_hom_pipeline',
-    {
-      return_new_state,
-    },
+    null,
     serialized_ct,
   );
   if (!response) {
