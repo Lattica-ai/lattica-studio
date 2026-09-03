@@ -54,3 +54,7 @@ class HomConstMul(HomOp):
             rows_budget=self.rows_budget,
             op_scale_up=self.pt_scale,
         )
+
+    def forward_clear(self, input):
+        data = self._require_clear_data().to(device=input.device, dtype=input.dtype)
+        return input * data

@@ -29,3 +29,6 @@ class HomAxisSum(HomOp):
     def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
         """Infer reduced output shape for the configured axis sum."""
         return infer_reduce_axis_output_shape(input, self.dim, self.keep_dim)
+
+    def forward_clear(self, input):
+        return input.sum(dim=self.dim, keepdim=self.keep_dim)

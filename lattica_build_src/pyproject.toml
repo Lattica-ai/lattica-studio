@@ -26,4 +26,9 @@ where = ["."]
 include = ["lattica_build*"]
 
 [tool.setuptools.package-data]
-lattica_build = ["params/*.json", "examples/advanced/*.pt"]
+lattica_build = [
+    "params/*.json",
+    "examples/advanced/data/cifar10_test_batch",
+    "examples/advanced/data/mnist_fc_model.pt",
+    "examples/advanced/data/mnist_test_batch.pt",
+]

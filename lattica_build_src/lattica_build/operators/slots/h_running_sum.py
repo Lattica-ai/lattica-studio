@@ -1,6 +1,7 @@
 """See `operators/slots/README.md` for usage details."""
 
 import math
+import torch
 from typing import Optional, Sequence
 
 from lattica_build.base_classes.hom_op import HomOp
@@ -66,3 +67,7 @@ class HomRunningSum(HomOp):
             num_levels=num_levels,
             rows_budget=self.rows_budget,
         )
+
+    def forward_clear(self, input):
+        dim = self.cumsum_axis if self.cumsum_axis is not None else -1
+        return input.cumsum(dim=dim)
