@@ -23,17 +23,9 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.ml.h_conv import _normalize_tuple
+from lattica_build.operators.ml.h_conv import _normalize_tuple, conv_output_hw
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 from lattica_build.serialization.hom_op_pb2 import HomOpType
-
-
-def _conv_out_dims(image_hw, kernel, stride, padding, dilation):
-    """Conv output (H, W) -- same formula as torch.nn.Conv2d / the mux compiler."""
-    (h, w), (kh, kw), (sh, sw), (ph, pw), (dh, dw) = image_hw, kernel, stride, padding, dilation
-    return ((h + 2 * ph - dh * (kh - 1) - 1) // sh + 1,
-            (w + 2 * pw - dw * (kw - 1) - 1) // sw + 1)
-
 
 class HomMuxConv(HomOp):
     """Aligned convolution on the mux layout (weight only; fold BN bias separately).
@@ -58,8 +50,6 @@ class HomMuxConv(HomOp):
         self.padding = _normalize_tuple(padding, 2, 'padding')
         self.dilation = _normalize_tuple(dilation, 2, 'dilation')
         self.with_modswitch = with_modswitch
-        # t_out: single-shot fused transition -- run strided and re-interleave at
-        # t_out (=stride*t_in), so the decimation costs no separate repack level.
         if t_out is not None:
             self.t_out = t_out
 
@@ -92,20 +82,20 @@ class HomMuxConvBn(HomOp):
                  stride=(1, 1), padding=(0, 0), dilation=(1, 1),
                  t_out: Optional[int] = None) -> None:
         super().__init__()
-        kh, kw = _normalize_tuple(kernel_size, 2, 'kernel_size')
-        stride = _normalize_tuple(stride, 2, 'stride')
-        padding = _normalize_tuple(padding, 2, 'padding')
-        dilation = _normalize_tuple(dilation, 2, 'dilation')
-        image_hw = _normalize_tuple(image_hw, 2, 'image_hw')
+        (kh, kw) = _normalize_tuple(kernel_size, 2, 'kernel_size')
+        (sh, sw) = _normalize_tuple(stride, 2, 'stride')
+        (ph, pw) = _normalize_tuple(padding, 2, 'padding')
+        (dh, dw) = _normalize_tuple(dilation, 2, 'dilation')
+        (h, w) = _normalize_tuple(image_hw, 2, 'image_hw')
         self.conv = HomMuxConv(
-            kernel_shape=(out_channels, in_channels, kh, kw), image_hw=image_hw,
-            t_in=t_in, stride=stride, padding=padding, dilation=dilation,
+            kernel_shape=(out_channels, in_channels, kh, kw), image_hw=(h, w),
+            t_in=t_in, stride=(sh, sw), padding=(ph, pw), dilation=(dh, dw),
             t_out=t_out)
         if t_out is None:
             out_hw = image_hw
             out_t = t_in if out_channels % t_in == 0 else math.gcd(t_in, out_channels)
         else:
-            out_hw = _conv_out_dims(image_hw, (kh, kw), stride, padding, dilation)
+            out_hw = conv_output_hw((h, w), (kh, kw), (sh, sw), (ph, pw), (dh, dw))
             out_t = t_out
         self.bias_add = HomMuxBiasAdd(channels=out_channels, image_hw=out_hw, t=out_t)
 
