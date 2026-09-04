@@ -24,16 +24,9 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.ml.h_conv import _normalize_tuple
+from lattica_build.operators.ml.h_conv import _normalize_tuple, conv_output_hw
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 from lattica_build.serialization.hom_op_pb2 import HomOpType
-
-
-def _conv_out_dims(image_hw, kernel, stride, padding, dilation):
-    """Conv output (H, W) -- same formula as torch.nn.Conv2d / the mux compiler."""
-    (h, w), (kh, kw), (sh, sw), (ph, pw), (dh, dw) = image_hw, kernel, stride, padding, dilation
-    return ((h + 2 * ph - dh * (kh - 1) - 1) // sh + 1,
-            (w + 2 * pw - dw * (kw - 1) - 1) // sw + 1)
 
 
 class HomMuxConv(HomOp):
@@ -113,7 +106,7 @@ class HomMuxConvBn(HomOp):
             out_hw = image_hw
             out_t = t_in if out_channels % t_in == 0 else math.gcd(t_in, out_channels)
         else:
-            out_hw = _conv_out_dims(image_hw, (kh, kw), stride, padding, dilation)
+            out_hw = conv_output_hw(image_hw, (kh, kw), stride, padding, dilation)
             out_t = t_out
         self.bias_add = HomMuxBiasAdd(channels=out_channels, image_hw=out_hw, t=out_t,
                                       n_cosets=n_cosets)

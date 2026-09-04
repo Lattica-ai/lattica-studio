@@ -35,6 +35,23 @@ def _normalize_tuple(value, n, name):
     return value_tuple
 
 
+def conv_output_hw(image_hw, kernel_size, stride, padding, dilation):
+    """Spatial extent of a conv output -- the torch.nn.Conv2d formula.
+
+    Lives here because the mux conv needs it on both sides of the repo boundary:
+    the build op sizes its bias layout with it, and the backend's mux layout
+    compiler sizes the output layout with it. Those two must agree exactly, so
+    there is one copy.
+    """
+    (h, w) = _normalize_tuple(image_hw, 2, 'image_hw')
+    (kh, kw) = _normalize_tuple(kernel_size, 2, 'kernel_size')
+    (sh, sw) = _normalize_tuple(stride, 2, 'stride')
+    (ph, pw) = _normalize_tuple(padding, 2, 'padding')
+    (dh, dw) = _normalize_tuple(dilation, 2, 'dilation')
+    return ((h + 2 * ph - dh * (kh - 1) - 1) // sh + 1,
+            (w + 2 * pw - dw * (kw - 1) - 1) // sw + 1)
+
+
 class HomConv(HomOp):
     """Base homomorphic 2D convolution operator.
 
