@@ -29,3 +29,8 @@ class HomSumSlots(HomOp):
         super().__init__()
         self.k = k
         self.stage_sizes = stage_sizes
+
+    def forward_clear(self, input):
+        dim = -1
+        k = self.k if self.k is not None else input.shape[dim]
+        return input[..., :k].sum(dim=dim, keepdim=True).expand_as(input).clone()

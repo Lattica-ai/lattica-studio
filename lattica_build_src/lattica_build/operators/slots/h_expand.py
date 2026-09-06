@@ -75,3 +75,7 @@ class HomExpand(HomOp):
             num_levels=num_levels,
             rows_budget=self.rows_budget,
         )
+
+    def forward_clear(self, input):
+        axis = self.expand_axis if self.expand_axis >= 0 else input.ndim + self.expand_axis + 1
+        return input.unsqueeze(axis).expand(*input.shape[:axis], self.k, *input.shape[axis:]).clone()

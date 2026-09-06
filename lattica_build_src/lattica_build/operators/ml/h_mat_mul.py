@@ -147,3 +147,8 @@ class HomMatMul(HomOp):
             rows_budget=self.rows_budget,
             op_scale_up=self.pt_scale,
         )
+
+    def forward_clear(self, input):
+        data = self._require_clear_data()
+        product = input * data
+        return product.sum(dim=self.mul_axis)

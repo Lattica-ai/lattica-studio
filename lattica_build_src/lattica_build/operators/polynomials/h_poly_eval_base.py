@@ -53,6 +53,16 @@ class HomPolyEvalBase(HomOp):
             n_axis=input.n_axis + len(coef_batch_shape),
         )
 
+    def forward_clear(self, input):
+        x = input * (2 / (self.right - self.left))
+        x = x + (-(self.right + self.left) / (self.right - self.left))
+        coefs = torch.as_tensor(self.coefs, dtype=input.dtype, device=input.device)
+        b_next = torch.zeros_like(x)
+        b_curr = torch.zeros_like(x)
+        for coefficient in coefs.unbind(-1):
+            b_next, b_curr = b_curr, 2 * x * b_curr - b_next + coefficient
+        return b_curr - x * b_next
+
     def infer_output_level_and_scale(
         self,
         input: HomValue,

@@ -22,6 +22,9 @@ class HomAdd(HomOp):
         super().__init__()
         self.is_sub = is_sub
 
+    def forward_clear(self, input_1, input_2):
+        return input_1 - input_2 if self.is_sub else input_1 + input_2
+
     def infer_output_shape(
         self,
         input_1: HomValue,

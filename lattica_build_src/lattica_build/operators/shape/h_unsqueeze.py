@@ -24,3 +24,5 @@ class HomUnsqueeze(HomOp):
         axis = to_pos_axis(self.dim, (*input.tensor_shape, 1))
         return infer_insert_axis_output_shape(input, axis, 1)
 
+    def forward_clear(self, input):
+        return input.unsqueeze(self.dim)

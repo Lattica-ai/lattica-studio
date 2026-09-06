@@ -58,7 +58,7 @@ jobs:
           test -n "$BRANCH"
           test -n "$SHA"
 
-          jq -n             --arg event_type "$EVENT_TYPE"             --arg repository "$REPOSITORY"             --arg branch "$BRANCH"             --arg sha "$SHA"             --arg pr_number "$PR_NUMBER"             '{
+            jq -n             --arg event_type "$EVENT_TYPE"             --arg repository "$REPOSITORY"             --arg branch "$BRANCH"             --arg sha "$SHA"             --arg pr_number "$PR_NUMBER"             '{
               event_type: $event_type,
               client_payload: {
                 dispatcher: {
