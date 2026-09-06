@@ -70,3 +70,9 @@ class HomMul(HomOp):
             rows_budget=self.rows_budget,
             op_scale_up=input_2.pt_scale,
         )
+
+    def forward_clear(self, input_1, input_2):
+        result = input_1 * input_2
+        if self.axis_sum is not None:
+            result = result.sum(dim=self.axis_sum, keepdim=self.keep_axis)
+        return result

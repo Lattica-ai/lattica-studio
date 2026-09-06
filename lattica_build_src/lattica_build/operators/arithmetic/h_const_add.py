@@ -23,3 +23,7 @@ class HomConstAdd(HomOp):
     def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
         """Infer output shape from broadcasting `input` with constant dims."""
         return infer_broadcast_output_shape(input, dims=self.dims)
+
+    def forward_clear(self, input):
+        data = self._require_clear_data().to(device=input.device, dtype=input.dtype)
+        return input + data

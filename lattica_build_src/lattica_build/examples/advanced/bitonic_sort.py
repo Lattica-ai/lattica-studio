@@ -24,6 +24,8 @@ MARGIN = 0.04        # comparator don't-care band; entries closer than this may 
 LOG_SCALE = 30
 BOOT_EVERY = 1
 Q_ROWS = 4
+# Time-optimized alternative (2 stages per bootstrap): ~1.4x faster, ~35% more GPU RAM
+# LOG_SCALE, BOOT_EVERY, Q_ROWS = 26, 2, 8
 SPECIAL_PRIMES = 6
 
 
@@ -51,7 +53,7 @@ def _rotate(s: int) -> SequentialHomOp:
     return SequentialHomOp(HomRotateSum(rotations=[s], perform_sum=False), HomSqueeze(dim=0))
 
 
-def build_pipeline() -> HomomorphicPipeline:
+def build_pipeline(array_len: int = ARRAY_LEN) -> HomomorphicPipeline:
     """Construct a bitonic homomorphic pipeline."""
 
     class _Stage(HomOp):
@@ -109,8 +111,8 @@ def build_pipeline() -> HomomorphicPipeline:
 
     return HomomorphicPipeline(
         client_pre=[Repeat()],
-        hom=_BitonicSort(ARRAY_LEN, 2 ** (LOG_N - 1)),
-        input_shape=(ARRAY_LEN,),
+        hom=_BitonicSort(array_len, 2 ** (LOG_N - 1)),
+        input_shape=(array_len,),
     )
 
 

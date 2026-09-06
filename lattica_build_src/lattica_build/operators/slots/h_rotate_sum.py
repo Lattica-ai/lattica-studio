@@ -2,6 +2,8 @@
 
 from typing import Sequence
 
+import torch
+
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
 
@@ -38,3 +40,11 @@ class HomRotateSum(HomOp):
 
         num_out_rotations = len(self.rotations) + int(self.add_identity_rotation)
         return infer_insert_axis_output_shape(input, 0, num_out_rotations)
+
+    def forward_clear(self, input):
+        values = [torch.roll(input, -rotation, dims=-1) for rotation in self.rotations]
+        if self.add_identity_rotation:
+            values.insert(0, input)
+        if self.perform_sum:
+            return sum(values, torch.zeros_like(input))
+        return torch.stack(values, dim=0)

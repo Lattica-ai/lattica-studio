@@ -27,6 +27,10 @@ class Tracer:
             raise RuntimeError("HomOp called outside tracing context")
         return tracer
 
+    @classmethod
+    def current_or_none(cls):
+        return _current_tracer.get()
+
     def __enter__(self):
         self._token = _current_tracer.set(self)
         return self

@@ -11,6 +11,7 @@ import base64
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue, TensorShape
 from torch import Tensor
+import torch
 from dataclasses import field
 from typing import Optional, Dict, Tuple, Sequence, Union, BinaryIO
 
@@ -57,9 +58,8 @@ class HomomorphicPipeline:
     custom_n_slots: Dict[str, int]   = field(default_factory=dict)
     n_axis: Optional[int]  = None
 
-    # Verification runs by default (the compiler derives an expected output from the clear
-    # pipeline when none is supplied). Set True only to explicitly opt out of verification.
-    skip_verification: bool = True # TODO: fix verification flow and set to default False
+    # Set True to skip compile-time verification.
+    skip_verification: bool = False
     verification_data: dict  = field(default_factory=dict)
 
 
@@ -116,6 +116,35 @@ class HomomorphicPipeline:
 
     def set_data(self, name: str | int | tuple[int, ...] | None, *data: Tensor, section: PipeSec = PipeSec.HOM) -> None:
         self._get_pipe_section(section).set_data(*data, name=name)
+
+    def forward_clear(self, *inputs, hom_params=None, **named_inputs):
+        """Run the complete pipeline on clear torch tensors."""
+        input_names = list(inspect.signature(self.hom.forward).parameters)
+        if inputs and named_inputs:
+            raise TypeError("forward_clear accepts positional or named inputs, not both")
+        if named_inputs:
+            unknown = set(named_inputs) - set(input_names)
+            missing = set(input_names) - set(named_inputs)
+            if unknown or missing:
+                raise TypeError(
+                    f"Invalid clear inputs; unknown={sorted(unknown)}, "
+                    f"missing={sorted(missing)}"
+                )
+            values = [named_inputs[name] for name in input_names]
+        else:
+            values = list(inputs)
+            if len(values) != len(input_names):
+                raise TypeError(f"Expected {len(input_names)} clear inputs, got {len(values)}")
+        if not all(torch.is_tensor(value) for value in values):
+            raise TypeError("forward_clear inputs must be torch.Tensor instances")
+
+        internal_n = getattr(hom_params, "internal_n", None)
+        if self.client_pre is not None:
+            values[0] = self.client_pre.forward_clear(values[0], internal_n=internal_n)
+        result = self.hom.forward_clear(*values)
+        if self.client_post is not None:
+            result = self.client_post.forward_clear(result)
+        return result
 
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
         self.client_preprocessing_data = binary_data
@@ -193,7 +222,21 @@ class HomomorphicPipeline:
         return ser_sections
 
 
+    def _validate_verification_data_keys(self):
+        """
+        Verify the verification data keys are ones the compiler knows how to use.
+        Fail on unknown keys instead of silently dropping them - which will cause an
+        'accuracy verification failed' error.
+        """
+        unknown_keys = set(self.verification_data) - set(self.input_shape) - {'accuracy', 'expected_output'}
+        if unknown_keys:
+            raise ValueError(
+                f"verification_data has unknown keys: {sorted(unknown_keys)}. "
+                f"Valid keys: input names {list(self.input_shape)}, 'accuracy', 'expected_output'.")
+
     def _serialize_verification_data(self, tensors):
+        self._validate_verification_data_keys()
+        
         res = {}
         if 'accuracy' in self.verification_data.keys():
             accuracy = self.verification_data['accuracy']

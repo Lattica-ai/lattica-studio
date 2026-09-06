@@ -48,4 +48,6 @@ class HomReshape(HomOp):
 
         raise ValueError("HomReshape cannot reshape across n_axis.")
 
+    def forward_clear(self, input):
+        return input.reshape(self.dims)
 
