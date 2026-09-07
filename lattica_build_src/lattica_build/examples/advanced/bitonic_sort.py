@@ -5,7 +5,6 @@ from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
-from lattica_build.operators.client_ops import Repeat
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
@@ -29,12 +28,12 @@ Q_ROWS = 4
 SPECIAL_PRIMES = 6
 
 
-def _get_masks(array_len: int, n_slots: int, k: int, j: int) -> list[np.ndarray]:
+def _get_masks(array_len: int, k: int, j: int) -> list[np.ndarray]:
     masks = [np.zeros(array_len) for _ in range(4)]
     for i in range(array_len):
         asc, low = (i & k) == 0, (i & j) == 0
         masks[(0 if low else 1) if asc else (2 if low else 3)][i] = 1
-    return [np.tile(m, n_slots // array_len) for m in masks]
+    return masks
 
 
 def _mask_mul(mask: np.ndarray) -> HomConstMul:
@@ -59,9 +58,9 @@ def build_pipeline(array_len: int = ARRAY_LEN) -> HomomorphicPipeline:
     class _Stage(HomOp):
         """One compare-exchange layer of the bitonic sort"""
 
-        def __init__(self, array_len: int, n_slots: int, k: int, j: int):
+        def __init__(self, array_len: int, k: int, j: int):
             super().__init__()
-            m_el, m_eh, m_dl, m_dh = _get_masks(array_len, n_slots, k, j)
+            m_el, m_eh, m_dl, m_dh = _get_masks(array_len, k, j)
             self.rot_up = _rotate(+j)
             self.rot_down = _rotate(-j)
             # np.roll(v, -j) is the plaintext mirror of rot(v, +j): out[i] = v[i+j].
@@ -85,14 +84,14 @@ def build_pipeline(array_len: int = ARRAY_LEN) -> HomomorphicPipeline:
 
 
     class _BitonicSort(HomOp):
-        def __init__(self, array_len: int, n_slots: int, boot_every: int = BOOT_EVERY):
+        def __init__(self, array_len: int, boot_every: int = BOOT_EVERY):
             super().__init__()
             stages = []
             k = 2
             while k <= array_len:
                 j = k // 2
                 while j > 0:
-                    stages.append(_Stage(array_len, n_slots, k, j))
+                    stages.append(_Stage(array_len, k, j))
                     j //= 2
                 k *= 2
             self.stages = ModuleListHomOp(stages)
@@ -110,8 +109,7 @@ def build_pipeline(array_len: int = ARRAY_LEN) -> HomomorphicPipeline:
             return x
 
     return HomomorphicPipeline(
-        client_pre=[Repeat()],
-        hom=_BitonicSort(array_len, 2 ** (LOG_N - 1)),
+        hom=_BitonicSort(array_len),
         input_shape=(array_len,),
     )
 
@@ -123,4 +121,5 @@ def build_params() -> HomParams:
         pt_scale=2 ** LOG_SCALE,
         sk_hw=192,
         num_special_primes=SPECIAL_PRIMES,
+        n_slots=ARRAY_LEN,
     )
