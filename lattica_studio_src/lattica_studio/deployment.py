@@ -209,7 +209,8 @@ class DeploymentAPI:
         model_id: ModelId,
         *,
         poll_interval: float = 5,
-        timeout: float = 600,
+        # A minute more than the app's compile budget (COMPILATION_TIMEOUT_SEC, 900s), so the app's error is the one reported.
+        timeout: float = 960,
     ) -> None:
         start_time = time.monotonic()
 
