@@ -11,8 +11,8 @@ and runtime lifecycle operations.
 Clear execution is also available locally through `HomOp.forward_clear(...)` and
 `HomomorphicPipeline.forward_clear(...)`. It uses ordinary torch tensors and the
 data attached to operators, and does not modify or serialize the homomorphic graph.
-Pass the same `HomParams` used for the build when clear execution includes
-packing-sensitive client operators such as `Repeat`.
+Pass the same `HomParams` used for the build when clear execution is
+packing-sensitive.
 
 ## Installation
 

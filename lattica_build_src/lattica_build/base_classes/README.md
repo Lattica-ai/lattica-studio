@@ -102,6 +102,7 @@ This artifact is the handoff boundary to `lattica-studio`.
 - `active_rows`,
 - `active_cols`,
 - `pt_scale`.
+- `n_slots`,
 
 Operator inference updates this metadata so shape and level/scale compatibility can be validated before execution.
 

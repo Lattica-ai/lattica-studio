@@ -6,7 +6,6 @@ import torch
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.client_ops import Repeat
 from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
@@ -222,7 +221,6 @@ def build_pipeline(
             HomConstMul(dims=(3, 1, 1)).set_data(1.0 / (255.0 * CIFAR10_STD)),
             HomConstAdd(dims=(3, 1, 1)).set_data(-CIFAR10_MEAN / CIFAR10_STD),
             HomReshape(hom_input_shape),
-            Repeat(dim=1),
         ],
         hom=_ResnetPipeline(initial_kwargs, block_kwargs, final_kwargs),
         input_shape=(3, *image_hw),
@@ -238,6 +236,8 @@ def build_pipeline(
     hom_pipeline.set_data('final_layer.fc',
                           final_kwargs['fc']['weight'], final_kwargs['fc']['bias'])
 
+    hom_pipeline.reference_model = _model
+
     return hom_pipeline
 
 def build_params(
@@ -245,6 +245,7 @@ def build_params(
         n=N,
         pt_scale=PT_SCALE,
         num_special_primes=N_SPECIAL_PRIMES,
+        n_slots=2 ** (LOG_N_SUBRING - 1),
 ) -> HomParams:
     return HomParams(
         full_q_list_precision=q_list_precision,
@@ -252,5 +253,6 @@ def build_params(
         pt_scale=pt_scale,
         sk_hw=192,
         num_special_primes=num_special_primes,
-        num_init_rows=1
+        num_init_rows=1,
+        n_slots=n_slots,
     )

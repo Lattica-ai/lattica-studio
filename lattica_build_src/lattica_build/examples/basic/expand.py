@@ -11,7 +11,7 @@ STAGES_PER_LEVEL = 2
 
 def build_pipeline() -> HomomorphicPipeline:
     return HomomorphicPipeline(
-        hom=HomExpand(K, EXPAND_AXIS, STAGE_SIZES, STAGES_PER_LEVEL),
+        hom=HomExpand(EXPAND_AXIS, STAGE_SIZES, STAGES_PER_LEVEL),
         input_shape=(K,),
     )
 

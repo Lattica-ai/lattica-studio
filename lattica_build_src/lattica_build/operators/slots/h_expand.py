@@ -29,14 +29,12 @@ class HomExpand(HomOp):
 
     def __init__(
         self,
-        k: int,
         expand_axis: int = 0,
         stage_sizes: Sequence[int] | None = None,
         stages_per_level: int | None = None,
         rows_budget: Sequence[int] | None = None,
     ) -> None:
         super().__init__()
-        self.k = k
         self.expand_axis = expand_axis
         self.stage_sizes = stage_sizes
         self.stages_per_level = stages_per_level
@@ -45,7 +43,7 @@ class HomExpand(HomOp):
     def infer_output_shape(self, input: HomValue, internal_n: int | None = None, **kwargs) -> HomValue:
         """Infer shape by inserting axis `expand_axis` with dimension `k`."""
         axis = to_pos_axis(self.expand_axis, input.tensor_shape)
-        output = infer_insert_axis_output_shape(input, axis, self.k)
+        output = infer_insert_axis_output_shape(input, axis, input.n_slots)
         if internal_n is None or output.n_axis is None:
             return output
 
