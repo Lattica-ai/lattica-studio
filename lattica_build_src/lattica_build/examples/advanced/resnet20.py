@@ -236,6 +236,8 @@ def build_pipeline(
     hom_pipeline.set_data('final_layer.fc',
                           final_kwargs['fc']['weight'], final_kwargs['fc']['bias'])
 
+    hom_pipeline.reference_model = _model
+
     return hom_pipeline
 
 def build_params(
