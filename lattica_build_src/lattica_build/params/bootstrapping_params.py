@@ -19,6 +19,7 @@ BOOT_CONFIGURATION = {
     'n_cts_levels' : 3,
     'log_delta' : 5,
     'subsum_max_stage_size' : 8,
+    'baby_giant_ratio' : 2,
     'tol' : 1e-7,
 }
 
@@ -65,6 +66,7 @@ class BootstrappingParams:
         self.n_double_angle = BOOT_CONFIGURATION['n_double_angle']
         self.sk_hw = sk_hw
         self.subsum_max_stage_size = BOOT_CONFIGURATION['subsum_max_stage_size']
+        self.baby_giant_ratio = BOOT_CONFIGURATION['baby_giant_ratio']
         self.arcsine_correction = BOOT_CONFIGURATION['n_arcsine_levels'] > 0 
         self.tol = BOOT_CONFIGURATION['tol']
 
