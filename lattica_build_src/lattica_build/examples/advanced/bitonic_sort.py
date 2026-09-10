@@ -4,15 +4,16 @@ import torch
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.client_ops import Repeat
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.polynomials.h_poly_threshold import HomPolyThreshold
+from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
-from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.params import HomParams
 
 
@@ -107,20 +108,29 @@ class _BitonicSort(HomOp):
         return x
 
 
-def build_pipeline(array_len: int = ARRAY_LEN) -> HomomorphicPipeline:
-    """Construct a bitonic homomorphic pipeline."""
-    return HomomorphicPipeline(
-        client_pre=[Repeat()],
-        hom=_BitonicSort(array_len, 2 ** (LOG_N - 1)),
-        input_shape=(array_len,),
-    )
+class Pipeline(PipelineWrapper):
+
+    def build_pipeline(self) -> HomomorphicPipeline:
+        """Construct a bitonic homomorphic pipeline."""
+        return HomomorphicPipeline(
+            input_shape=(ARRAY_LEN,),
+            client_pre=[Repeat()],
+            hom=_BitonicSort(ARRAY_LEN, 2 ** (LOG_N - 1)),
+            client_post=[HomSlice(dim=0, key=slice(None, ARRAY_LEN, None))],
+        )
 
 
-def build_params() -> HomParams:
-    return HomParams(
-        n=2 ** LOG_N,
-        full_q_list_precision=Q_ROWS * ((LOG_SCALE * 2, LOG_SCALE),),
-        pt_scale=2 ** LOG_SCALE,
-        sk_hw=192,
-        num_special_primes=SPECIAL_PRIMES,
-    )
+    def build_params() -> HomParams:
+        return HomParams(
+            n=2 ** LOG_N,
+            full_q_list_precision=Q_ROWS * ((LOG_SCALE * 2, LOG_SCALE),),
+            pt_scale=2 ** LOG_SCALE,
+            sk_hw=192,
+            num_special_primes=SPECIAL_PRIMES,
+        )
+
+    def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
+        assert example_pt.ndim == 1 and example_pt.shape[0] == self.ARRAY_LEN, (
+            f"Input must be 1D of length {self.ARRAY_LEN}"
+        )
+        return torch.sort(example_pt).values
