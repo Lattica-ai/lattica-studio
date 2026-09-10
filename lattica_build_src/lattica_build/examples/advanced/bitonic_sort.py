@@ -53,62 +53,62 @@ def _rotate(s: int) -> SequentialHomOp:
     return SequentialHomOp(HomRotateSum(rotations=[s], perform_sum=False), HomSqueeze(dim=0))
 
 
+class _Stage(HomOp):
+    """One compare-exchange layer of the bitonic sort"""
+
+    def __init__(self, array_len: int, n_slots: int, k: int, j: int):
+        super().__init__()
+        m_el, m_eh, m_dl, m_dh = _get_masks(array_len, n_slots, k, j)
+        self.rot_up = _rotate(+j)
+        self.rot_down = _rotate(-j)
+        # np.roll(v, -j) is the plaintext mirror of rot(v, +j): out[i] = v[i+j].
+        self.mask_swap_low = _mask_mul(m_dl - m_el)
+        self.mask_swap_high = _mask_mul(np.roll(m_eh - m_dh, -j))
+        self.sel_up, self.sel_down, self.sel_keep = (
+            _mask_mul(m_el), _mask_mul(m_eh), _mask_mul(m_dl + m_dh))
+        # A band that shrinks with array_len stops being resolvable at DEG, and the stage
+        # outputs then leave the [-1, 1] Chebyshev domain and diverge.
+        self.step = HomPolyThreshold(
+            degree=DEG, margin=[-MARGIN, MARGIN], variant='minimax', tol=1e-5)
+
+    def forward(self, x: HomValue) -> HomValue:
+        x_up = self.rot_up(x)
+        d = x_up - x
+        t = self.step(d)
+        p1 = t * self.mask_swap_low(d)
+        p2 = t * self.mask_swap_high(d)
+        x_lin = self.sel_up(x_up) + self.sel_down(self.rot_down(x)) + self.sel_keep(x)
+        return x_lin + p1 + self.rot_down(p2)
+
+
+class _BitonicSort(HomOp):
+    def __init__(self, array_len: int, n_slots: int, boot_every: int = BOOT_EVERY):
+        super().__init__()
+        stages = []
+        k = 2
+        while k <= array_len:
+            j = k // 2
+            while j > 0:
+                stages.append(_Stage(array_len, n_slots, k, j))
+                j //= 2
+            k *= 2
+        self.stages = ModuleListHomOp(stages)
+
+        self.bootstrap = Bootstrap(log_n_subring=_log_n_subring(array_len),
+                                   target_output_scale=2 ** LOG_SCALE)
+        # Refresh every boot_every stages, never after the last.
+        self.boot_after = set(range(boot_every - 1, len(self.stages) - 1, boot_every))
+
+    def forward(self, x: HomValue) -> HomValue:
+        for i, stage in enumerate(self.stages):
+            x = stage(x)
+            if i in self.boot_after:
+                x = self.bootstrap(x)
+        return x
+
+
 def build_pipeline(array_len: int = ARRAY_LEN) -> HomomorphicPipeline:
     """Construct a bitonic homomorphic pipeline."""
-
-    class _Stage(HomOp):
-        """One compare-exchange layer of the bitonic sort"""
-
-        def __init__(self, array_len: int, n_slots: int, k: int, j: int):
-            super().__init__()
-            m_el, m_eh, m_dl, m_dh = _get_masks(array_len, n_slots, k, j)
-            self.rot_up = _rotate(+j)
-            self.rot_down = _rotate(-j)
-            # np.roll(v, -j) is the plaintext mirror of rot(v, +j): out[i] = v[i+j].
-            self.mask_swap_low = _mask_mul(m_dl - m_el)
-            self.mask_swap_high = _mask_mul(np.roll(m_eh - m_dh, -j))
-            self.sel_up, self.sel_down, self.sel_keep = (
-                _mask_mul(m_el), _mask_mul(m_eh), _mask_mul(m_dl + m_dh))
-            # A band that shrinks with array_len stops being resolvable at DEG, and the stage
-            # outputs then leave the [-1, 1] Chebyshev domain and diverge.
-            self.step = HomPolyThreshold(
-                degree=DEG, margin=[-MARGIN, MARGIN], variant='minimax', tol=1e-5)
-
-        def forward(self, x: HomValue) -> HomValue:
-            x_up = self.rot_up(x)
-            d = x_up - x
-            t = self.step(d)
-            p1 = t * self.mask_swap_low(d)
-            p2 = t * self.mask_swap_high(d)
-            x_lin = self.sel_up(x_up) + self.sel_down(self.rot_down(x)) + self.sel_keep(x)
-            return x_lin + p1 + self.rot_down(p2)
-
-
-    class _BitonicSort(HomOp):
-        def __init__(self, array_len: int, n_slots: int, boot_every: int = BOOT_EVERY):
-            super().__init__()
-            stages = []
-            k = 2
-            while k <= array_len:
-                j = k // 2
-                while j > 0:
-                    stages.append(_Stage(array_len, n_slots, k, j))
-                    j //= 2
-                k *= 2
-            self.stages = ModuleListHomOp(stages)
-
-            self.bootstrap = Bootstrap(log_n_subring=_log_n_subring(array_len),
-                                       target_output_scale=2 ** LOG_SCALE)
-            # Refresh every boot_every stages, never after the last.
-            self.boot_after = set(range(boot_every - 1, len(self.stages) - 1, boot_every))
-
-        def forward(self, x: HomValue) -> HomValue:
-            for i, stage in enumerate(self.stages):
-                x = stage(x)
-                if i in self.boot_after:
-                    x = self.bootstrap(x)
-            return x
-
     return HomomorphicPipeline(
         client_pre=[Repeat()],
         hom=_BitonicSort(array_len, 2 ** (LOG_N - 1)),
