@@ -69,8 +69,8 @@ from lattica_build import build
 from lattica_build.examples.advanced import branching
 
 artifact = build(
-    branching.build_pipeline(),
-    branching.build_params(),
+    branching.Pipeline().build_pipeline(),
+    branching.Pipeline().build_params(),
     "branching.zip",
     display_graph=True,
 )

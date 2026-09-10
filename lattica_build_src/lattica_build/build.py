@@ -22,6 +22,7 @@ from lattica_build.base_classes.print_graph_structure import (
     _load_graph_json,
     print_graph,
 )
+from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 
 
 @dataclass(frozen=True)
@@ -67,19 +68,18 @@ def build_module(
     *,
     display_graph: bool = False,
 ) -> BuildArtifact:
-    """Build an artifact from a module defining build_pipeline() and build_params()."""
-    build_pipeline = getattr(module, "build_pipeline", None)
-    build_params = getattr(module, "build_params", None)
-
-    if not callable(build_pipeline) or not callable(build_params):
+    """Build an artifact from a module exporting a ``Pipeline`` class."""
+    pipeline_type = getattr(module, "Pipeline", None)
+    if not isinstance(pipeline_type, type) or not issubclass(pipeline_type, PipelineWrapper):
         raise ValueError(
-            "Pipeline module must define callable "
-            "build_pipeline() and build_params()"
+            "Pipeline module must define a Pipeline class inheriting PipelineWrapper"
         )
 
+    pipeline_wrapper = pipeline_type()
+
     return build(
-        build_pipeline(),
-        build_params(),
+        pipeline_wrapper.build_pipeline(),
+        pipeline_wrapper.build_params(),
         out,
         display_graph=display_graph,
     )
@@ -180,19 +180,13 @@ def main() -> None:
         nargs="?",
         type=Path,
         default=None,
-        help=(
-            "Path to a Python file defining build_pipeline() and "
-            "build_params()."
-        ),
+        help="Path to a Python file exporting a Pipeline class.",
     )
 
     parser.add_argument(
         "--pipeline-module",
         default=None,
-        help=(
-            "Import path of a module defining build_pipeline() and "
-            "build_params()."
-        ),
+        help="Import path of a module exporting a Pipeline class.",
     )
 
     parser.add_argument(
