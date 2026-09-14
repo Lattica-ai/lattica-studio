@@ -173,10 +173,10 @@ Two distinct quantities describe slot capacity:
 
 Leave `n_slots` unset to pack on the full ring.
 
-`HomParams.n_slots` applies to the primary encrypted input. Additional encrypted
-inputs can be packed on their own sub-rings via `HomomorphicPipeline.custom_n_slots`
-(see [`base_classes/README.md`](../base_classes/README.md)); inputs not listed there
-fall back to `HomParams.n_slots`.
+`HomParams.n_slots` is the sub-ring of the primary encrypted input. Additional
+encrypted inputs get theirs from `HomomorphicPipeline.custom_n_slots`
+(see [`base_classes/README.md`](../base_classes/README.md)); any input left
+unspecified, primary or not, is packed on the full ring.
 
 ## Bootstrapping and ring-switch interaction
 

@@ -40,11 +40,11 @@ Practical section behavior:
 `custom_scales` is for additional encrypted inputs (not the primary input).
 Keys must match input names in `input_shape`.
 
-`custom_n_slots` sets a per-input sub-ring slot count. Keys must match input names in
-`input_shape`, and inputs that are not listed fall back to `HomParams.n_slots`
-(which itself defaults to the full ring, `internal_n = n // 2`). The primary input's
-resolved value is what encryption uses; every other input carries its own sub-ring in
-its ciphertext metadata. See [`params/README.md`](../params/README.md#slot-packing-internal_n-vs-n_slots).
+`custom_n_slots` sets the sub-ring slot count of the additional encrypted inputs.
+The primary input takes its own from `HomParams.n_slots`.
+Keys must match input names in `input_shape`, and anything left unspecified is packed
+on the full ring (`internal_n = n // 2`).
+See [`params/README.md`](../params/README.md#slot-packing-internal_n-vs-n_slots).
 
 `n_axis` controls slot-axis interpretation for homomorphic layout-sensitive ops.
 
@@ -121,7 +121,8 @@ Common issues you will see while serializing:
 - Invalid custom scales:
   - `custom_scales` cannot override the primary input name.
 - Invalid custom slot counts:
-  - `custom_n_slots` keys must all appear in `input_shape` (checked at construction),
+  - `custom_n_slots` cannot override the primary input name,
+  - its keys must all appear in `input_shape`,
   - values should be powers of two, as for `HomParams.n_slots`.
 - Shape incompatibility:
   - broadcast or axis constraints fail in operator inference.
