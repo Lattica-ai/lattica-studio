@@ -43,11 +43,6 @@ def _mask_mul(mask: np.ndarray) -> HomConstMul:
     return op
 
 
-def _log_n_subring(array_len: int) -> int:
-    """Subring holds the array twice over; floored at 4 for the coefs-to-slots split."""
-    return max(4, int(np.log2(array_len)) + 1)
-
-
 def _rotate(s: int) -> SequentialHomOp:
     """Cyclic rotate by s, rot(x, s)[i] == x[i+s]; the squeeze undoes HomRotateSum's new axis."""
     return SequentialHomOp(HomRotateSum(rotations=[s], perform_sum=False), HomSqueeze(dim=0))
@@ -94,8 +89,7 @@ class _BitonicSort(HomOp):
             k *= 2
         self.stages = ModuleListHomOp(stages)
 
-        self.bootstrap = Bootstrap(log_n_subring=_log_n_subring(array_len),
-                                   target_output_scale=2 ** LOG_SCALE)
+        self.bootstrap = Bootstrap(target_output_scale=2 ** LOG_SCALE)
         # Refresh every boot_every stages, never after the last.
         self.boot_after = set(range(boot_every - 1, len(self.stages) - 1, boot_every))
 
