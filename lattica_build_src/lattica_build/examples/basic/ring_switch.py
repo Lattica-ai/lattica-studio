@@ -28,11 +28,19 @@ class Pipeline(PipelineWrapper):
         pipeline.set_data(2, torch.rand(input_shape, generator=generator))
         return pipeline
 
-    def build_params(self, log_n: int=LOG_N, input_scale: int=INPUT_SCALE) -> HomParams:
-        return HomParams(
-            full_q_list_precision=((60, 30),),
-            n=2 ** log_n,
-            sk_hw=192,
-            pt_scale=input_scale,
-            num_special_primes=6,
-        )
+
+def build_params(
+    log_n: int = LOG_N,
+    input_scale: int = INPUT_SCALE,
+    log_n_subring: int = LOG_N_SUBRING,
+) -> HomParams:
+    return HomParams(
+        full_q_list_precision=((60, 30),),
+        n=2**log_n,
+        # The input is encrypted in the sub-ring HomRingSwitch switches up from,
+        # so its logical period is that sub-ring rather than n/2.
+        n_slots=2 ** (log_n_subring - 1),
+        sk_hw=192,
+        pt_scale=input_scale,
+        num_special_primes=6,
+    )

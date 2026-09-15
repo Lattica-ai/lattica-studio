@@ -38,21 +38,19 @@ def resolve_license_key(cli_value: str | None) -> str:
 
 def main() -> None:
     args = parse_args()
-    studio = LatticaStudio(resolve_license_key(args.license_key))
+    with LatticaStudio(resolve_license_key(args.license_key)) as studio:
+        if args.resource in ("models", "all"):
+            print("\nModels")
+            studio.models.display(studio.models.list())
 
-    if args.resource in ("models", "all"):
-        print("\nModels")
-        studio.models.display(studio.models.list())
+        if args.resource in ("workers", "all"):
+            print("\nWorker sessions")
+            studio.workers.display(studio.workers.list_sessions())
 
-    if args.resource in ("workers", "all"):
-        print("\nWorker sessions")
-        studio.workers.display(studio.workers.list_sessions())
-
-    if args.resource in ("tokens", "all"):
-        print("\nTokens")
-        studio.tokens.display(studio.tokens.list())
+        if args.resource in ("tokens", "all"):
+            print("\nTokens")
+            studio.tokens.display(studio.tokens.list())
 
 
 if __name__ == "__main__":
     main()
-

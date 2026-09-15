@@ -1,17 +1,15 @@
-from typing import Optional
-
-from lattica_query.api.app import AppAPI
+from lattica_query.transport.backend import BackendAPI
 
 from ..types import JsonDict
 
 
 class AccountAPI:
-    def __init__(self, http: AppAPI):
+    def __init__(self, http: BackendAPI):
         self._http = http
 
     def get(self) -> JsonDict:
         """Retrieve information about the current account."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/account/get_account_info",
         )
 
@@ -29,10 +27,10 @@ class AccountAPI:
     def update(
         self,
         *,
-        company_name: Optional[str] = None,
-        contact_name: Optional[str] = None,
-        email: Optional[str] = None,
-        phone_number: Optional[str] = None,
+        company_name: str | None = None,
+        contact_name: str | None = None,
+        email: str | None = None,
+        phone_number: str | None = None,
     ) -> str:
         """Update account information."""
         params = {}
@@ -49,9 +47,9 @@ class AccountAPI:
         if phone_number is not None:
             params["phoneNumber"] = phone_number
 
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/account/update_account_info",
-            req_params=params,
+            parameters=params,
         )
 
         return response["message"]

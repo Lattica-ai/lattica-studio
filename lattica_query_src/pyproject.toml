@@ -1,0 +1,37 @@
+[project]
+name = "lattica-query"
+version = "2.0.2"
+description = "Client package for running inference queries on the LatticaAI platform"
+authors = [
+    {name = "LatticaAI Inc.", email = "support@lattica.ai"},
+]
+license-files = ["LICENSE.md"]
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "requests>=2.31.0,<3",
+    "lattica-fhe-core>=0.13.1",
+    "torch>=2.9,<3",
+    "protobuf>=5.27.1,<6",
+]
+
+[dependency-groups]
+dev = ["torch==2.9.1+cpu"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+lattica-fhe-core = { path = "../../lattice-toolkit/fhe_core/binding", editable = true }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lattica_query*"]

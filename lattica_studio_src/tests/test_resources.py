@@ -3,6 +3,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
+from lattica_query import QueryToken
+
 from lattica_studio.exceptions import ResourceNotFoundError
 from lattica_studio.resources.models import ModelsAPI
 from lattica_studio.resources.tokens import TokensAPI
@@ -13,7 +15,7 @@ from lattica_studio.types import Model, TokenInfo, Worker
 class ResourceObjectTests(unittest.TestCase):
     def test_models_are_attribute_objects_with_concise_repr(self):
         http = mock.Mock()
-        http.send_http_request.return_value = {
+        http.call.return_value = {
             "models": [{
                 "modelId": "12345678-1234-1234-1234-123456789abc",
                 "modelName": "mnist",
@@ -38,11 +40,11 @@ class ResourceObjectTests(unittest.TestCase):
         api.list = mock.Mock(return_value=[])
 
         with self.assertRaisesRegex(ResourceNotFoundError, "missing"):
-            api.get_id_by_name("missing")
+            api.get_by_name("missing")
 
     def test_active_workers_are_flat_attribute_objects(self):
         http = mock.Mock()
-        http.send_http_request.return_value = {
+        http.call.return_value = {
             "activeWorkers": [{
                 "workers": [{
                     "workerSessionId": "worker-1",
@@ -60,13 +62,27 @@ class ResourceObjectTests(unittest.TestCase):
 
     def test_token_list_returns_objects(self):
         http = mock.Mock()
-        http.send_http_request.return_value = {
+        http.call.return_value = {
             "tokens": [{"tokenId": "token-1", "tokenName": "demo", "status": "ACTIVE"}]
         }
 
         tokens = TokensAPI(http).list()
 
         self.assertEqual(tokens, [TokenInfo(id="token-1", name="demo", status="ACTIVE")])
+
+    def test_token_creation_returns_credential_with_identity(self):
+        http = mock.Mock()
+        http.call.return_value = {
+            "token": "query-credential",
+            "tokenId": "token-1",
+        }
+
+        token = TokensAPI(http).create("model-1", name="demo")
+
+        self.assertIsInstance(token, QueryToken)
+        self.assertEqual(token.value, "query-credential")
+        self.assertEqual(token.identity.id, "token-1")
+        self.assertEqual(token.identity.name, "demo")
 
     def test_display_is_explicit_and_tabular(self):
         output = io.StringIO()

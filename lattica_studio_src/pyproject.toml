@@ -10,10 +10,13 @@ license = "LicenseRef-LatticaAI-Evaluation"
 license-files = ["LICENSE.md"]
 requires-python = ">=3.11"
 dependencies = [
-    "lattica-query>=2.0.1",
+    "lattica-query>=2.0.2",
     "lattica-build>=0.1.1",
     "pyyaml",
 ]
+
+[dependency-groups]
+dev = ["torch==2.9.1+cpu"]
 
 [build-system]
 requires = ["setuptools>=77.0.3", "wheel"]
@@ -21,11 +24,27 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv.sources]
 # Cross-repo dependencies (defined here so all members can reference them)
-lattica-query = { path = "../../client/lattica_query_src", editable = true }
+lattica-query = { path = "../lattica_query_src", editable = true }
 lattica-build = { path = "../lattica_build_src", editable = true }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["lattica_studio*"]
 exclude = ["lattica_studio.internal_demos*"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "RUF", "SIM"]

@@ -1,19 +1,23 @@
+import secrets
+import string
 from collections.abc import Iterable
-from typing import Optional
 
-from lattica_query.api.app import (
-    AppAPI,
-    generate_random_token_name,
-)
-from lattica_query.storage.tokens import save_query_token, load_query_token
+from lattica_query import QueryToken, TokenIdentity
+from lattica_query.storage.token_store import load_query_token, save_query_token
+from lattica_query.transport.backend import BackendAPI
 
 from ..display import display_table
 from ..exceptions import InvalidResourceResponseError
-from ..types import JsonDict, ModelId, Token, TokenInfo
+from ..types import JsonDict, ModelId, TokenInfo
+
+
+def _random_token_name(length: int = 10) -> str:
+    alphabet = string.ascii_letters + string.digits + "-_"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 class TokensAPI:
-    def __init__(self, http: AppAPI):
+    def __init__(self, http: BackendAPI):
         self._http = http
 
     def create(
@@ -21,14 +25,14 @@ class TokensAPI:
             model_id: ModelId,
             *,
             name: str | None = None,
-            save_as: str | None = None,
-    ) -> Token:
+            save: bool = False,
+    ) -> QueryToken:
         if name is None:
-            name = generate_random_token_name(10)
+            name = _random_token_name()
 
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/token/generate_token",
-            req_params={
+            parameters={
                 "modelId": model_id,
                 "tokenName": name,
             },
@@ -37,26 +41,36 @@ class TokensAPI:
         if not isinstance(response, dict):
             raise InvalidResourceResponseError("Token creation response is malformed")
         token = response.get("token")
+        token_id = response.get("tokenId")
 
-        if token is None:
+        if not isinstance(token, str) or not token:
             raise InvalidResourceResponseError(
                 "The server response does not contain a token."
             )
+        if not isinstance(token_id, str) or not token_id:
+            raise InvalidResourceResponseError(
+                "The server response does not contain a token ID."
+            )
 
-        if save_as is not None:
-            save_query_token(save_as, token)
+        query_token = QueryToken(
+            value=token,
+            identity=TokenIdentity(id=token_id, name=name),
+        )
 
-        return token
+        if save:
+            save_query_token(query_token)
 
-    def load(self, name: str) -> Token:
-        """Load a locally saved query token."""
+        return query_token
+
+    def load(self, name: str | None = None) -> QueryToken:
+        """Load the newest saved query token, optionally restricted by name."""
         return load_query_token(name)
 
     def delete(self, token_id: str) -> str:
         """Delete a token."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/token/delete_token",
-            req_params={
+            parameters={
                 "tokenId": token_id,
             },
         )
@@ -69,9 +83,9 @@ class TokensAPI:
         model_id: ModelId,
     ) -> JsonDict:
         """Assign a token to a model."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/token/assign_token_to_model",
-            req_params={
+            parameters={
                 "tokenId": token_id,
                 "modelIdToAssign": model_id,
             },
@@ -88,9 +102,9 @@ class TokensAPI:
         model_id: ModelId,
     ) -> JsonDict:
         """Unassign a token from a model."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/token/unassign_token_from_model",
-            req_params={
+            parameters={
                 "tokenId": token_id,
                 "modelId": model_id,
             },
@@ -105,9 +119,9 @@ class TokensAPI:
         self,
         token_id: str,
         *,
-        name: Optional[str] = None,
-        note: Optional[str] = None,
-        status: Optional[str] = None,
+        name: str | None = None,
+        note: str | None = None,
+        status: str | None = None,
     ) -> str:
         """Update token information."""
         params = {
@@ -123,19 +137,19 @@ class TokensAPI:
         if status is not None:
             params["status"] = status
 
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/token/update_token_info",
-            req_params=params,
+            parameters=params,
         )
 
         return response["message"]
 
-    def get(self, token: Token) -> TokenInfo:
+    def get(self, token: QueryToken) -> TokenInfo:
         """Return information associated with a token."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/token/get_token_info",
-            req_params={
-                "token": token,
+            parameters={
+                "token": token.value,
             },
         )
 
@@ -166,9 +180,9 @@ class TokensAPI:
     def list(
         self,
         *,
-        status: Optional[str] = None,
-        model_id: Optional[ModelId] = None,
-        issue_date: Optional[str] = None,
+        status: str | None = None,
+        model_id: ModelId | None = None,
+        issue_date: str | None = None,
     ) -> list[TokenInfo]:
         """List tokens, optionally applying server-side filters."""
         params = {}
@@ -182,9 +196,9 @@ class TokensAPI:
         if issue_date is not None:
             params["issueDate"] = issue_date
 
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/token/list_tokens",
-            req_params=params,
+            parameters=params,
         )
 
         if not isinstance(response, dict):
