@@ -10,12 +10,13 @@ plaintext input, the plaintext output, or your secret key.
 
 Inference runs on cloud-hosted GPU accelerators, which can significantly reduce latency versus many CPU-only FHE setups. You also avoid managing custom CUDA kernel compilation yourself.
 
-This repository contains two Python packages:
+This repository contains three Python packages:
 
 | Package | Role |
 | --- | --- |
 | [`lattica-build`](./lattica_build_src) | Define a homomorphic computation graph, bind weights, plan FHE parameters, and emit a deployable artifact. Runs entirely locally. |
 | [`lattica-studio`](./lattica_studio_src) | Deploy and compile that artifact on the platform, then manage models, workers, and query tokens. |
+| [`lattica-query`](./lattica_query_src) | Generate keys, encrypt inputs, execute encrypted queries, and decrypt results locally. |
 
 Both require **Python 3.11+**.
 
@@ -56,6 +57,7 @@ To work from a checkout of this repository:
 
 ```bash
 pip install -e ./lattica_build_src
+pip install -e ./lattica_query_src
 pip install -e ./lattica_studio_src
 ```
 
@@ -103,7 +105,6 @@ from lattica_build.examples.advanced import mnist_fc
 from lattica_query import QueryClient
 from lattica_studio import LatticaStudio
 
-studio = LatticaStudio(os.environ["LATTICA_LICENSE_KEY"])
 x = torch.zeros(mnist_fc.INPUT_SHAPE)
 
 # Build locally, then deploy and compile on the platform.
@@ -112,21 +113,21 @@ artifact = build(
     mnist_fc.build_params(),
     "mnist.zip",
 )
-model_id = studio.deploy(artifact, "my-mnist-model")
+with LatticaStudio(os.environ["LATTICA_LICENSE_KEY"]) as studio:
+    model_id = studio.deploy(artifact, "my-mnist-model")
 
-# A GPU worker must be running to serve encrypted queries.
-with studio.workers.running(model_id, stop_on_exit=True):
-    token = studio.tokens.create(model_id, save_as="my-mnist-model")
+    # A GPU worker must be running to serve encrypted queries.
+    with studio.workers.running(model_id, stop_on_exit=True):
+        token = studio.tokens.create(model_id, name="my-mnist-model", save=True)
 
-    client = QueryClient(token)
+        with QueryClient(token) as client:
+            # Generates FHE keys and uploads the evaluation key.
+            # The secret key never leaves this machine.
+            sk = client.keys.ensure()
 
-    # Generates FHE keys and uploads the evaluation key.
-    # The secret key never leaves this machine.
-    sk = client.generate_key()
-
-    # x is a plain torch tensor shaped like the pipeline's input.
-    result = client.run_query(sk, x)    # encrypt → infer on ciphertext → decrypt
-    print(result.argmax(dim=-1))
+            # x is a plain torch tensor shaped like the pipeline's input.
+            result = client.query.encrypted(x, key=sk)
+            print(result.argmax(dim=-1))
 ```
 
 `studio.deploy_pipeline(...)` combines the build and deploy steps if you don't
@@ -204,9 +205,9 @@ if it doesn't.
 
 ```python
 studio.models.list()                       # → list[Model]
-studio.models.get(model_id)                # → Model
+studio.models.get_by_id(model_id)          # → Model
 studio.models.find_by_name(name)           # → Model | None
-studio.models.get_id_by_name(name)         # → model_id
+studio.models.get_by_name(name)            # → Model
 studio.models.update(model_id, ...)        # name, description, visibility, instance_type, ...
 studio.models.activate(model_id)
 studio.models.deactivate(model_id)
@@ -228,8 +229,9 @@ studio.workers.list_sessions(model_id=..., from_date=..., to_date=...)
 **`studio.tokens`**
 
 ```python
-studio.tokens.create(model_id, name=None, save_as=None)   # save_as caches it locally
-studio.tokens.load(name)                                  # load a cached token
+studio.tokens.create(model_id, name=None, save=False)     # save=True caches it locally
+studio.tokens.load()                                      # newest cached token
+studio.tokens.load(name)                                  # newest cached token with this name
 studio.tokens.get(token)                                  # → TokenInfo
 studio.tokens.list(status=..., model_id=...)
 studio.tokens.assign(token_id, model_id)
@@ -253,7 +255,7 @@ Pass an `InstanceType` to `deploy`,
 `deploy_pipeline`, or `models.update`:
 
 ```python
-from lattica_studio.types import InstanceType
+from lattica_studio import InstanceType
 
 studio.deploy(artifact, "my-model", instance_type=InstanceType.G7E_2XLARGE)
 ```
@@ -272,15 +274,16 @@ model name to change the device count.
 
 ### Errors
 
-Everything raised by the SDK derives from `LatticaStudioError`, a subclass of
-`RuntimeError`, so a single `except` clause covers the whole surface:
+Studio-specific failures derive from `LatticaStudioError`. Shared credential,
+HTTP, protocol, and storage failures derive from `LatticaClientError`:
 
 ```python
-from lattica_studio.exceptions import LatticaStudioError
+from lattica_query import LatticaClientError
+from lattica_studio import LatticaStudioError
 ```
 
 Individual subclasses such as `CompilationError` and `WorkerStartupTimeoutError`
-are available in the same module when you want to handle a specific failure.
+are exported by `lattica_studio` when you want to handle a specific failure.
 
 ## Repository layout
 
@@ -326,7 +329,7 @@ seconds. If it times out, retry, or raise the timeout with
 **Queries fail after a redeploy.** Changing the pipeline invalidates the key
 context. Create a fresh token and regenerate keys.
 
-**`ResourceNotFoundError` from `get_id_by_name`.** The model name doesn't exist
+**`ResourceNotFoundError` from `get_by_name`.** The model name doesn't exist
 on this account. List what's there with
 `studio.models.display(studio.models.list())`.
 

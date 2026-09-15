@@ -107,19 +107,20 @@ def test_mnist_composite_example_predicts_known_digits():
     images = images[sample_indices]
     labels = labels[sample_indices]
 
-    predictions = mnist_fc.build_pipeline().forward_clear(images).argmax(dim=-1)
+    pipeline = mnist_fc.Pipeline()
+    predictions = pipeline.build_pipeline().forward_clear(images).argmax(dim=-1)
     accuracy = (predictions == labels).float().mean()
     assert accuracy >= 0.95, f"clear MNIST accuracy was only {accuracy.item():.1%}"
 
 
 def test_bitonic_sort_composite_example_sorts_input():
     from lattica_build.examples.advanced import bitonic_sort
-
-    values = torch.rand(bitonic_sort.ARRAY_LEN)
-    pipeline = bitonic_sort.build_pipeline()
-    result = pipeline.forward_clear(values, hom_params=bitonic_sort.build_params())
-    expected = torch.sort(values).values.to(result.dtype)
-    assert torch.allclose(result[:bitonic_sort.ARRAY_LEN], expected, atol=2e-2)
+    example = bitonic_sort.Pipeline()
+    pipeline = example.build_pipeline()
+    values = torch.rand(pipeline.input_shape[pipeline.primary_input_name])
+    result = pipeline.forward_clear(values, hom_params=example.build_params())
+    expected = example.compute_expected(values)
+    assert torch.allclose(result, expected, atol=2e-2)
 
 
 def test_resnet_composite_example_matches_pretrained_model():
@@ -146,8 +147,9 @@ def test_resnet_composite_example_matches_pretrained_model():
         pretrained=True,
         verbose=False,
     ).eval()
-    pipeline = resnet20.build_pipeline()
-    params = resnet20.build_params()
+    example = resnet20.Pipeline()
+    pipeline = example.build_pipeline()
+    params = example.build_params()
     with torch.no_grad():
         normalized_image = pipeline.client_pre.forward_clear(
             raw_image, internal_n=params.internal_n

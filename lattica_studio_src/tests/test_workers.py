@@ -50,9 +50,11 @@ class WorkerDecisionLoggingTests(unittest.TestCase):
         workers.get_or_start = mock.Mock(return_value=ready)
         workers.stop = mock.Mock()
 
-        with mock.patch.object(workers_module, "log_info") as log_info:
-            with workers.running("model-1", stop_on_exit=True):
-                pass
+        with (
+            mock.patch.object(workers_module, "log_info") as log_info,
+            workers.running("model-1", stop_on_exit=True),
+        ):
+            pass
 
         workers.stop.assert_called_once_with(model_id="model-1", session_id="worker-1")
         messages = [call.args[0] for call in log_info.call_args_list]

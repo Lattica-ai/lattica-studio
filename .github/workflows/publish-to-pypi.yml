@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - lattica_build_src
+          - lattica_query_src
           - lattica_studio_src
 
 permissions:

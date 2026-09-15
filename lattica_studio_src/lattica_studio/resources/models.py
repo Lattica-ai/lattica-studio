@@ -1,22 +1,20 @@
 import os
 from collections.abc import Iterable
-from typing import Optional
 
-from lattica_query.api.app import AppAPI
-from lattica_studio.types import InstanceType
 from lattica_query.logging import (
-    Logging,
     STUDIO_THEME,
+    OperationLog,
     log_size_info,
 )
+from lattica_query.transport.backend import BackendAPI
 
 from ..display import display_table
 from ..exceptions import InvalidResourceResponseError, ResourceNotFoundError
-from ..types import JsonDict, Model, ModelId
+from ..types import InstanceType, JsonDict, Model, ModelId
 
 
 class ModelsAPI:
-    def __init__(self, http: AppAPI):
+    def __init__(self, http: BackendAPI):
         self._http = http
 
     def create(
@@ -27,9 +25,9 @@ class ModelsAPI:
         num_devices: int = 1,
     ) -> ModelId:
         """Create a model."""
-        model_id = self._http.send_http_request(
+        model_id = self._http.call(
             "api/model/create_model",
-            req_params={
+            parameters={
                 "modelName": name,
                 "instanceTypeId": instance_type.value,
                 "numDevices": num_devices,
@@ -38,11 +36,11 @@ class ModelsAPI:
 
         return model_id
 
-    def get(self, model_id: ModelId) -> Model:
+    def get_by_id(self, model_id: ModelId) -> Model:
         """Retrieve information about a model."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/model/get_model_info",
-            req_params={
+            parameters={
                 "modelId": model_id,
             },
         )
@@ -57,7 +55,7 @@ class ModelsAPI:
     def list(
         self,
         *,
-        visibility: Optional[str] = None,
+        visibility: str | None = None,
     ) -> list[Model]:
         """List models."""
         params = {}
@@ -65,9 +63,9 @@ class ModelsAPI:
         if visibility is not None:
             params["visibility"] = visibility
 
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/model/list_models",
-            req_params=params,
+            parameters=params,
         )
 
         if not isinstance(response, dict):
@@ -80,7 +78,7 @@ class ModelsAPI:
     def find_by_name(
         self,
         name: str,
-    ) -> Optional[Model]:
+    ) -> Model | None:
         """Return a model with the given name, if one exists."""
         return next(
             (
@@ -91,7 +89,8 @@ class ModelsAPI:
             None,
         )
 
-    def get_id_by_name(self, name: str) -> ModelId:
+    def get_by_name(self, name: str) -> Model:
+        """Retrieve a model by its exact name."""
         model = self.find_by_name(name)
 
         if model is None:
@@ -99,14 +98,7 @@ class ModelsAPI:
                 f"Model '{name}' does not exist."
             )
 
-        model_id = model.id
-
-        if model_id is None:
-            raise InvalidResourceResponseError(
-                f"Model '{name}' does not contain a modelId."
-            )
-
-        return model_id
+        return model
 
     @staticmethod
     def display(models: Iterable[Model]) -> None:
@@ -130,17 +122,17 @@ class ModelsAPI:
         self,
         model_id: ModelId,
         *,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        visibility: Optional[str] = None,
-        auto_restart: Optional[bool] = None,
-        input_type: Optional[str] = None,
-        output_type: Optional[str] = None,
-        status: Optional[str] = None,
-        instance_type: Optional[InstanceType] = None,
+        name: str | None = None,
+        description: str | None = None,
+        visibility: str | None = None,
+        auto_restart: bool | None = None,
+        input_type: str | None = None,
+        output_type: str | None = None,
+        status: str | None = None,
+        instance_type: InstanceType | None = None,
     ) -> JsonDict:
         """Update model configuration."""
-        params = {
+        params: JsonDict = {
             "modelId": model_id,
         }
 
@@ -168,9 +160,9 @@ class ModelsAPI:
         if instance_type is not None:
             params["instanceTypeId"] = instance_type.value
 
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/model/update",
-            req_params=params,
+            parameters=params,
         )
 
         return {
@@ -181,9 +173,9 @@ class ModelsAPI:
 
     def activate(self, model_id: ModelId) -> str:
         """Activate a model."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/model/activate_model",
-            req_params={
+            parameters={
                 "modelId": model_id,
             },
         )
@@ -192,9 +184,9 @@ class ModelsAPI:
 
     def deactivate(self, model_id: ModelId) -> str:
         """Deactivate a model."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/model/deactivate_model",
-            req_params={
+            parameters={
                 "modelId": model_id,
             },
         )
@@ -207,9 +199,9 @@ class ModelsAPI:
         visibility: str,
     ) -> JsonDict:
         """Update a model's visibility."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/model/update_model_visibility",
-            req_params={
+            parameters={
                 "modelId": model_id,
                 "visibility": visibility,
             },
@@ -227,7 +219,7 @@ class ModelsAPI:
         path: str,
     ) -> None:
         """Upload a non-homomorphic model file."""
-        with Logging(
+        with OperationLog(
             "uploading model",
             theme=STUDIO_THEME,
         ):
@@ -236,10 +228,10 @@ class ModelsAPI:
                 os.path.getsize(path),
             )
 
-            self._http.send_http_file_request(
+            self._http.upload_binary(
                 "api/files/upload_non_homomorphic_model",
-                req_params={
+                parameters={
                     "modelId": model_id,
                 },
-                model_file_path=path,
+                file_path=path,
             )

@@ -4,10 +4,10 @@ import os
 from pathlib import Path
 
 import torch
-
 from lattica_build import build
 from lattica_build.examples.advanced import mnist_fc
 from lattica_query import QueryClient
+
 from lattica_studio import LatticaStudio
 
 MODEL_NAME = "MNIST_FC"
@@ -37,8 +37,6 @@ def main() -> None:
         raise ValueError("Set LATTICA_LICENSE_KEY to run this example")
 
     x, y = load_mnist_test_data()
-
-    studio = LatticaStudio(license_key)
 
     # Build the pipeline locally, then deploy and compile it.
     pipeline = mnist_fc.build_pipeline()
@@ -70,36 +68,36 @@ def main() -> None:
     # for model in models:
     #     studio.models.deactivate(model.id)
 
-    model_id = studio.deploy(artifact, MODEL_NAME)
+    with LatticaStudio(license_key) as studio:
+        model_id = studio.deploy(artifact, MODEL_NAME)
 
-    # Optional, load existing model by name instead of deploying a new one
-    # model_id = studio.models.get_id_by_name(MODEL_NAME)
+        # Optional, load existing model by name instead of deploying a new one
+        # model_id = studio.models.get_by_name(MODEL_NAME).id
 
-    # A worker must be running to serve encrypted queries.
-    with studio.workers.running(model_id, stop_on_exit=True):
-        token = studio.tokens.create(model_id, save_as=MODEL_NAME)
+        # A worker must be running to serve encrypted queries.
+        with studio.workers.running(model_id, stop_on_exit=True):
+            token = studio.tokens.create(model_id, name=MODEL_NAME, save=True)
 
-        client = QueryClient(token)
+            with QueryClient(token) as client:
+                # Generates FHE keys and uploads the evaluation key.
+                # The secret key never leaves this machine.
+                sk = client.keys.ensure()
 
-        # Generates FHE keys and uploads the evaluation key.
-        # The secret key never leaves this machine.
-        sk = client.generate_key()
+                for i in range(NUM_QUERIES):
+                    print(f"Running encrypted query {i + 1}...")
+                    print(f"{x[i].shape=}...")
 
-        for i in range(NUM_QUERIES):
-            print(f"Running encrypted query {i + 1}...")
-            print(f"{x[i].shape=}...")
+                    result = client.query.encrypted(x[i], key=sk)
 
-            result = client.run_query(sk, x[i])
+                    prediction = result.argmax(dim=-1)
+                    accuracy = (prediction == y[i]).sum().item() / mnist_fc.BATCH
 
-            prediction = result.argmax(dim=-1)
-            accuracy = (prediction == y[i]).sum().item() / mnist_fc.BATCH
-
-            print(f"Query {i + 1}: accuracy {accuracy * 100:.1f}%")
-            if accuracy < MIN_ACCURACY:
-                raise RuntimeError(
-                    f"MNIST query accuracy {accuracy:.1%} is below "
-                    f"the required {MIN_ACCURACY:.1%}"
-                )
+                    print(f"Query {i + 1}: accuracy {accuracy * 100:.1f}%")
+                    if accuracy < MIN_ACCURACY:
+                        raise RuntimeError(
+                            f"MNIST query accuracy {accuracy:.1%} is below "
+                            f"the required {MIN_ACCURACY:.1%}"
+                        )
 
 
 if __name__ == "__main__":
