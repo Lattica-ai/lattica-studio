@@ -26,7 +26,9 @@ class HomMatMul(HomOp):
         with_modswitch: Whether to apply optional post-op modswitch.
         rows_budget: Optional allowed modulus rows for modswitch inference.
         pt_scale: Optional plaintext scale-up used during inference.
-        num_steps: Optional backend hint for staged implementations.
+        max_rotation_keys: Optional cap on the rotation keys the backend
+            implementation may use. A tighter budget buys the keys back with
+            more rotation stages.
     """
 
     OP_TYPE = HomOpType.MatMul
@@ -39,7 +41,7 @@ class HomMatMul(HomOp):
         with_modswitch: bool = True,
         rows_budget: Sequence[int] | None = None,
         pt_scale: int = None,
-        num_steps: int | None = None,
+        max_rotation_keys: int | None = None,
     ) -> None:
         super().__init__()
         self.dims = dims
@@ -48,7 +50,7 @@ class HomMatMul(HomOp):
         self.with_modswitch = with_modswitch
         self.rows_budget = rows_budget
         self.pt_scale = pt_scale
-        self.num_steps = num_steps
+        self.max_rotation_keys = max_rotation_keys
 
     @staticmethod
     def _choose_matmul_new_n_axis(
