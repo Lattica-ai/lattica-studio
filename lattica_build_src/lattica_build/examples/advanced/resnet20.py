@@ -118,7 +118,7 @@ class _InitialLayerPipeline(HomOp):
     def __init__(self, kwargs, log_n_subring, relu_deg):
         super().__init__()
         self.convBN = HomConvBnFused(**kwargs["init_kwargs"])
-        self.bootstrap = Bootstrap(log_n_subring=log_n_subring)
+        self.bootstrap = Bootstrap()
         self.relu = _make_relu(kwargs["delta"], relu_deg)
 
     def forward(self, x):
@@ -129,7 +129,7 @@ class _BlockPipeline(HomOp):
     def __init__(self, kwargs, log_n_subring, relu_deg):
         super().__init__()
         d1, d2 = kwargs["conv1"]["delta"], kwargs["conv2"]["delta"]
-        self.bootstrap = Bootstrap(log_n_subring=log_n_subring)
+        self.bootstrap = Bootstrap()
         self.convBN1 = HomConvBnFused(**kwargs["conv1"]["init_kwargs"])
         self.relu1 = _make_relu(d1, relu_deg)
         self.convBN2 = HomConvBnFused(**kwargs["conv2"]["init_kwargs"])

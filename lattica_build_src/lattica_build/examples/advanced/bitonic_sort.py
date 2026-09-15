@@ -43,6 +43,9 @@ def _mask_mul(mask: np.ndarray) -> HomConstMul:
     op.set_data(torch.tensor(mask, dtype=torch.float32))
     return op
 
+def _log_n_subring(array_len: int) -> int:
+    """Subring holds the array twice over; floored at 4 for the coefs-to-slots split."""
+    return max(4, int(np.log2(array_len)) + 1)
 
 def _rotate(s: int) -> SequentialHomOp:
     """Cyclic rotate by s, rot(x, s)[i] == x[i+s]; the squeeze undoes HomRotateSum's new axis."""
@@ -106,13 +109,17 @@ class Pipeline(PipelineWrapper):
 
     def build_pipeline(self) -> HomomorphicPipeline:
         """Construct a bitonic homomorphic pipeline."""
-        return HomomorphicPipeline(
+        hom_pipeline = HomomorphicPipeline(
             input_shape=(ARRAY_LEN,),
             client_pre=[Repeat()],
             hom=_BitonicSort(ARRAY_LEN, 2 ** (LOG_N - 1)),
             client_post=[HomSlice(dim=0, key=slice(None, ARRAY_LEN, None))],
         )
-
+        hom_pipeline.verification_data = {
+            hom_pipeline.primary_input_name: self.get_hom_params(),
+            "accuracy": 2 ** -3,
+        }
+        return hom_pipeline
 
     def build_params() -> HomParams:
         return HomParams(
