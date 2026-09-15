@@ -50,9 +50,9 @@ def _rotate(s: int) -> SequentialHomOp:
 class _Stage(HomOp):
     """One compare-exchange layer of the bitonic sort"""
 
-    def __init__(self, array_len: int, n_slots: int, k: int, j: int):
+    def __init__(self, array_len: int, k: int, j: int):
         super().__init__()
-        m_el, m_eh, m_dl, m_dh = _get_masks(array_len, n_slots, k, j)
+        m_el, m_eh, m_dl, m_dh = _get_masks(array_len, k, j)
         self.rot_up = _rotate(+j)
         self.rot_down = _rotate(-j)
         # np.roll(v, -j) is the plaintext mirror of rot(v, +j): out[i] = v[i+j].
@@ -76,14 +76,14 @@ class _Stage(HomOp):
 
 
 class _BitonicSort(HomOp):
-    def __init__(self, array_len: int, n_slots: int, boot_every: int = BOOT_EVERY):
+    def __init__(self, array_len: int, boot_every: int = BOOT_EVERY):
         super().__init__()
         stages = []
         k = 2
         while k <= array_len:
             j = k // 2
             while j > 0:
-                stages.append(_Stage(array_len, n_slots, k, j))
+                stages.append(_Stage(array_len, k, j))
                 j //= 2
             k *= 2
         self.stages = ModuleListHomOp(stages)

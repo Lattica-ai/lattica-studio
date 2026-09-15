@@ -243,7 +243,7 @@ def build_params(
         n=N,
         pt_scale=PT_SCALE,
         num_special_primes=N_SPECIAL_PRIMES,
-        n_slots=2 ** (LOG_N_SUBRING - 1),
+        n_slots=HOM_INPUT_SHAPE[1],
 ) -> HomParams:
     return HomParams(
         full_q_list_precision=q_list_precision,
