@@ -11,7 +11,6 @@ class Bootstrap(HomOp):
     """Base bootstrap operator that refreshes ciphertext level budget.
 
     Args:
-        log_n_subring: Optional log-subring size to use for the bootstrap.
         target_output_scale: Optional output plaintext scale override.
     """
 
@@ -19,11 +18,9 @@ class Bootstrap(HomOp):
 
     def __init__(
         self,
-        log_n_subring: Optional[int] = None,
         target_output_scale: Optional[int] = None,
     ):
         super().__init__()
-        self.log_n_subring = log_n_subring
         self.target_output_scale = target_output_scale
 
     def infer_output_level_and_scale(

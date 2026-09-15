@@ -18,7 +18,6 @@ from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.params import HomParams
 
 N = 2 ** 11         # Note: not secure for production use, run with 2**16 for secure parameters.
-LOG_N_SUBRING = 11
 PT_SCALE = 2 ** 30
 
 Q_LIST_PRECISION = ((60, 30),) * 4
@@ -42,7 +41,6 @@ DELTAS = [
 ]
 
 def build_pipeline(
-        log_n_subring=LOG_N_SUBRING,
         relu_deg=RELU_DEG,
         image_hw=IMAGE_HW,
         hom_input_shape=HOM_INPUT_SHAPE,
@@ -66,7 +64,7 @@ def build_pipeline(
         def __init__(self, kwargs):
             super().__init__()
             self.convBN = HomConvBnFused(**kwargs['init_kwargs'])
-            self.bootstrap = Bootstrap(log_n_subring=log_n_subring)
+            self.bootstrap = Bootstrap()
             self.relu = make_relu(kwargs['delta'])
 
         def forward(self, x: HomValue) -> HomValue:
@@ -81,7 +79,7 @@ def build_pipeline(
             super().__init__()
             d1 = block_kwargs['conv1']['delta']
             d2 = block_kwargs['conv2']['delta']
-            self.bootstrap = Bootstrap(log_n_subring=log_n_subring)
+            self.bootstrap = Bootstrap()
             self.convBN1 = HomConvBnFused(**block_kwargs['conv1']['init_kwargs'])
             self.relu1 = make_relu(d1)
             self.convBN2 = HomConvBnFused(**block_kwargs['conv2']['init_kwargs'])
