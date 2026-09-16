@@ -4,6 +4,7 @@ import torch
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
@@ -11,7 +12,6 @@ from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.polynomials.h_poly_threshold import HomPolyThreshold
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
-from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.params import HomParams
 
 
@@ -41,6 +41,9 @@ def _mask_mul(mask: np.ndarray) -> HomConstMul:
     op.set_data(torch.tensor(mask, dtype=torch.float32))
     return op
 
+def _log_n_subring(array_len: int) -> int:
+    """Subring holds the array twice over; floored at 4 for the coefs-to-slots split."""
+    return max(4, int(np.log2(array_len)) + 1)
 
 def _rotate(s: int) -> SequentialHomOp:
     """Cyclic rotate by s, rot(x, s)[i] == x[i+s]; the squeeze undoes HomRotateSum's new axis."""
@@ -100,20 +103,32 @@ class _BitonicSort(HomOp):
         return x
 
 
-def build_pipeline(array_len: int = ARRAY_LEN) -> HomomorphicPipeline:
-    """Construct a bitonic homomorphic pipeline."""
-    return HomomorphicPipeline(
-        hom=_BitonicSort(array_len),
-        input_shape=(array_len,),
-    )
+class Pipeline(PipelineWrapper):
 
+    def build_pipeline(self) -> HomomorphicPipeline:
+        """Construct a bitonic homomorphic pipeline."""
+        hom_pipeline = HomomorphicPipeline(
+            input_shape=(ARRAY_LEN,),
+            hom=_BitonicSort(ARRAY_LEN),
+        )
+        hom_pipeline.verification_data = {
+            hom_pipeline.primary_input_name: self.get_hom_params(),
+            "accuracy": 2 ** -3,
+        }
+        return hom_pipeline
 
-def build_params() -> HomParams:
-    return HomParams(
-        n=2 ** LOG_N,
-        full_q_list_precision=Q_ROWS * ((LOG_SCALE * 2, LOG_SCALE),),
-        pt_scale=2 ** LOG_SCALE,
-        sk_hw=192,
-        num_special_primes=SPECIAL_PRIMES,
-        n_slots=ARRAY_LEN,
-    )
+    def build_params(self) -> HomParams:
+        return HomParams(
+            n=2 ** LOG_N,
+            full_q_list_precision=Q_ROWS * ((LOG_SCALE * 2, LOG_SCALE),),
+            pt_scale=2 ** LOG_SCALE,
+            sk_hw=192,
+            num_special_primes=SPECIAL_PRIMES,
+            n_slots=ARRAY_LEN,
+        )
+
+    def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
+        assert example_pt.ndim == 1 and example_pt.shape[0] == self.ARRAY_LEN, (
+            f"Input must be 1D of length {self.ARRAY_LEN}"
+        )
+        return torch.sort(example_pt).values

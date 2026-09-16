@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any, TypeAlias
-
 
 ModelId: TypeAlias = str
 WorkerSessionId: TypeAlias = str
-Token: TypeAlias = str
 JsonDict: TypeAlias = dict[str, Any]
 
 
@@ -38,7 +36,7 @@ class Model:
     required_resources: dict[str, Any] | None = None
 
     @classmethod
-    def from_api(cls, data: dict[str, Any]) -> "Model":
+    def from_api(cls, data: dict[str, Any]) -> Model:
         return cls(
             id=_value(data, "modelId", "id"),
             name=_value(data, "modelName", "name"),
@@ -62,9 +60,6 @@ class Model:
         )
 
 
-ModelInfo = Model
-
-
 @dataclass(frozen=True, slots=True)
 class Worker:
     session_id: str | None = None
@@ -74,7 +69,7 @@ class Worker:
     stopped_at: str | None = None
 
     @classmethod
-    def from_api(cls, data: dict[str, Any]) -> "Worker":
+    def from_api(cls, data: dict[str, Any]) -> Worker:
         return cls(
             session_id=_value(data, "workerSessionId", "sessionId", "session_id"),
             model_id=_value(data, "modelId", "model_id"),
@@ -94,9 +89,6 @@ class Worker:
         )
 
 
-WorkerStatus = Worker
-
-
 @dataclass(frozen=True, slots=True)
 class TokenInfo:
     id: str | None = None
@@ -110,7 +102,7 @@ class TokenInfo:
     evaluation_key_created_at: str | None = None
 
     @classmethod
-    def from_api(cls, data: dict[str, Any]) -> "TokenInfo":
+    def from_api(cls, data: dict[str, Any]) -> TokenInfo:
         return cls(
             id=_value(data, "tokenId", "id"),
             name=_value(data, "tokenName", "name"),
@@ -135,7 +127,7 @@ class TokenInfo:
         )
 
 
-class InstanceType(str, Enum):
+class InstanceType(StrEnum):
     """Available model deployment instance types."""
 
     G4DN_XLARGE = "G4DN_XLARGE"
@@ -146,8 +138,3 @@ class InstanceType(str, Enum):
     TPU_MEDIUM = "TPU_MEDIUM"
     CPU_C7G_XLARGE = "CPU_C7G_XLARGE"
     CPU_C7G_2XLARGE = "CPU_C7G_2XLARGE"
-
-
-class SchemeType(str, Enum):
-    LATTICA = "LATTICA"
-    SUNSCREEN = "SUNSCREEN"

@@ -4,12 +4,10 @@ from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.fhe.h_mod_switch import HomModSwitch
 from lattica_build.operators.polynomials.h_square import HomSquare
 from lattica_build.params.params import HomParams
-
-
 INPUT_SHAPE = (4,)
 
-
 class _ModSwitchPipeline(HomOp):
+
     def __init__(self) -> None:
         super().__init__()
         self.square = HomSquare(with_modswitch=False)
@@ -17,16 +15,17 @@ class _ModSwitchPipeline(HomOp):
 
     def forward(self, x: HomValue) -> HomValue:
         return self.mod_switch(self.square(x))
+from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 
+class Pipeline(PipelineWrapper):
 
-def build_pipeline() -> HomomorphicPipeline:
-    return HomomorphicPipeline(hom=_ModSwitchPipeline(), input_shape=INPUT_SHAPE)
+    def build_pipeline(self) -> HomomorphicPipeline:
+        return HomomorphicPipeline(hom=_ModSwitchPipeline(), input_shape=INPUT_SHAPE)
 
-
-def build_params() -> HomParams:
-    return HomParams(
-        n=2**13,
-        full_q_list_precision=((60, 30),),
-        pt_scale=2**30,
-        num_special_primes=1,
-    )
+    def build_params(self) -> HomParams:
+        return HomParams(
+            n=2 ** 13,
+            full_q_list_precision=((60, 30),),
+            pt_scale=2 ** 30,
+            num_special_primes=1,
+        )
