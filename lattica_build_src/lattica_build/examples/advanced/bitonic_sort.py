@@ -128,7 +128,7 @@ class Pipeline(PipelineWrapper):
         )
 
     def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
-        assert example_pt.ndim == 1 and example_pt.shape[0] == self.ARRAY_LEN, (
-            f"Input must be 1D of length {self.ARRAY_LEN}"
+        assert example_pt.ndim == 1 and example_pt.shape[0] == ARRAY_LEN, (
+            f"Input must be 1D of length {ARRAY_LEN}"
         )
         return torch.sort(example_pt).values
