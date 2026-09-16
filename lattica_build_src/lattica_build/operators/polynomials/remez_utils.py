@@ -1456,13 +1456,16 @@ def arcsin_minimax(degree, *, eps=2.0 ** -12, s=None, precision=None, max_iter=8
                  general=True, precision=precision).fit(max_iter=max_iter)
 
 
-def arcsin_minimax_coefs(degree, eps, delta=1, tol=1e-7):
-    asin = arcsin_minimax(degree=degree, eps=eps)
+def arcsin_minimax_coefs(degree, eps, delta=1, tol=1e-7, precision=None):
+    # precision=None runs the Remez fit in float64, which is enough up to degree 5
+    # but diverges by degree 13 (coefficients ~1e16 instead of O(1)).
+    asin = arcsin_minimax(degree=degree, eps=eps, precision=precision)
     c_as  = np.array([np.float64(c) for c in asin.coeffs])
     c_as *= delta
     d_asin = poly2cheb(cheb2poly(c_as) / (asin.hull_hi ** np.arange(len(c_as))))
     f_arcsin = d_asin[::-1].astype(np.float64)
-    f_arcsin[f_arcsin < tol] = 0.0
+    if tol is not None:                                   # None = keep every coefficient
+        f_arcsin[np.abs(f_arcsin) < tol] = 0.0
     return f_arcsin
 
 def eval_mod(cos_fit, asin_fit, ell):
