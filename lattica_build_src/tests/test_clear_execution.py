@@ -47,7 +47,7 @@ def test_leaf_clear_execution_and_data():
 
 def test_slot_client_and_fhe_clear_execution():
     x = torch.arange(8, dtype=torch.float32)
-    assert torch.equal(HomExpand(2)(x), x.unsqueeze(0).expand(2, 8))
+    assert torch.equal(HomExpand()(x), x.unsqueeze(0).expand(8, 8))
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
     assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
     assert torch.equal(HomSumSlots(k=3)(x), x[:3].sum().expand_as(x))

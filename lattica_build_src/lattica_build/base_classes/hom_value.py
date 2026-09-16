@@ -41,6 +41,8 @@ class HomValue:
     pt_scale: float | int | Decimal = 1
     # If this value is a custom input, this holds its name, otherwise it is None.
     custom_input_ref: str | None = None
+    # Holds the number of slots the data is packed into
+    n_slots: int | None = None
 
     def make_copy(self, **kwargs) -> 'HomValue':
         """Create a copy of this HomValue with optional modifications."""
@@ -52,6 +54,7 @@ class HomValue:
             'active_cols': self.active_cols,
             'pt_scale': self.pt_scale,
             'custom_input_ref': self.custom_input_ref,
+            'n_slots': self.n_slots,
         }
         new_attrs.update(kwargs)
         return HomValue(**new_attrs)

@@ -7,7 +7,6 @@ from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
-from lattica_build.operators.client_ops import Repeat
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.ml.conv_bn_fused import HomConvBnFused
 from lattica_build.operators.ml.h_linear import HomLinear
@@ -217,7 +216,6 @@ class Pipeline(PipelineWrapper):
                     -CIFAR10_MEAN / CIFAR10_STD
                 ),
                 HomReshape(hom_input_shape),
-                Repeat(dim=1),
             ],
             hom=_ResnetPipeline(initial, blocks, final, log_n_subring, relu_deg),
             input_shape=(3, *image_hw),
@@ -233,6 +231,7 @@ class Pipeline(PipelineWrapper):
                     *kwargs["downsample"]["set_data_kwargs"].values(),
                 )
         pipeline.set_data("final_layer.fc", final["fc"]["weight"], final["fc"]["bias"])
+        pipeline.reference_model = model
         return pipeline
 
     def build_params(
@@ -241,6 +240,7 @@ class Pipeline(PipelineWrapper):
         n=N,
         pt_scale=PT_SCALE,
         num_special_primes=N_SPECIAL_PRIMES,
+        n_slots=HOM_INPUT_SHAPE[1],
     ) -> HomParams:
         return HomParams(
             full_q_list_precision=q_list_precision,
@@ -249,4 +249,5 @@ class Pipeline(PipelineWrapper):
             sk_hw=192,
             num_special_primes=num_special_primes,
             num_init_rows=1,
+            n_slots=n_slots,
         )
