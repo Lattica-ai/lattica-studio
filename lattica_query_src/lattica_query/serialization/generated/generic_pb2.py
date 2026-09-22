@@ -40,4 +40,3 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_COMPLEX']._serialized_start=172
   _globals['_COMPLEX']._serialized_end=209
 # @@protoc_insertion_point(module_scope)
-
