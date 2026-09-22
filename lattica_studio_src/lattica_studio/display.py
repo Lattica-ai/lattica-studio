@@ -21,7 +21,10 @@ def display_table(
     ]
 
     def render(row: Sequence[object]) -> str:
-        cells = [str(value).ljust(width) for value, width in zip(row, widths)]
+        cells = [
+            str(value).ljust(width)
+            for value, width in zip(row, widths, strict=True)
+        ]
         cells[-1] = cells[-1].rstrip()
         return "  ".join(cells)
 

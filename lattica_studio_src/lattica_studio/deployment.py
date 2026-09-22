@@ -1,21 +1,20 @@
 import os
 import tempfile
 import time
-from typing import TYPE_CHECKING
 
+from lattica_build import BuildArtifact, build
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.params.params import HomParams
-from lattica_build import build, BuildArtifact
-from lattica_query.api.app import AppAPI
-from lattica_studio.types import InstanceType
 from lattica_query.logging import (
-    Logging,
     STUDIO_THEME,
+    OperationLog,
     log_info,
     log_size_info,
     log_status,
 )
-from lattica_query.storage.tokens import invalidate_local_key_cache
+from lattica_query.transport.backend import BackendAPI
+
+from lattica_studio.types import InstanceType
 
 from .exceptions import (
     CompilationError,
@@ -31,7 +30,7 @@ class DeploymentAPI:
     def __init__(
         self,
         *,
-        http: AppAPI,
+        http: BackendAPI,
         models: ModelsAPI,
         workers: WorkersAPI,
     ):
@@ -98,7 +97,7 @@ class DeploymentAPI:
         instance_type: InstanceType,
         num_devices: int,
     ) -> ModelId:
-        with Logging(
+        with OperationLog(
             "registering model",
             theme=STUDIO_THEME,
         ):
@@ -124,15 +123,15 @@ class DeploymentAPI:
 
                 return model_id
 
-            model_id = existing_model.id
-            if model_id is None:
+            existing_model_id = existing_model.id
+            if existing_model_id is None:
                 raise InvalidResourceResponseError(
                     f"Model '{model_name}' does not contain a model ID"
                 )
 
             log_info(
                 f"model '{model_name}' already exists; "
-                f"redeploying into model {model_id}"
+                f"redeploying into model {existing_model_id}"
             )
 
             existing_num_devices = existing_model.num_devices or 1
@@ -150,7 +149,7 @@ class DeploymentAPI:
             )
 
             self._workers.stop(
-                model_id=model_id,
+                model_id=existing_model_id,
             )
 
             current_instance_type = existing_model.instance_type
@@ -162,14 +161,12 @@ class DeploymentAPI:
                 )
 
                 self._models.update(
-                    model_id,
+                    existing_model_id,
                     instance_type=instance_type,
                 )
 
-            # Redeploy may change preprocessing/model metadata; drop stale local key bundle.
-            invalidate_local_key_cache()
 
-            return model_id
+            return existing_model_id
 
     def _upload_and_compile(
         self,
@@ -178,7 +175,7 @@ class DeploymentAPI:
         model_id: ModelId,
         init_context_params: dict,
     ) -> None:
-        with Logging(
+        with OperationLog(
             "uploading model",
             theme=STUDIO_THEME,
         ):
@@ -209,11 +206,12 @@ class DeploymentAPI:
         model_id: ModelId,
         *,
         poll_interval: float = 5,
-        timeout: float = 600,
+        # A minute more than the app's compile budget (COMPILATION_TIMEOUT_SEC, 900s), so the app's error is the one reported.
+        timeout: float = 960,
     ) -> None:
         start_time = time.monotonic()
 
-        with Logging(
+        with OperationLog(
             "compiling model",
             theme=STUDIO_THEME,
         ):
@@ -228,7 +226,7 @@ class DeploymentAPI:
                     "checking compilation status"
                 )
 
-                model = self._models.get(
+                model = self._models.get_by_id(
                     model_id
                 )
 

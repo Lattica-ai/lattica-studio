@@ -4,10 +4,12 @@ These examples define and serialize homomorphic pipelines using only
 `lattica-build`. They do not deploy workloads and do not depend on
 `lattica-studio` or the Lattica backend runtime.
 
-Every runnable module exposes the two functions accepted by the build CLI:
+Every runnable module exposes a `Pipeline` class inheriting
+`lattica_build.base_classes.PipelineWrapper`:
 
-- `build_pipeline()` constructs a `HomomorphicPipeline` and binds constants.
-- `build_params()` returns the matching `HomParams`.
+- `Pipeline.build_pipeline()` constructs a `HomomorphicPipeline` and binds constants.
+- `Pipeline.build_params()` returns the matching `HomParams`.
+- `Pipeline.compute_expected(input)` optionally computes a true expected result for verification.
 
 ## Start with a small example
 
@@ -82,8 +84,8 @@ from lattica_build import build
 from lattica_build.examples.advanced import mnist_fc
 
 artifact = build(
-    mnist_fc.build_pipeline(),
-    mnist_fc.build_params(),
+    mnist_fc.Pipeline().build_pipeline(),
+    mnist_fc.Pipeline().build_params(),
     "mnist-fc.zip",
     display_graph=True,
 )
@@ -93,7 +95,7 @@ print(artifact.path)
 ## Build a local file
 
 The CLI accepts either an importable module or a standalone Python file. A
-local file must define the same `build_pipeline()` and `build_params()` hooks:
+local file must export the same `Pipeline` class:
 
 ```bash
 lattica-build /path/to/my_pipeline.py --out /tmp/my-pipeline.zip

@@ -1,17 +1,15 @@
-from contextlib import contextmanager, nullcontext
-from collections.abc import Iterable
-
 import time
-from typing import Optional, Iterator
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager, nullcontext
 
-from lattica_query.api.app import AppAPI
 from lattica_query.logging import (
-    Logging,
     STUDIO_THEME,
+    OperationLog,
     current_animation,
     log_info,
     log_status,
 )
+from lattica_query.transport.backend import BackendAPI
 
 from ..display import display_table
 from ..exceptions import InvalidResourceResponseError, WorkerStartupTimeoutError
@@ -23,7 +21,7 @@ from ..types import (
 
 
 class WorkersAPI:
-    def __init__(self, http: AppAPI):
+    def __init__(self, http: BackendAPI):
         self._http = http
 
     @staticmethod
@@ -31,7 +29,7 @@ class WorkersAPI:
         """Join an active operation so its details stay under one log entry."""
         if current_animation() is not None:
             return nullcontext()
-        return Logging(name, theme=STUDIO_THEME)
+        return OperationLog(name, theme=STUDIO_THEME)
 
     def get(
         self,
@@ -39,9 +37,9 @@ class WorkersAPI:
         session_id: WorkerSessionId,
     ) -> Worker:
         """Return the current status of a worker."""
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/worker/poll_worker_status",
-            req_params={
+            parameters={
                 "modelId": model_id,
                 "workerSessionId": session_id,
             },
@@ -55,9 +53,9 @@ class WorkersAPI:
         """Return active workers for a model."""
         with self._phase("checking active workers"):
             log_info(f"model: {model_id}")
-            response = self._http.send_http_request(
+            response = self._http.call(
                 "api/worker/get_active_workers",
-                req_params={
+                parameters={
                     "modelId": model_id,
                 },
             )
@@ -81,8 +79,8 @@ class WorkersAPI:
 
     def stop(
         self,
-        model_id: Optional[ModelId] = None,
-        session_id: Optional[WorkerSessionId] = None,
+        model_id: ModelId | None = None,
+        session_id: WorkerSessionId | None = None,
     ) -> Worker:
         """
         Stop a worker session.
@@ -95,9 +93,9 @@ class WorkersAPI:
                 log_info(f"model: {model_id}")
             if session_id is not None:
                 log_info(f"worker session: {session_id}")
-            response = self._http.send_http_request(
+            response = self._http.call(
                 "api/worker/stop_worker",
-                req_params={
+                parameters={
                     "modelId": model_id,
                     "workerSessionId": session_id,
                 },
@@ -191,9 +189,9 @@ class WorkersAPI:
     def list_sessions(
         self,
         *,
-        model_id: Optional[ModelId] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
+        model_id: ModelId | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
     ) -> list[Worker]:
         """List worker sessions."""
         params = {}
@@ -207,9 +205,9 @@ class WorkersAPI:
         if to_date is not None:
             params["toDate"] = to_date
 
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/worker/list_worker_sessions",
-            req_params=params,
+            parameters=params,
         )
 
         if not isinstance(response, dict):
@@ -241,9 +239,9 @@ class WorkersAPI:
         self,
         model_id: ModelId,
     ) -> Worker:
-        response = self._http.send_http_request(
+        response = self._http.call(
             "api/worker/start_worker",
-            req_params={
+            parameters={
                 "modelId": model_id,
             },
         )
@@ -256,7 +254,7 @@ class WorkersAPI:
             *,
             stop_on_exit: bool = False,
     ) -> Iterator[Worker]:
-        with Logging("preparing worker context", theme=STUDIO_THEME):
+        with OperationLog("preparing worker context", theme=STUDIO_THEME):
             log_info(f"stop on exit: {stop_on_exit}")
             worker = self.get_or_start(model_id)
             session_id = worker.session_id
@@ -264,7 +262,7 @@ class WorkersAPI:
         try:
             yield worker
         finally:
-            with Logging("closing worker context", theme=STUDIO_THEME):
+            with OperationLog("closing worker context", theme=STUDIO_THEME):
                 log_info(f"model: {model_id}")
                 log_info(f"worker session: {session_id or 'unknown'}")
                 if stop_on_exit and session_id is not None:
