@@ -102,13 +102,16 @@ class _BitonicSort(HomOp):
 
 class Pipeline(PipelineWrapper):
 
+    def __init__(self, array_len: int = ARRAY_LEN):
+        self.array_len = array_len
+
     def build_pipeline(self) -> HomomorphicPipeline:
         """Construct a bitonic homomorphic pipeline."""
         hom_pipeline = HomomorphicPipeline(
-            input_shape=(ARRAY_LEN,),
-            hom=_BitonicSort(ARRAY_LEN),
+            input_shape=(self.array_len,),
+            hom=_BitonicSort(self.array_len),
         )
-        verification_input = np.random.default_rng(0).uniform(VAL_LO, VAL_HI, ARRAY_LEN)
+        verification_input = np.random.default_rng(0).uniform(VAL_LO, VAL_HI, self.array_len)
         hom_pipeline.verification_data = {
             hom_pipeline.primary_input_name: torch.tensor(verification_input, dtype=torch.float32),
             "accuracy": 2 ** -3,
@@ -122,11 +125,11 @@ class Pipeline(PipelineWrapper):
             pt_scale=2 ** LOG_SCALE,
             sk_hw=192,
             num_special_primes=SPECIAL_PRIMES,
-            n_slots=ARRAY_LEN,
+            n_slots=self.array_len,
         )
 
     def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
-        assert example_pt.ndim == 1 and example_pt.shape[0] == ARRAY_LEN, (
-            f"Input must be 1D of length {ARRAY_LEN}"
+        assert example_pt.ndim == 1 and example_pt.shape[0] == self.array_len, (
+            f"Input must be 1D of length {self.array_len}"
         )
         return torch.sort(example_pt).values
