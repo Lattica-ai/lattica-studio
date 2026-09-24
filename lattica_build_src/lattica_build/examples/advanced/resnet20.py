@@ -1,3 +1,5 @@
+import pickle
+from pathlib import Path
 import numpy as np
 import torch
 
@@ -181,6 +183,10 @@ class _ResnetPipeline(HomOp):
 
 
 class Pipeline(PipelineWrapper):
+    CIFAR_SAMPLE_INDEX = 0
+    CIFAR10_CLASSES = ('airplane', 'automobile', 'bird', 'cat', 'deer',
+                       'dog', 'frog', 'horse', 'ship', 'truck')
+
     def build_pipeline(
         self,
         log_n_subring=LOG_N_SUBRING,
@@ -250,4 +256,66 @@ class Pipeline(PipelineWrapper):
             num_special_primes=num_special_primes,
             num_init_rows=1,
             n_slots=n_slots,
+        )
+
+    @classmethod
+    def _load_cifar_sample(cls):
+        batch_path = Path(__file__).parent / "data" / "cifar10_test_batch"
+        if not batch_path.exists():
+            raise FileNotFoundError(
+                f"CIFAR-10 test file not found at {batch_path}")
+        with batch_path.open("rb") as batch_file:
+            batch = pickle.load(batch_file, encoding="bytes")
+        image = torch.tensor(
+            batch[b"data"][cls.CIFAR_SAMPLE_INDEX], dtype=torch.float32
+        ).reshape(3, *IMAGE_HW)
+        return image, cls.CIFAR10_CLASSES[int(batch[b"labels"][cls.CIFAR_SAMPLE_INDEX])]
+
+    def _set_example_pt(self):
+        example_pt, self._example_category = self._load_cifar_sample()
+        hom_pipeline = self.get_hom_pipeline()
+        self._model = hom_pipeline.reference_model
+        # The pipeline normalizes in client_pre, so the reference model is fed
+        # through it rather than through a second copy of the transform.
+        self._example_img = hom_pipeline.client_pre.forward_clear(
+            example_pt, internal_n=self.get_hom_params().internal_n
+        ).reshape(1, 3, *IMAGE_HW)
+        return example_pt
+
+    @staticmethod
+    def _print_error(x, y):
+        diff = x - y
+        abs_err = diff.abs()
+        rel_err = (diff.norm() / y.norm().clamp_min(1e-12)).item()
+        print(f"absolute error: mean={abs_err.mean():.4e} max={abs_err.max():.4e}")
+        print(f"relative error: {rel_err:.4e}")
+        print()
+
+    def verify_results(self, actual, expected):
+        with torch.no_grad():
+            out = self._model(self._example_img)
+            ref = out.reshape(out.shape[1], -1).to(torch.float64)
+        dec = actual[:, :1].to(torch.float64)
+
+        # 1) Compare homomorphic results to model results.
+        print("=== homomorphic vs model ===")
+        self._print_error(dec, ref)
+
+        # 2) Compare homomorphic results to cleartext results (if available).
+        if expected is not None:
+            clear = expected[:, :1].to(torch.float64)
+            print("=== homomorphic vs clear ===")
+            self._print_error(dec, clear)
+
+        # 3) Final classification results.
+        pred_dec = int(dec.reshape(-1).argmax())
+        pred_true = int(ref.reshape(-1).argmax())
+        print("=== classification results ===")
+        print(f"true category        : {self._example_category}")
+        print(f"predicted (decrypted): {self.CIFAR10_CLASSES[pred_dec]}"
+              f"   |   (true model): {self.CIFAR10_CLASSES[pred_true]}"
+              f"   |   match: {pred_dec == pred_true}")
+        assert pred_dec == pred_true, (
+            f"misclassified: predicted class = {self.CIFAR10_CLASSES[pred_dec]!r}, "
+            f"true class = {self.CIFAR10_CLASSES[pred_true]!r}."
         )
