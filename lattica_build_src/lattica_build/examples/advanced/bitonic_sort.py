@@ -19,6 +19,7 @@ ARRAY_LEN = 16       # array length being sorted; must be a power of two
 LOG_N = 16           # ring degree 2**LOG_N, i.e. 2**(LOG_N - 1) slots
 DEG = 119            # Chebyshev degree of the threshold comparator
 MARGIN = 0.04        # comparator don't-care band; entries closer than this may come out unordered
+VAL_LO, VAL_HI = 0.05, 0.95   # value range of the sorted entries
 
 LOG_SCALE = 30
 BOOT_EVERY = 1
@@ -40,10 +41,6 @@ def _mask_mul(mask: np.ndarray) -> HomConstMul:
     op = HomConstMul(dims=tuple(mask.shape))
     op.set_data(torch.tensor(mask, dtype=torch.float32))
     return op
-
-def _log_n_subring(array_len: int) -> int:
-    """Subring holds the array twice over; floored at 4 for the coefs-to-slots split."""
-    return max(4, int(np.log2(array_len)) + 1)
 
 def _rotate(s: int) -> SequentialHomOp:
     """Cyclic rotate by s, rot(x, s)[i] == x[i+s]; the squeeze undoes HomRotateSum's new axis."""
@@ -105,14 +102,18 @@ class _BitonicSort(HomOp):
 
 class Pipeline(PipelineWrapper):
 
+    def __init__(self, array_len: int = ARRAY_LEN):
+        self.array_len = array_len
+
     def build_pipeline(self) -> HomomorphicPipeline:
         """Construct a bitonic homomorphic pipeline."""
         hom_pipeline = HomomorphicPipeline(
-            input_shape=(ARRAY_LEN,),
-            hom=_BitonicSort(ARRAY_LEN),
+            input_shape=(self.array_len,),
+            hom=_BitonicSort(self.array_len),
         )
+        verification_input = np.random.default_rng(0).uniform(VAL_LO, VAL_HI, self.array_len)
         hom_pipeline.verification_data = {
-            hom_pipeline.primary_input_name: self.get_hom_params(),
+            hom_pipeline.primary_input_name: torch.tensor(verification_input, dtype=torch.float32),
             "accuracy": 2 ** -3,
         }
         return hom_pipeline
@@ -124,11 +125,11 @@ class Pipeline(PipelineWrapper):
             pt_scale=2 ** LOG_SCALE,
             sk_hw=192,
             num_special_primes=SPECIAL_PRIMES,
-            n_slots=ARRAY_LEN,
+            n_slots=self.array_len,
         )
 
     def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
-        assert example_pt.ndim == 1 and example_pt.shape[0] == ARRAY_LEN, (
-            f"Input must be 1D of length {ARRAY_LEN}"
+        assert example_pt.ndim == 1 and example_pt.shape[0] == self.array_len, (
+            f"Input must be 1D of length {self.array_len}"
         )
         return torch.sort(example_pt).values
