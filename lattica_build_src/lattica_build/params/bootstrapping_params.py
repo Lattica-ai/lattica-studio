@@ -13,7 +13,7 @@ BOOT_CONFIGURATION = {
     'cts_scale' : 48,
     'n_cts_levels' : 3,
     # Also the size of q0: EvalMod running at scale q0 makes the division by
-    # delta a free scale relabel (see h_bootstrapping.py).
+    # delta a free scale relabel.
     'eval_mod_scale' : 50,
     'stc_scale' : 30,
     'n_stc_levels' : 3,
