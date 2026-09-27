@@ -1,28 +1,27 @@
 """See `operators/fhe/README.md` for usage details."""
 
-from typing import Optional
-
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.params.level_and_scale_tracing import init_levels_after_bootstrap
 from lattica_build.serialization.hom_op_pb2 import HomOpType
+
+# The input is encrypted under the 50-bit q_base modulus, and 2**11 is the
+# smallest ring dimension that is secure for it.
+DEFAULT_LOG_N_SUBRING = 11
 
 class HomRingSwitch(HomOp):
     """Base ring-switch operator for subring-packed ciphertexts.
 
     Args:
         log_n_subring: Log dimension of the subring where the input ciphertext
-            is encrypted.
-        log_n_boot_subring: Log dimension of the subring used for plaintext
-            packing. If omitted, backend defaults to `log_n_subring`.
+            is encrypted. Defaults to the smallest secure subring, 2**11.
     """
 
     OP_TYPE = HomOpType.RingSwitch
 
-    def __init__(self, log_n_subring: int, log_n_boot_subring: Optional[int] = None) -> None:
+    def __init__(self, log_n_subring: int = DEFAULT_LOG_N_SUBRING) -> None:
         super().__init__()
         self.log_n_subring = log_n_subring
-        self.log_n_boot_subring = log_n_boot_subring
 
     def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
         return input.make_copy()
