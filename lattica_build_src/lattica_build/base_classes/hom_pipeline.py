@@ -279,6 +279,7 @@ class HomomorphicPipeline:
                 n=2 ** first_op.log_n_subring,
                 pt_scale=hom_params.pt_scale,
                 decomposition_type=DecompositionType.BV,
+                n_slots=hom_params.n_slots,
             )
             hom_params.num_init_rows = 0
         else:
