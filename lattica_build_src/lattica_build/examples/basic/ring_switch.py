@@ -6,17 +6,19 @@ from lattica_build.operators.fhe.h_ring_switch import HomRingSwitch
 from lattica_build.operators.polynomials.h_square import HomSquare
 from lattica_build.params.params import HomParams
 LOG_N = 13
-LOG_N_SUBRING = 4
+# The logical input period, which can be smaller than the slots of the
+# sub-ring the client encrypts in (HomRingSwitch's default, 2**11).
+N_SLOTS = 2 ** 3
 INPUT_SCALE = 2 ** 30
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 
 class Pipeline(PipelineWrapper):
 
     def build_pipeline(self) -> HomomorphicPipeline:
-        input_shape = (3, 2 ** (LOG_N_SUBRING - 1))
+        input_shape = (3, N_SLOTS)
         pipeline = HomomorphicPipeline(
             hom=SequentialHomOp(
-                HomRingSwitch(log_n_subring=LOG_N_SUBRING),
+                HomRingSwitch(),
                 HomSquare(),
                 HomConstMul(dims=input_shape),
             ),
@@ -30,9 +32,9 @@ class Pipeline(PipelineWrapper):
         return HomParams(
             full_q_list_precision=((60, 30),),
             n=2**LOG_N,
-            # The input is encrypted in the sub-ring HomRingSwitch switches up from,
-            # so its logical period is that sub-ring rather than n/2.
-            n_slots=2 ** (LOG_N_SUBRING - 1),
+            # The input repeats with period N_SLOTS across the sub-ring and the ring
+            # HomRingSwitch switches up to, rather than filling n/2 slots.
+            n_slots=N_SLOTS,
             sk_hw=192,
             pt_scale=INPUT_SCALE,
             num_special_primes=6,
