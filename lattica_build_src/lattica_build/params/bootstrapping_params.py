@@ -18,13 +18,18 @@ BOOT_CONFIGURATION = {
     'stc_scale' : 30,
     'n_stc_levels' : 3,
 
-    'n_cosine_levels' : 6,
+    'n_cosine_levels' : 5,
     'n_double_angle' : 3,
     'n_arcsine_levels' : 0,
-    # Bound on the ModRaise wrap count |I|. Han-Ki needs degree 2K-2, so depth 6
-    # allows K <= 30. At sk_hw=192, |I| >= 30 somewhere in a
-    # ciphertext has probability 2**-27.6, and corrupts it silently;
-    'k' : 30,
+    # Sparse-secret encapsulation: ModRaise switches q0 to an ephemeral secret
+    # of this hamming weight, raises the modulus, and switches back, so the
+    # wrap count |I| depends on it rather than on sk_hw. 0 disables it.
+    'sparse_secret_hw' : 32,
+    # Bound on the ModRaise wrap count |I|. Han-Ki needs degree 2K-2, so depth 5
+    # (degree 27) allows K <= 14. At H=32, |I| >= 14 somewhere in a ciphertext
+    # has probability 2**-38.8, and corrupts it silently. Without encapsulation
+    # (H=sk_hw=192) this needs depth 6 and K=30 for 2**-27.6.
+    'k' : 14,
 
     # Headroom q0/|m| for messages bounded by 1:
     # the slots for SLIM, the polynomial coefficients for REAL/COMPLEX. Costs
@@ -91,6 +96,7 @@ class BootstrappingParams:
             self.log_delta = BOOT_CONFIGURATION['log_delta_slim']
         self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
         self.k = BOOT_CONFIGURATION['k']
+        self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
         self.q_base_precision = self.get_q_base_precision()
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
