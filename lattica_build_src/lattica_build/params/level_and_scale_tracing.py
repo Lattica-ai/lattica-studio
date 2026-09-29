@@ -58,8 +58,12 @@ class ModulusChain():
         for row_idx, num_cols in enumerate(num_cols_per_row):
             self.full_active_cols[row_idx, :num_cols] = 1
 
-        # Sample primes
-        self.factors_per_row = get_primes_from_precisions_list(self.full_q_list)
+        # Sample primes, boot_base first, so q0 is the same prime the one-row
+        # ring-switch subring chain gets.
+        base_rows = self.section_rows.get("boot_base", [])
+        order = base_rows + [row for row in range(self.num_rows) if row not in base_rows]
+        drawn = dict(zip(order, get_primes_from_precisions_list([self.full_q_list[row] for row in order])))
+        self.factors_per_row = [drawn[row] for row in range(self.num_rows)]
 
     def get_rows_of_sections(self, section_names):
         rows = []

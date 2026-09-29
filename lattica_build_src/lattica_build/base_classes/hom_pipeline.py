@@ -279,6 +279,7 @@ class HomomorphicPipeline:
                 n=2 ** first_op.log_n_subring,
                 pt_scale=hom_params.pt_scale,
                 decomposition_type=DecompositionType.BV,
+                n_slots=hom_params.n_slots,
             )
             hom_params.num_init_rows = 0
         else:
@@ -286,7 +287,7 @@ class HomomorphicPipeline:
 
         needs_boot = ring_switch_input or any(op.OP_TYPE == HomOpType.Bootstrap for op in leaves)
         hom_params.boot_params = (
-            BootstrappingParams(hom_params.bootstrapping_variant, hom_params.sk_hw)
+            BootstrappingParams(hom_params.bootstrapping_variant)
             if needs_boot else None
         )
         hom_params.mod_chain = ModulusChain(hom_params)
