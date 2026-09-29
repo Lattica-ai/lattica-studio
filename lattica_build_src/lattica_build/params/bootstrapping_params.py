@@ -23,12 +23,11 @@ BOOT_CONFIGURATION = {
     'n_arcsine_levels' : 0,
     # Sparse-secret encapsulation: ModRaise switches q0 to an ephemeral secret
     # of this hamming weight, raises the modulus, and switches back, so the
-    # wrap count |I| depends on it rather than on sk_hw. 0 disables it.
+    # wrap count |I| depends on it rather than on sk_hw. ModRaise always
+    # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
-    # Bound on the ModRaise wrap count |I|. Han-Ki needs degree 2K-2, so depth 5
-    # (degree 27) allows K <= 14. At H=32, |I| >= 14 somewhere in a ciphertext
-    # has probability 2**-38.8, and corrupts it silently. Without encapsulation
-    # (H=sk_hw=192) this needs depth 6 and K=30 for 2**-27.6.
+    # Bound on the ModRaise wrap count |I|: Han-Ki needs degree 2K-2, so depth 5
+    # (degree 27) allows K <= 14. At H=32, |I| >= 14 has probability 2**-38.8.
     'k' : 14,
 
     # Headroom q0/|m| for messages bounded by 1:
