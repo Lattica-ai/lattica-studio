@@ -6,8 +6,16 @@ import lattica_fhe_core as fhe_core
 
 from ..logging import log_status
 from ..serialization.artifacts import ClientModel, ExtendedContext, ExtendedSecretKey
+from ..serialization.in_process_tensor_transport import (
+    activate_in_process_transport,
+    materialize_native_outputs,
+)
 from ..serialization.tensors import deserialize_tensor, serialize_tensor
 from .artifacts import QueryKey
+
+_USE_IN_PROCESS_TENSOR_TRANSPORT = bool(
+    getattr(fhe_core, "supports_in_process_tensor_transport_materialization", False)
+)
 
 if TYPE_CHECKING:
     from .worker import WorkerGateway
@@ -30,7 +38,9 @@ class EncryptedQueryExecutor:
 
         log_status("preparing client-side data")
         started = time.perf_counter()
-        serialized_plaintext = serialize_tensor(plaintext)
+        serialized_plaintext = serialize_tensor(
+            plaintext, in_process=_USE_IN_PROCESS_TENSOR_TRANSPORT
+        )
         model = ClientModel.from_bytes(key.client_model)
         context = ExtendedContext.from_bytes(key.context)
         secret_keys = ExtendedSecretKey.from_bytes(key.secret_key)
@@ -50,7 +60,11 @@ class EncryptedQueryExecutor:
         ciphertext = fhe_core.enc(
             input_context,
             (input_secret_key.crt_basis, input_secret_key.coefs_basis),
-            serialized_plaintext,
+            (
+                materialize_native_outputs(serialized_plaintext)
+                if _USE_IN_PROCESS_TENSOR_TRANSPORT
+                else serialized_plaintext
+            ),
             True,
             model.external_axis,
             None,
@@ -66,7 +80,11 @@ class EncryptedQueryExecutor:
         log_status("decrypting result from worker")
         started = time.perf_counter()
         serialized_plaintext = fhe_core.dec(
-            context.context,
+            (
+                activate_in_process_transport(context.context)
+                if _USE_IN_PROCESS_TENSOR_TRANSPORT
+                else context.context
+            ),
             secret_keys.secret_key.coefs_basis,
             encrypted_result,
             model.as_complex,
