@@ -103,8 +103,13 @@ class Tracer:
             refs = []
             data_tensors = (data,) if torch.is_tensor(data) else data
             for tensor in data_tensors:
-                ref = str(len(self.tensors))
-                self.tensors[ref] = tensor.contiguous()
+                tensor = tensor.contiguous()
+                # An op called more than once (e.g. a weight shared across RNN timesteps) reuses its
+                # entry: safetensors refuses to save the same memory under several keys.
+                ref = next((ref for ref, saved in self.tensors.items() if saved is tensor), None)
+                if ref is None:
+                    ref = str(len(self.tensors))
+                    self.tensors[ref] = tensor
                 refs.append(ref)
             op_ir["data_ref"] = refs
 
