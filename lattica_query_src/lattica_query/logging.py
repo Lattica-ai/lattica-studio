@@ -1,3 +1,4 @@
+import os
 import sys
 import threading
 import time
@@ -10,6 +11,30 @@ from typing import Self, TextIO
 _stdout_lock = threading.Lock()
 _RESET = "\033[0m"
 _ERROR = "\033[38;5;196m"
+
+
+def _prepare_output_stream(stream: TextIO) -> None:
+    """Make the Windows output stream capable of rendering logger glyphs."""
+    if sys.platform != "win32":
+        return
+    encoding = getattr(stream, "encoding", None)
+    if isinstance(encoding, str) and encoding.replace("-", "").lower() == "utf8":
+        return
+    reconfigure = getattr(stream, "reconfigure", None)
+    if not callable(reconfigure):
+        return
+    try:
+        with _stdout_lock:
+            reconfigure(encoding="utf-8")
+    except (OSError, ValueError):
+        # Captured and custom streams may expose reconfigure without supporting it.
+        pass
+
+
+def _supports_terminal_output(stream: TextIO) -> bool:
+    """Return whether the stream can render ANSI output interactively."""
+    is_tty = bool(getattr(stream, "isatty", lambda: False)())
+    return is_tty or os.getenv("PYCHARM_HOSTED") == "1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +65,7 @@ def output_context(config: OutputConfig) -> Iterator[None]:
     """Apply output settings to operations executed inside this context."""
     if not isinstance(config, OutputConfig):
         raise TypeError("config must be an OutputConfig")
+    _prepare_output_stream(sys.stdout)
     token = _output_config.set(config)
     try:
         yield
@@ -62,6 +88,7 @@ def log_status(message: str) -> None:
     if operation is not None:
         operation.set_detail(message)
     elif _current_output_config().enabled:
+        _prepare_output_stream(sys.stdout)
         print(message)
 
 
@@ -71,6 +98,7 @@ def log_info(message: str) -> None:
     if operation is not None:
         operation.add_info(message)
     elif _current_output_config().enabled:
+        _prepare_output_stream(sys.stdout)
         print(message)
 
 
@@ -193,6 +221,7 @@ class OperationLog:
             return
         self._started = True
         self._config = _current_output_config()
+        _prepare_output_stream(sys.stdout)
         self._stream = sys.stdout
         self._start_time = time.perf_counter()
         stack = _operation_stack.get()
@@ -201,9 +230,9 @@ class OperationLog:
 
         if not self._config.enabled or self._parent is not None:
             return
-        is_tty = bool(getattr(self._stream, "isatty", lambda: False)())
-        self._color = self._config.color if self._config.color is not None else is_tty
-        animate = self._config.animate if self._config.animate is not None else is_tty
+        is_terminal = _supports_terminal_output(self._stream)
+        self._color = self._config.color if self._config.color is not None else is_terminal
+        animate = self._config.animate if self._config.animate is not None else is_terminal
         if animate:
             self._stop_event.clear()
             self._thread = threading.Thread(target=self._run, daemon=True)
