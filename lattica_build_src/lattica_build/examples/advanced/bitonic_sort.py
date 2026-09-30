@@ -5,7 +5,6 @@ from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
-from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
@@ -21,9 +20,6 @@ LOG_N = 16           # ring degree 2**LOG_N, i.e. 2**(LOG_N - 1) slots
 DEG = 119            # Chebyshev degree of the threshold comparator
 MARGIN = 0.04        # comparator don't-care band; entries closer than this may come out unordered
 VAL_LO, VAL_HI = 0.05, 0.95   # value range of the sorted entries
-# Sorting runs on entries shifted by -CENTER: each bootstrap shrinks the plaintext's constant
-# coefficient (the slot mean) by the sine's cubic term, which shifts every entry down alike.
-CENTER = (VAL_LO + VAL_HI) / 2
 
 LOG_SCALE = 30
 BOOT_EVERY = 1
@@ -44,11 +40,6 @@ def _get_masks(array_len: int, k: int, j: int) -> list[np.ndarray]:
 def _mask_mul(mask: np.ndarray) -> HomConstMul:
     op = HomConstMul(dims=tuple(mask.shape))
     op.set_data(torch.tensor(mask, dtype=torch.float32))
-    return op
-
-def _const_add(value: float, array_len: int) -> HomConstAdd:
-    op = HomConstAdd(dims=(array_len,))
-    op.set_data(torch.full((array_len,), value, dtype=torch.float32))
     return op
 
 def _rotate(s: int) -> SequentialHomOp:
@@ -96,20 +87,17 @@ class _BitonicSort(HomOp):
                 j //= 2
             k *= 2
         self.stages = ModuleListHomOp(stages)
-        self.shift_in = _const_add(-CENTER, array_len)
-        self.shift_out = _const_add(CENTER, array_len)
 
         self.bootstrap = Bootstrap(target_output_scale=2 ** LOG_SCALE)
         # Refresh every boot_every stages, never after the last.
         self.boot_after = set(range(boot_every - 1, len(self.stages) - 1, boot_every))
 
     def forward(self, x: HomValue) -> HomValue:
-        x = self.shift_in(x)
         for i, stage in enumerate(self.stages):
             x = stage(x)
             if i in self.boot_after:
                 x = self.bootstrap(x)
-        return self.shift_out(x)
+        return x
 
 
 class Pipeline(PipelineWrapper):
