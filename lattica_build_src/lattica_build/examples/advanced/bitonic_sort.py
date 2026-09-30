@@ -19,7 +19,7 @@ from lattica_build.params.params import HomParams
 ARRAY_LEN = 16       # array length being sorted; must be a power of two
 LOG_N = 16           # ring degree 2**LOG_N, i.e. 2**(LOG_N - 1) slots
 DEG = 119            # Chebyshev degree of the threshold comparator
-MARGIN = 0.055       # comparator don't-care band; entries closer than this may come out unordered
+MARGIN = 0.04        # comparator don't-care band; entries closer than this may come out unordered
 VAL_LO, VAL_HI = 0.05, 0.95   # value range of the sorted entries
 # Sorting runs on entries shifted by -CENTER: each bootstrap shrinks the plaintext's constant
 # coefficient (the slot mean) by the sine's cubic term, which shifts every entry down alike.
@@ -31,15 +31,6 @@ Q_ROWS = 4
 # Time-optimized alternative (2 stages per bootstrap): ~1.4x faster, ~35% more GPU RAM
 # LOG_SCALE, BOOT_EVERY, Q_ROWS = 26, 2, 8
 SPECIAL_PRIMES = 6
-
-
-def separated_input(array_len: int, generator: torch.Generator | None = None) -> torch.Tensor:
-    """Shuffled grid over [VAL_LO, VAL_HI], jittered but never closer than MARGIN."""
-    grid = torch.linspace(VAL_LO, VAL_HI, array_len)
-    jitter = (grid[1] - grid[0] - MARGIN) / 2
-    assert jitter >= 0, f"array_len={array_len} cannot be spaced {MARGIN} apart in [{VAL_LO}, {VAL_HI}]"
-    grid = grid + (torch.rand(array_len, generator=generator) * 2 - 1) * jitter
-    return grid[torch.randperm(array_len, generator=generator)]
 
 
 def _get_masks(array_len: int, k: int, j: int) -> list[np.ndarray]:
@@ -132,9 +123,9 @@ class Pipeline(PipelineWrapper):
             input_shape=(self.array_len,),
             hom=_BitonicSort(self.array_len),
         )
-        verification_input = separated_input(self.array_len, torch.Generator().manual_seed(0))
+        verification_input = np.random.default_rng(0).uniform(VAL_LO, VAL_HI, self.array_len)
         hom_pipeline.verification_data = {
-            hom_pipeline.primary_input_name: verification_input,
+            hom_pipeline.primary_input_name: torch.tensor(verification_input, dtype=torch.float32),
             "accuracy": 2 ** -3,
         }
         return hom_pipeline
@@ -148,9 +139,6 @@ class Pipeline(PipelineWrapper):
             num_special_primes=SPECIAL_PRIMES,
             n_slots=self.array_len,
         )
-
-    def _set_example_pt(self) -> torch.Tensor:
-        return separated_input(self.array_len)
 
     def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
         assert example_pt.ndim == 1 and example_pt.shape[0] == self.array_len, (
