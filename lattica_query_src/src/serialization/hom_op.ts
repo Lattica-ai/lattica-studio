@@ -16,22 +16,21 @@ export enum HomOpType {
   Add = 4,
   ModSwitch = 5,
   SumSlots = 6,
-  Repeat = 7,
-  MatMul = 8,
-  Conv = 9,
-  RotateSum = 10,
-  Reshape = 11,
-  Softmax = 12,
-  ReLU = 13,
-  Clamp = 14,
-  Unsqueeze = 15,
-  Squeeze = 16,
-  Expand = 17,
-  RunningSum = 18,
-  PolyEval = 19,
-  AxisSum = 20,
-  Bootstrap = 21,
-  RingSwitch = 22,
+  MatMul = 7,
+  Conv = 8,
+  RotateSum = 9,
+  Reshape = 10,
+  Softmax = 11,
+  ReLU = 12,
+  Clamp = 13,
+  Unsqueeze = 14,
+  Squeeze = 15,
+  Expand = 16,
+  RunningSum = 17,
+  PolyEval = 18,
+  AxisSum = 19,
+  Bootstrap = 20,
+  RingSwitch = 21,
   UNRECOGNIZED = -1,
 }
 
@@ -59,51 +58,48 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case "SumSlots":
       return HomOpType.SumSlots;
     case 7:
-    case "Repeat":
-      return HomOpType.Repeat;
-    case 8:
     case "MatMul":
       return HomOpType.MatMul;
-    case 9:
+    case 8:
     case "Conv":
       return HomOpType.Conv;
-    case 10:
+    case 9:
     case "RotateSum":
       return HomOpType.RotateSum;
-    case 11:
+    case 10:
     case "Reshape":
       return HomOpType.Reshape;
-    case 12:
+    case 11:
     case "Softmax":
       return HomOpType.Softmax;
-    case 13:
+    case 12:
     case "ReLU":
       return HomOpType.ReLU;
-    case 14:
+    case 13:
     case "Clamp":
       return HomOpType.Clamp;
-    case 15:
+    case 14:
     case "Unsqueeze":
       return HomOpType.Unsqueeze;
-    case 16:
+    case 15:
     case "Squeeze":
       return HomOpType.Squeeze;
-    case 17:
+    case 16:
     case "Expand":
       return HomOpType.Expand;
-    case 18:
+    case 17:
     case "RunningSum":
       return HomOpType.RunningSum;
-    case 19:
+    case 18:
     case "PolyEval":
       return HomOpType.PolyEval;
-    case 20:
+    case 19:
     case "AxisSum":
       return HomOpType.AxisSum;
-    case 21:
+    case 20:
     case "Bootstrap":
       return HomOpType.Bootstrap;
-    case 22:
+    case 21:
     case "RingSwitch":
       return HomOpType.RingSwitch;
     case -1:
@@ -129,8 +125,6 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "ModSwitch";
     case HomOpType.SumSlots:
       return "SumSlots";
-    case HomOpType.Repeat:
-      return "Repeat";
     case HomOpType.MatMul:
       return "MatMul";
     case HomOpType.Conv:
@@ -197,10 +191,6 @@ export interface ClampApplyClearParams {
   maxVal: number;
 }
 
-export interface RepeatApplyClearParams {
-  dim: number;
-}
-
 export interface ExpandApplyClearParams {
   k: number;
   expandAxis: number;
@@ -240,7 +230,6 @@ export interface ApplyClearParams {
   constMatMul?: ConstMatMulApplyClearParams | undefined;
   softmax?: SoftmaxApplyClearParams | undefined;
   clamp?: ClampApplyClearParams | undefined;
-  repeat?: RepeatApplyClearParams | undefined;
   expand?: ExpandApplyClearParams | undefined;
   axisSum?: AxisSumApplyClearParams | undefined;
   runningSum?: RunningSumApplyClearParams | undefined;
@@ -259,6 +248,8 @@ export interface AuxKeyRequirements {
   rotationKeyPerms?: CrtPermutations | undefined;
   squareKey: boolean;
   ringSwitchKey: boolean;
+  /** Hamming weight of the ephemeral sparse secret for ModRaise; unset if no encapsulation keys are needed. */
+  sparseSecretHw?: number | undefined;
 }
 
 export interface ClientBlock {
@@ -755,64 +746,6 @@ export const ClampApplyClearParams: MessageFns<ClampApplyClearParams> = {
     const message = createBaseClampApplyClearParams();
     message.minVal = object.minVal ?? 0;
     message.maxVal = object.maxVal ?? 0;
-    return message;
-  },
-};
-
-function createBaseRepeatApplyClearParams(): RepeatApplyClearParams {
-  return { dim: 0 };
-}
-
-export const RepeatApplyClearParams: MessageFns<RepeatApplyClearParams> = {
-  encode(message: RepeatApplyClearParams, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
-    if (message.dim !== 0) {
-      writer.uint32(8).int32(message.dim);
-    }
-    return writer;
-  },
-
-  decode(input: BinaryReader | Uint8Array, length?: number): RepeatApplyClearParams {
-    const reader = input instanceof BinaryReader ? input : new BinaryReader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseRepeatApplyClearParams();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1: {
-          if (tag !== 8) {
-            break;
-          }
-
-          message.dim = reader.int32();
-          continue;
-        }
-      }
-      if ((tag & 7) === 4 || tag === 0) {
-        break;
-      }
-      reader.skip(tag & 7);
-    }
-    return message;
-  },
-
-  fromJSON(object: any): RepeatApplyClearParams {
-    return { dim: isSet(object.dim) ? globalThis.Number(object.dim) : 0 };
-  },
-
-  toJSON(message: RepeatApplyClearParams): unknown {
-    const obj: any = {};
-    if (message.dim !== 0) {
-      obj.dim = Math.round(message.dim);
-    }
-    return obj;
-  },
-
-  create<I extends Exact<DeepPartial<RepeatApplyClearParams>, I>>(base?: I): RepeatApplyClearParams {
-    return RepeatApplyClearParams.fromPartial(base ?? ({} as any));
-  },
-  fromPartial<I extends Exact<DeepPartial<RepeatApplyClearParams>, I>>(object: I): RepeatApplyClearParams {
-    const message = createBaseRepeatApplyClearParams();
-    message.dim = object.dim ?? 0;
     return message;
   },
 };
@@ -1331,7 +1264,6 @@ function createBaseApplyClearParams(): ApplyClearParams {
     constMatMul: undefined,
     softmax: undefined,
     clamp: undefined,
-    repeat: undefined,
     expand: undefined,
     axisSum: undefined,
     runningSum: undefined,
@@ -1362,29 +1294,26 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     if (message.clamp !== undefined) {
       ClampApplyClearParams.encode(message.clamp, writer.uint32(58).fork()).join();
     }
-    if (message.repeat !== undefined) {
-      RepeatApplyClearParams.encode(message.repeat, writer.uint32(66).fork()).join();
-    }
     if (message.expand !== undefined) {
-      ExpandApplyClearParams.encode(message.expand, writer.uint32(74).fork()).join();
+      ExpandApplyClearParams.encode(message.expand, writer.uint32(66).fork()).join();
     }
     if (message.axisSum !== undefined) {
-      AxisSumApplyClearParams.encode(message.axisSum, writer.uint32(82).fork()).join();
+      AxisSumApplyClearParams.encode(message.axisSum, writer.uint32(74).fork()).join();
     }
     if (message.runningSum !== undefined) {
-      RunningSumApplyClearParams.encode(message.runningSum, writer.uint32(90).fork()).join();
+      RunningSumApplyClearParams.encode(message.runningSum, writer.uint32(82).fork()).join();
     }
     if (message.rotateSum !== undefined) {
-      RotateSumApplyClearParams.encode(message.rotateSum, writer.uint32(98).fork()).join();
+      RotateSumApplyClearParams.encode(message.rotateSum, writer.uint32(90).fork()).join();
     }
     if (message.unsqueeze !== undefined) {
-      UnsqueezeSqueezeApplyClearParams.encode(message.unsqueeze, writer.uint32(106).fork()).join();
+      UnsqueezeSqueezeApplyClearParams.encode(message.unsqueeze, writer.uint32(98).fork()).join();
     }
     if (message.squeeze !== undefined) {
-      UnsqueezeSqueezeApplyClearParams.encode(message.squeeze, writer.uint32(114).fork()).join();
+      UnsqueezeSqueezeApplyClearParams.encode(message.squeeze, writer.uint32(106).fork()).join();
     }
     if (message.slice !== undefined) {
-      SliceApplyClearParams.encode(message.slice, writer.uint32(122).fork()).join();
+      SliceApplyClearParams.encode(message.slice, writer.uint32(114).fork()).join();
     }
     return writer;
   },
@@ -1449,7 +1378,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
             break;
           }
 
-          message.repeat = RepeatApplyClearParams.decode(reader, reader.uint32());
+          message.expand = ExpandApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
         case 9: {
@@ -1457,7 +1386,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
             break;
           }
 
-          message.expand = ExpandApplyClearParams.decode(reader, reader.uint32());
+          message.axisSum = AxisSumApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
         case 10: {
@@ -1465,7 +1394,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
             break;
           }
 
-          message.axisSum = AxisSumApplyClearParams.decode(reader, reader.uint32());
+          message.runningSum = RunningSumApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
         case 11: {
@@ -1473,7 +1402,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
             break;
           }
 
-          message.runningSum = RunningSumApplyClearParams.decode(reader, reader.uint32());
+          message.rotateSum = RotateSumApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
         case 12: {
@@ -1481,7 +1410,7 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
             break;
           }
 
-          message.rotateSum = RotateSumApplyClearParams.decode(reader, reader.uint32());
+          message.unsqueeze = UnsqueezeSqueezeApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
         case 13: {
@@ -1489,19 +1418,11 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
             break;
           }
 
-          message.unsqueeze = UnsqueezeSqueezeApplyClearParams.decode(reader, reader.uint32());
+          message.squeeze = UnsqueezeSqueezeApplyClearParams.decode(reader, reader.uint32());
           continue;
         }
         case 14: {
           if (tag !== 114) {
-            break;
-          }
-
-          message.squeeze = UnsqueezeSqueezeApplyClearParams.decode(reader, reader.uint32());
-          continue;
-        }
-        case 15: {
-          if (tag !== 122) {
             break;
           }
 
@@ -1525,7 +1446,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       constMatMul: isSet(object.constMatMul) ? ConstMatMulApplyClearParams.fromJSON(object.constMatMul) : undefined,
       softmax: isSet(object.softmax) ? SoftmaxApplyClearParams.fromJSON(object.softmax) : undefined,
       clamp: isSet(object.clamp) ? ClampApplyClearParams.fromJSON(object.clamp) : undefined,
-      repeat: isSet(object.repeat) ? RepeatApplyClearParams.fromJSON(object.repeat) : undefined,
       expand: isSet(object.expand) ? ExpandApplyClearParams.fromJSON(object.expand) : undefined,
       axisSum: isSet(object.axisSum) ? AxisSumApplyClearParams.fromJSON(object.axisSum) : undefined,
       runningSum: isSet(object.runningSum) ? RunningSumApplyClearParams.fromJSON(object.runningSum) : undefined,
@@ -1555,9 +1475,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
     }
     if (message.clamp !== undefined) {
       obj.clamp = ClampApplyClearParams.toJSON(message.clamp);
-    }
-    if (message.repeat !== undefined) {
-      obj.repeat = RepeatApplyClearParams.toJSON(message.repeat);
     }
     if (message.expand !== undefined) {
       obj.expand = ExpandApplyClearParams.toJSON(message.expand);
@@ -1605,9 +1522,6 @@ export const ApplyClearParams: MessageFns<ApplyClearParams> = {
       : undefined;
     message.clamp = (object.clamp !== undefined && object.clamp !== null)
       ? ClampApplyClearParams.fromPartial(object.clamp)
-      : undefined;
-    message.repeat = (object.repeat !== undefined && object.repeat !== null)
-      ? RepeatApplyClearParams.fromPartial(object.repeat)
       : undefined;
     message.expand = (object.expand !== undefined && object.expand !== null)
       ? ExpandApplyClearParams.fromPartial(object.expand)
@@ -1715,7 +1629,7 @@ export const CrtPermutations: MessageFns<CrtPermutations> = {
 };
 
 function createBaseAuxKeyRequirements(): AuxKeyRequirements {
-  return { rotationKeyPerms: undefined, squareKey: false, ringSwitchKey: false };
+  return { rotationKeyPerms: undefined, squareKey: false, ringSwitchKey: false, sparseSecretHw: undefined };
 }
 
 export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
@@ -1728,6 +1642,9 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
     }
     if (message.ringSwitchKey !== false) {
       writer.uint32(24).bool(message.ringSwitchKey);
+    }
+    if (message.sparseSecretHw !== undefined) {
+      writer.uint32(32).int32(message.sparseSecretHw);
     }
     return writer;
   },
@@ -1763,6 +1680,14 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
           message.ringSwitchKey = reader.bool();
           continue;
         }
+        case 4: {
+          if (tag !== 32) {
+            break;
+          }
+
+          message.sparseSecretHw = reader.int32();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1777,6 +1702,7 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
       rotationKeyPerms: isSet(object.rotationKeyPerms) ? CrtPermutations.fromJSON(object.rotationKeyPerms) : undefined,
       squareKey: isSet(object.squareKey) ? globalThis.Boolean(object.squareKey) : false,
       ringSwitchKey: isSet(object.ringSwitchKey) ? globalThis.Boolean(object.ringSwitchKey) : false,
+      sparseSecretHw: isSet(object.sparseSecretHw) ? globalThis.Number(object.sparseSecretHw) : undefined,
     };
   },
 
@@ -1791,6 +1717,9 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
     if (message.ringSwitchKey !== false) {
       obj.ringSwitchKey = message.ringSwitchKey;
     }
+    if (message.sparseSecretHw !== undefined) {
+      obj.sparseSecretHw = Math.round(message.sparseSecretHw);
+    }
     return obj;
   },
 
@@ -1804,6 +1733,7 @@ export const AuxKeyRequirements: MessageFns<AuxKeyRequirements> = {
       : undefined;
     message.squareKey = object.squareKey ?? false;
     message.ringSwitchKey = object.ringSwitchKey ?? false;
+    message.sparseSecretHw = object.sparseSecretHw ?? undefined;
     return message;
   },
 };
