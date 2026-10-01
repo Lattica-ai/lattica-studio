@@ -1,6 +1,6 @@
 [project]
 name = "lattica-query"
-version = "2.0.2"
+version = "2.1.0"
 description = "Client package for running inference queries on the LatticaAI platform"
 authors = [
     {name = "LatticaAI Inc.", email = "support@lattica.ai"},
@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "requests>=2.31.0,<3",
-    "lattica-fhe-core>=0.13.1",
+    "lattica-fhe-core>=0.14.0",
     "torch>=2.9,<3",
     "protobuf>=5.27.1,<6",
 ]

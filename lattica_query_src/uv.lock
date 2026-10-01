@@ -203,7 +203,7 @@ wheels = [
 
 [[package]]
 name = "lattica-fhe-core"
-version = "0.13.1"
+version = "0.14.0"
 source = { editable = "../../lattice-toolkit/toolkit/fhe_core/binding" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -221,7 +221,7 @@ requires-dist = [
 
 [[package]]
 name = "lattica-query"
-version = "2.0.2"
+version = "2.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "lattica-fhe-core" },
