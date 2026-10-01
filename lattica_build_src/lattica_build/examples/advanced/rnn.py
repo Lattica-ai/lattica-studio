@@ -23,6 +23,7 @@ HIDDEN_SIZE = 128
 N_CLASSES = 2
 SEQ_LEN = 128
 TANH_DEGREE = 3
+LEVELS_PER_STEP = 3  # levels one timestep consumes: hh_matrix 1, tanh (degree 3) 2
 WEIGHTS_DIR = Path(__file__).with_name('data') / 'rnn'
 EMBEDDING_URL = 'https://lattica-public.s3.us-east-1.amazonaws.com/models_data/RNN/embedding_batch.npy'
 
@@ -45,10 +46,11 @@ def _load_embedding() -> np.ndarray:
 
 class _RNN(HomOp):
 
-    def __init__(self, seq_len: int, batch_ih_matmul: bool) -> None:
+    def __init__(self, seq_len: int, batch_ih_matmul: bool, boot_every: int) -> None:
         super().__init__()
         self.seq_len = seq_len
         self.batch_ih_matmul = batch_ih_matmul
+        self.boot_every = boot_every
         self.unsqueeze = HomUnsqueeze(1)
         # batched: contract (seq_len, 1, INPUT_SIZE) on axis 2; per timestep: contract (INPUT_SIZE,) on axis 1
         self.ih_matrix = HomMatMul((HIDDEN_SIZE, INPUT_SIZE), mul_axis=2 if batch_ih_matmul else 1)
@@ -77,8 +79,7 @@ class _RNN(HomOp):
 
             hidden = self.tanh(hidden)
 
-            # Clear execution runs on plain tensors, which carry no levels and need no bootstrapping.
-            if isinstance(hidden, HomValue) and len(hidden.active_rows) == 1:
+            if (i + 1) % self.boot_every == 0:
                 hidden = self.boot(hidden)
 
         return self.fc(hidden)
@@ -88,17 +89,18 @@ class Pipeline(PipelineWrapper):
 
     def __init__(self, seq_len: int = SEQ_LEN, batch_ih_matmul: bool = False) -> None:
         # batch_ih_matmul: apply ih_matrix to all timesteps in one matmul instead of once per timestep.
-        # The circuit runs faster, but that matmul's peak GPU memory grows linearly with seq_len * n
-        # (~1.4 GiB per timestep at n=2**16), so enable it only for short sequences that fit in memory:
-        # seq_len=32 peaks at ~50 GiB, seq_len=128 needs ~170 GiB and OOMs on a 95 GiB GPU.
+        # The circuit runs faster, but that matmul's peak GPU memory grows linearly with seq_len * n,
+        # so enable it only for short sequences that fit in memory:
         self.seq_len = seq_len
         self.batch_ih_matmul = batch_ih_matmul
 
     def build_pipeline(self) -> HomomorphicPipeline:
         """Build a single-layer RNN with a polynomial tanh, followed by a linear classifier."""
         w_ih, w_hh, fc_weight, fc_bias = _load_weights()
+        # A bootstrap restores one level per prime of the q-list rows; refresh once they run out.
+        levels = sum(len(row) for row in self.build_params().full_q_list_precision)
         pipeline = HomomorphicPipeline(
-            hom=_RNN(self.seq_len, self.batch_ih_matmul),
+            hom=_RNN(self.seq_len, self.batch_ih_matmul, boot_every=levels // LEVELS_PER_STEP),
             input_shape=(self.seq_len, INPUT_SIZE),
             n_axis=1,
         )
