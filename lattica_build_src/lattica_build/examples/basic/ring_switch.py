@@ -39,3 +39,6 @@ class Pipeline(PipelineWrapper):
             pt_scale=INPUT_SCALE,
             num_special_primes=6,
         )
+
+    def _set_example_pt(self) -> torch.Tensor:
+        return torch.rand(3, N_SLOTS) * 2 - 1

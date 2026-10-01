@@ -1,3 +1,4 @@
+import torch
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
@@ -46,3 +47,6 @@ class Pipeline(PipelineWrapper):
             num_init_rows=2,
             bootstrapping_variant=BootstrappingVariant.REAL,
         )
+
+    def _set_example_pt(self) -> torch.Tensor:
+        return torch.rand(2 ** (LOG_N_SUBRING - 1)) * 2 - 1
