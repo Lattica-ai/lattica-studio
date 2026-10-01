@@ -6,6 +6,7 @@ from google.protobuf.message import DecodeError
 
 from ..errors import SerializationError
 from .generated import generic_pb2
+from .in_process_tensor_transport import InProcessTensorStore, InProcessTransportedBytes
 
 
 class TensorDecodingError(SerializationError):
@@ -24,7 +25,7 @@ _PROTO_DTYPE_BY_TORCH = {
 _TORCH_DTYPE_BY_PROTO = {value: key for key, value in _PROTO_DTYPE_BY_TORCH.items()}
 
 
-def serialize_tensor(tensor: torch.Tensor) -> bytes:
+def serialize_tensor(tensor: torch.Tensor, *, in_process: bool = False) -> bytes:
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("tensor must be a torch.Tensor")
     try:
@@ -33,10 +34,15 @@ def serialize_tensor(tensor: torch.Tensor) -> bytes:
         raise TypeError(f"Unsupported tensor dtype: {tensor.dtype}") from exc
 
     contiguous = tensor.detach().to(device="cpu").contiguous()
-    message = generic_pb2.TensorHolder(dtype=proto_dtype, data=contiguous.numpy().tobytes())
+    message = generic_pb2.TensorHolder(dtype=proto_dtype)
     message.sizes.extend(contiguous.shape)
     message.strides.extend(contiguous.stride())
-    return message.SerializeToString()
+    if not in_process:
+        message.data = contiguous.numpy().tobytes()
+        return message.SerializeToString()
+    tensor_store = InProcessTensorStore()
+    message.data = tensor_store.add(contiguous)
+    return InProcessTransportedBytes(message.SerializeToString(), tensor_store)
 
 
 def deserialize_tensor(data: bytes) -> torch.Tensor:
@@ -59,6 +65,11 @@ def deserialize_tensor(data: bytes) -> torch.Tensor:
         raise TensorDecodingError("Serialized tensor shape contains a negative dimension")
     if strides and len(strides) != len(shape):
         raise TensorDecodingError("Serialized tensor shape and strides have different ranks")
+
+    if isinstance(data, InProcessTransportedBytes):
+        tensor = data.tensor_store.resolve(message.data, dtype, shape, strides)
+        if tensor is not None:
+            return tensor
 
     element_size = torch.empty((), dtype=dtype).element_size()
     element_count = math.prod(shape)
