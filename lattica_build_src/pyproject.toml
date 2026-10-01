@@ -34,4 +34,5 @@ lattica_build = [
     "examples/advanced/data/t10k-images-idx3-ubyte",
     "examples/advanced/data/t10k-labels-idx1-ubyte",
     "examples/advanced/data/mnist_test_batch.pt",
+    "examples/advanced/data/rnn/*.pt",
 ]

@@ -1,3 +1,4 @@
+import torch
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
@@ -33,3 +34,6 @@ class Pipeline(PipelineWrapper):
             pt_scale=2 ** 32,
             num_special_primes=1,
         )
+
+    def _set_custom_data(self) -> None:
+        self.custom_data = {"y": torch.rand(INPUT_SHAPE_B)}

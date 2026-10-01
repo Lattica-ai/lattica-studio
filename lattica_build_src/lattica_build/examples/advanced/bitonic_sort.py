@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp
@@ -15,31 +14,30 @@ from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.params.params import HomParams
 
 
-ARRAY_LEN = 16       # array length being sorted; must be a power of two
 LOG_N = 16           # ring degree 2**LOG_N, i.e. 2**(LOG_N - 1) slots
 DEG = 119            # Chebyshev degree of the threshold comparator
 MARGIN = 0.04        # comparator don't-care band; entries closer than this may come out unordered
-VAL_LO, VAL_HI = 0.05, 0.95   # value range of the sorted entries
+# Value range of the inputs. Inputs must span < 1 so every comparator
+# input (a difference of two entries) stays inside its [-1, 1] fit domain, with headroom for
+# encryption noise: just past the domain the degree-DEG polynomial blows up.
+VAL_LO, VAL_HI = -0.45, 0.45
+SORT_TOLERANCE = 0.05        # max per-entry error against the true sort
 
 LOG_SCALE = 30
 BOOT_EVERY = 1
 Q_ROWS = 4
-# Time-optimized alternative (2 stages per bootstrap): ~1.4x faster, ~35% more GPU RAM
-# LOG_SCALE, BOOT_EVERY, Q_ROWS = 26, 2, 8
 SPECIAL_PRIMES = 6
 
 
-def _get_masks(array_len: int, k: int, j: int) -> list[np.ndarray]:
-    masks = [np.zeros(array_len) for _ in range(4)]
-    for i in range(array_len):
-        asc, low = (i & k) == 0, (i & j) == 0
-        masks[(0 if low else 1) if asc else (2 if low else 3)][i] = 1
-    return masks
+def _get_masks(array_len: int, k: int, j: int) -> list[torch.Tensor]:
+    i = torch.arange(array_len)
+    asc, low = (i & k) == 0, (i & j) == 0
+    return [(asc & low).float(), (asc & ~low).float(), (~asc & low).float(), (~asc & ~low).float()]
 
 
-def _mask_mul(mask: np.ndarray) -> HomConstMul:
+def _mask_mul(mask: torch.Tensor) -> HomConstMul:
     op = HomConstMul(dims=tuple(mask.shape))
-    op.set_data(torch.tensor(mask, dtype=torch.float32))
+    op.set_data(mask)
     return op
 
 def _rotate(s: int) -> SequentialHomOp:
@@ -55,9 +53,9 @@ class _Stage(HomOp):
         m_el, m_eh, m_dl, m_dh = _get_masks(array_len, k, j)
         self.rot_up = _rotate(+j)
         self.rot_down = _rotate(-j)
-        # np.roll(v, -j) is the plaintext mirror of rot(v, +j): out[i] = v[i+j].
+        # torch.roll(v, -j) is the plaintext mirror of rot(v, +j): out[i] = v[i+j].
         self.mask_swap_low = _mask_mul(m_dl - m_el)
-        self.mask_swap_high = _mask_mul(np.roll(m_eh - m_dh, -j))
+        self.mask_swap_high = _mask_mul(torch.roll(m_eh - m_dh, -j))
         self.sel_up, self.sel_down, self.sel_keep = (
             _mask_mul(m_el), _mask_mul(m_eh), _mask_mul(m_dl + m_dh))
         # A band that shrinks with array_len stops being resolvable at DEG, and the stage
@@ -102,7 +100,10 @@ class _BitonicSort(HomOp):
 
 class Pipeline(PipelineWrapper):
 
-    def __init__(self, array_len: int = ARRAY_LEN):
+    def __init__(self, array_len: int = 1024) -> None:
+        max_len = 2 ** (LOG_N - 1)
+        if array_len <= 0 or array_len & (array_len - 1) or array_len > max_len:
+            raise ValueError(f"array_len must be a power of two up to {max_len}, got {array_len}")
         self.array_len = array_len
 
     def build_pipeline(self) -> HomomorphicPipeline:
@@ -113,7 +114,7 @@ class Pipeline(PipelineWrapper):
         )
         verification_input = np.random.default_rng(0).uniform(VAL_LO, VAL_HI, self.array_len)
         hom_pipeline.verification_data = {
-            hom_pipeline.primary_input_name: torch.tensor(verification_input, dtype=torch.float32),
+            hom_pipeline.primary_input_name: self._set_example_pt(),
             "accuracy": 2 ** -3,
         }
         return hom_pipeline
@@ -128,8 +129,17 @@ class Pipeline(PipelineWrapper):
             n_slots=self.array_len,
         )
 
+    def _set_example_pt(self) -> torch.Tensor:
+        return torch.rand(self.array_len) * (VAL_HI - VAL_LO) + VAL_LO
+
     def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
         assert example_pt.ndim == 1 and example_pt.shape[0] == self.array_len, (
             f"Input must be 1D of length {self.array_len}"
         )
         return torch.sort(example_pt).values
+
+    def verify_results(self, actual: torch.Tensor, expected: torch.Tensor) -> None:
+        # Check against the true sort rather than `expected`, the runtime's clear execution.
+        true_sorted = self.compute_expected(self.exmpl_pt).to(actual.dtype)
+        max_err = (actual[:self.array_len] - true_sorted).abs().max().item()
+        assert max_err < SORT_TOLERANCE, f"sort not within tolerance: max error {max_err:.4g}"

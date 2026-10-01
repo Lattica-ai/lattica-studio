@@ -117,10 +117,10 @@ def test_bitonic_sort_composite_example_sorts_input():
     from lattica_build.examples.advanced import bitonic_sort
     example = bitonic_sort.Pipeline()
     pipeline = example.build_pipeline()
-    values = torch.rand(pipeline.input_shape[pipeline.primary_input_name])
+    values = example.get_example_pt()
     result = pipeline.forward_clear(values, hom_params=example.build_params())
     expected = example.compute_expected(values)
-    assert torch.allclose(result, expected, atol=2e-2)
+    example.verify_results(result, expected)
 
 
 def test_resnet_composite_example_matches_pretrained_model():

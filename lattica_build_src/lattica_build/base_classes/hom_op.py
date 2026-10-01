@@ -103,7 +103,7 @@ class HomOp:
 
         dtype = torch.float64
         converted_data = tuple(
-            item.to(dtype=dtype)
+            item.to(dtype=dtype).contiguous()
             if torch.is_tensor(item)
             else torch.tensor(item, dtype=dtype)
             for item in data
