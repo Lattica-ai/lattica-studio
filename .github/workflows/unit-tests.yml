@@ -1,0 +1,47 @@
+name: Unit tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.7.12"
+  TORCH_VERSION: "2.9.1"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install the packages
+        run: |
+          uv venv
+          # Install CPU-only torch.
+          uv pip install "torch==$TORCH_VERSION" --index-url https://download.pytorch.org/whl/cpu
+          # Accept any lattica-fhe-core version.
+          echo "lattica-fhe-core" > "$RUNNER_TEMP/overrides.txt"
+          # Install the three packages from this checkout.
+          uv pip install --no-sources --override "$RUNNER_TEMP/overrides.txt" \
+            -e lattica_build_src -e lattica_query_src -e lattica_studio_src
+
+      - name: Run the tests
+        env:
+          # Token for torch.hub's GitHub API calls (the resnet test downloads a pretrained model).
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .venv/bin/python -m pytest lattica_build_src/tests lattica_query_src/tests lattica_studio_src/tests
