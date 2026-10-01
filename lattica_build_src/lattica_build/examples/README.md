@@ -73,6 +73,7 @@ These modules live under `lattica_build.examples.advanced`.
 | `bootstrap` | Two bootstrapping operations |
 | `bitonic_sort` | Composite compare/exchange stages with bootstrapping |
 | `resnet20` | A full ResNet-20 pipeline using downloaded weights |
+| `rnn` | A recurrent layer unrolled over 128 timesteps with a polynomial tanh and bootstrapping |
 
 `resnet20` downloads a pretrained model when its pipeline is built. All basic
 examples are self-contained.

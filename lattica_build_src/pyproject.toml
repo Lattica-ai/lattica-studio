@@ -32,4 +32,5 @@ lattica_build = [
     "examples/advanced/data/cifar10_test_batch",
     "examples/advanced/data/mnist_fc_model.pt",
     "examples/advanced/data/mnist_test_batch.pt",
+    "examples/advanced/data/rnn/*.pt",
 ]
