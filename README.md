@@ -108,9 +108,10 @@ from lattica_studio import LatticaStudio
 x = torch.zeros(mnist_fc.INPUT_SHAPE)
 
 # Build locally, then deploy and compile on the platform.
+mnist = mnist_fc.Pipeline()
 artifact = build(
-    mnist_fc.build_pipeline(),
-    mnist_fc.build_params(),
+    mnist.build_pipeline(),
+    mnist.build_params(),
     "mnist.zip",
 )
 with LatticaStudio(os.environ["LATTICA_LICENSE_KEY"]) as studio:
@@ -135,8 +136,8 @@ need the artifact on disk:
 
 ```python
 model_id = studio.deploy_pipeline(
-    mnist_fc.build_pipeline(),
-    mnist_fc.build_params(),
+    mnist.build_pipeline(),
+    mnist.build_params(),
     "my-mnist-model",
 )
 ```
