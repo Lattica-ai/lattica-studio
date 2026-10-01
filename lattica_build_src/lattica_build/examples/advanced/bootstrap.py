@@ -9,8 +9,8 @@ from lattica_build.params.params import HomParams
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 
 LOG_N = 16
-LOG_N_SUBRING = 15
-INPUT_SCALE = 2 ** 45
+N_SLOTS = 2 ** 15
+INPUT_SCALE = 2 ** 40
 
 
 class Pipeline(PipelineWrapper):
@@ -21,13 +21,13 @@ class Pipeline(PipelineWrapper):
             hom=Bootstrap(),
             # The logical shape is one sub-ring period; repeating it across the
             # log_n ring is enc()'s job, driven by HomParams.n_slots below.
-            input_shape=(2 ** LOG_N_SUBRING,),
+            input_shape=(N_SLOTS,),
         )
 
     def build_params(self) -> HomParams:
         return HomParams(
             n=2 ** LOG_N,
-            n_slots=2 ** LOG_N_SUBRING,
+            n_slots=N_SLOTS,
             full_q_list_precision=(
                 (60,),
                 (60,),
@@ -42,7 +42,7 @@ class Pipeline(PipelineWrapper):
             sk_hw=192,
             num_special_primes=7,
             num_init_rows=0,
-            bootstrapping_variant=BootstrappingVariant.SLIM,
+            bootstrapping_variant=BootstrappingVariant.REAL,
         )
 
     def verify_results(self, actual: torch.Tensor, expected: torch.Tensor) -> None:

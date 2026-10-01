@@ -251,3 +251,7 @@ class Pipeline(PipelineWrapper):
             num_init_rows=1,
             n_slots=n_slots,
         )
+
+    def _set_example_pt(self) -> torch.Tensor:
+        # Raw pixel values, which client_pre normalizes.
+        return torch.rand(3, *IMAGE_HW) * 255

@@ -103,12 +103,25 @@ class Tracer:
             refs = []
             data_tensors = (data,) if torch.is_tensor(data) else data
             for tensor in data_tensors:
-                ref = str(len(self.tensors))
-                self.tensors[ref] = tensor.contiguous()
-                refs.append(ref)
+                refs.append(self._register_tensor(tensor))
             op_ir["data_ref"] = refs
 
         return op_ir, inferred_output
+
+    def _register_tensor(self, tensor):
+        """
+        Store a tensor once and return its ref. An op applied several times (e.g. inside a
+        loop) is recorded once per call, but its data must not be stored more than once:
+        safetensors rejects entries with overlapping memory.
+        """
+        tensor = tensor.contiguous()
+        for ref, stored_tensor in self.tensors.items():
+            if stored_tensor is tensor:
+                return ref
+
+        ref = f"{len(self.tensors)}"
+        self.tensors[ref] = tensor
+        return ref
 
     def _serialize_nonleaf_op(self, op, *inputs):
         signature = inspect.signature(op.forward)
