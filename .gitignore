@@ -150,3 +150,5 @@ CLAUDE.md
 
 lattica_build_src/build/
 lattica_studio_src/build/
+lattica_query_src/build/
+mnist_fc_pipeline.zip
