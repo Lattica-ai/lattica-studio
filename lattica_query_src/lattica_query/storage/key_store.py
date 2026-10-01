@@ -1,7 +1,8 @@
-import fcntl
+import errno
 import json
 import os
 import shutil
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -17,6 +18,11 @@ from ._files import (
     encode_path_component,
     ensure_private_directory,
 )
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 _KEY_BUNDLE_VERSION = 4
 _CURRENT = "current"
@@ -64,13 +70,47 @@ def key_lock(path: str | Path) -> Iterator[None]:
     ensure_private_directory(key_path)
     lock_path = key_path / ".lock"
     descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    locked = False
     try:
-        os.fchmod(descriptor, 0o600)
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        if os.name != "nt" and hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
+        _lock_descriptor(descriptor)
+        locked = True
         yield
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        if locked:
+            _unlock_descriptor(descriptor)
         os.close(descriptor)
+
+
+def _lock_descriptor(descriptor: int) -> None:
+    if os.name != "nt":
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        return
+
+    # msvcrt locks byte ranges rather than whole files. Ensure there is one
+    # stable byte to lock, then retry while another process owns it to retain
+    # flock's blocking behavior.
+    if os.fstat(descriptor).st_size == 0:
+        os.write(descriptor, b"\0")
+        os.fsync(descriptor)
+    while True:
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            return
+        except OSError as exc:
+            if exc.errno not in {errno.EACCES, errno.EDEADLK}:
+                raise
+            time.sleep(0.05)
+
+
+def _unlock_descriptor(descriptor: int) -> None:
+    if os.name == "nt":
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+    else:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
 
 
 def save_key_bundle(

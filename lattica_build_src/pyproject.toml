@@ -31,6 +31,8 @@ lattica_build = [
     "params/*.json",
     "examples/advanced/data/cifar10_test_batch",
     "examples/advanced/data/mnist_fc_model.pt",
+    "examples/advanced/data/t10k-images-idx3-ubyte",
+    "examples/advanced/data/t10k-labels-idx1-ubyte",
     "examples/advanced/data/mnist_test_batch.pt",
     "examples/advanced/data/rnn/*.pt",
 ]

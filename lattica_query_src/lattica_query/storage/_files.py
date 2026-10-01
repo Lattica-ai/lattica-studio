@@ -18,6 +18,9 @@ def encode_path_component(value: str) -> str:
 
 def ensure_private_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True, mode=_PRIVATE_DIRECTORY_MODE)
+    if os.name == "nt":
+        # Windows ACLs, rather than POSIX mode bits, control directory access.
+        return
     flags = os.O_RDONLY | os.O_DIRECTORY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -40,7 +43,8 @@ def atomic_private_write(path: Path, content: str | bytes) -> None:
     temporary_path = Path(temporary_name)
     cleanup_path: Path | None = temporary_path
     try:
-        os.fchmod(fd, _PRIVATE_FILE_MODE)
+        if os.name != "nt" and hasattr(os, "fchmod"):
+            os.fchmod(fd, _PRIVATE_FILE_MODE)
         if isinstance(content, bytes):
             with os.fdopen(fd, "wb") as handle:
                 fd = -1
