@@ -112,7 +112,6 @@ class Pipeline(PipelineWrapper):
             input_shape=(self.array_len,),
             hom=_BitonicSort(self.array_len),
         )
-        verification_input = np.random.default_rng(0).uniform(VAL_LO, VAL_HI, self.array_len)
         hom_pipeline.verification_data = {
             hom_pipeline.primary_input_name: self._set_example_pt(),
             "accuracy": 2 ** -3,
