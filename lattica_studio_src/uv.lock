@@ -223,7 +223,7 @@ wheels = [
 
 [[package]]
 name = "lattica-build"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "../lattica_build_src" }
 dependencies = [
     { name = "protobuf" },
@@ -245,7 +245,7 @@ requires-dist = [
 
 [[package]]
 name = "lattica-fhe-core"
-version = "0.14.0"
+version = "0.15.0"
 source = { editable = "../../lattice-toolkit/toolkit/fhe_core/binding" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -263,7 +263,7 @@ requires-dist = [
 
 [[package]]
 name = "lattica-query"
-version = "2.1.0"
+version = "2.2.0"
 source = { editable = "../lattica_query_src" }
 dependencies = [
     { name = "lattica-fhe-core" },
@@ -285,7 +285,7 @@ dev = [{ name = "torch", specifier = "==2.9.1+cpu", index = "https://download.py
 
 [[package]]
 name = "lattica-studio"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "lattica-build" },
