@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform != 'darwin'",
@@ -223,7 +223,7 @@ wheels = [
 
 [[package]]
 name = "lattica-build"
-version = "0.1.2"
+version = "0.2.0"
 source = { editable = "../lattica_build_src" }
 dependencies = [
     { name = "protobuf" },
@@ -245,7 +245,7 @@ requires-dist = [
 
 [[package]]
 name = "lattica-fhe-core"
-version = "0.13.1"
+version = "0.14.0"
 source = { editable = "../../lattice-toolkit/toolkit/fhe_core/binding" }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -263,7 +263,7 @@ requires-dist = [
 
 [[package]]
 name = "lattica-query"
-version = "2.0.2"
+version = "2.1.0"
 source = { editable = "../lattica_query_src" }
 dependencies = [
     { name = "lattica-fhe-core" },
@@ -285,7 +285,7 @@ dev = [{ name = "torch", specifier = "==2.9.1+cpu", index = "https://download.py
 
 [[package]]
 name = "lattica-studio"
-version = "0.1.3"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "lattica-build" },
@@ -740,7 +740,7 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" } },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7a/97/5a3609c4f8d58b039179648e62dd220f89864f56f7357f5d4f45c29eb2cc/scipy-1.17.1.tar.gz", hash = "sha256:95d8e012d8cb8816c226aef832200b1d45109ed4464303e997c5b13122b297c0", size = 30573822, upload-time = "2026-02-23T00:26:24.851Z" }
 wheels = [
@@ -815,7 +815,7 @@ resolution-markers = [
     "python_full_version >= '3.12' and sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" } },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7e/74/66de6258867beb2ef08f35f9f2ac017a52cacd5081714d239ff1a442d458/scipy-1.18.1.tar.gz", hash = "sha256:52c4b7422442aba924d03ad4019852b08a92e64ea187b933135687bfe2747307", size = 30781235, upload-time = "2026-08-21T23:28:50.599Z" }
 wheels = [
