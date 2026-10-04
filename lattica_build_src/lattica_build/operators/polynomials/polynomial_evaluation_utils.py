@@ -86,7 +86,11 @@ def indicator_cheb_coeffs_packed(max, deg, peak_width=0.01, num=10_000, tol=None
         cheb_coefs = _indicator_cheb_coeffs(max, j, deg=deg, peak_width=peak_width, num=num, tol=tol, plot=plot)
         packed_indicators.append(cheb_coefs)
 
-    return np.stack(packed_indicators)
+    coefs = np.stack(packed_indicators)
+    # Exactly 0 at the domain's left end (the Chebyshev point -1), which is no bin: a small value there adds up over
+    # every input that sits at it.
+    coefs[:, -1] -= chebval(-1, coefs[:, ::-1].T)
+    return coefs
 
 
 def get_cheb_coefs(
