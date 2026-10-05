@@ -82,7 +82,7 @@ def main() -> None:
         model_id = studio.deploy(
             artifact,
             MODEL_NAME,
-            instance_type=InstanceType.G4DN_XLARGE,
+            instance_type=InstanceType(os.getenv("LATTICA_INSTANCE_TYPE", InstanceType.G4DN_XLARGE.value)),
         )
         # Optional, load existing model by name instead of deploying a new one
         model = studio.models.get_by_name(MODEL_NAME)
