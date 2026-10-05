@@ -48,9 +48,6 @@ class PipelineWrapper(ABC):
         self._set_custom_data()
         return self.custom_data
 
-    def set_preprocessing_data(self, preprocessing_data: bytes) -> None:
-        self.serialized_data = preprocessing_data
-
     def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
         """Compute the true expected result for an example input.
 

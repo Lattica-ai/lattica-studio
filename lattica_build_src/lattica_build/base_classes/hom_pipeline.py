@@ -320,7 +320,7 @@ class HomomorphicPipeline:
             zf.writestr(_TENSORS_FILENAME, tensor_bytes)
 
     @classmethod
-    def load(cls, source: Union[str, os.PathLike, BinaryIO]) -> 'HomomorphicPipeline':
+    def load(cls, source: Union[str, os.PathLike, BinaryIO]) -> Tuple[bytes, bytes]:
         with zipfile.ZipFile(source, "r") as zf:
             graph_bytes = zf.read(_GRAPH_FILENAME)
             tensor_bytes = zf.read(_TENSORS_FILENAME)
