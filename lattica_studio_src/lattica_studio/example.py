@@ -43,6 +43,7 @@ def main() -> None:
     license_key = os.getenv("LATTICA_LICENSE_KEY", "")
     if not license_key:
         raise ValueError("Set LATTICA_LICENSE_KEY to run this example")
+    instance_type = InstanceType(os.getenv("LATTICA_INSTANCE_TYPE", InstanceType.G4DN_XLARGE))
 
     x, y = load_mnist_test_data()
 
@@ -82,7 +83,7 @@ def main() -> None:
         model_id = studio.deploy(
             artifact,
             MODEL_NAME,
-            instance_type=InstanceType(os.getenv("LATTICA_INSTANCE_TYPE", InstanceType.G4DN_XLARGE.value)),
+            instance_type=instance_type,
         )
         # Optional, load existing model by name instead of deploying a new one
         model = studio.models.get_by_name(MODEL_NAME)
