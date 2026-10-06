@@ -91,10 +91,12 @@ jobs:
       - name: Publish to PyPI using trusted publishing
         run: uv publish --verbose dist/*.whl
 
+      # Add a git tag like pypi-lattica-studio-v0.5.0 to the released commit.
       - name: Create Git tag
-        uses: Lattica-ai/github-actions-templates/actions/create-git-tag@main
-        with:
-          tag_type: "pypi"
-          target: "${{ needs.build.outputs.package_name }}"
-          identifier: "v${{ needs.build.outputs.version }}"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          TAG: pypi-${{ needs.build.outputs.package_name }}-v${{ needs.build.outputs.version }}
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
