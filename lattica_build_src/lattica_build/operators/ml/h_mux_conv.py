@@ -7,11 +7,10 @@ corresponding backend op's constructor (see
     HomMuxStrideRepack  -> BackendHomMuxStrideRepack  (no data; geometric masks)
     HomMuxBiasAdd       -> BackendHomMuxBiasAdd       (per-channel bias leaf)
 
-LAYOUT CONTRACT: input and output are ONE ciphertext in the mux gap layout, so the
-ciphertext shape (external_shape == (n_slots,)) is unchanged by every op -- only the
-logical (C, H, W) it encodes changes. Hence ``infer_output_shape`` is the identity
-(inherited); only the level bookkeeping differs (each op spends one mult level via
-the mask multiply).
+LAYOUT CONTRACT: input and output are ONE ciphertext in the mux gap layout, with
+external_shape == (n_slots,). The output is packed at its own layout's period, so a
+conv that adds channels widens the ciphertext and a stride repack narrows it; the
+bias add keeps it. Each conv and repack spends one mult level on the mask multiply.
 
 See `operators/ml/README.md` for usage details.
 """
@@ -26,6 +25,26 @@ from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.ml.h_conv import _normalize_tuple, conv_output_hw
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 from lattica_build.serialization.hom_op_pb2 import HomOpType
+
+
+def _mux_slots(channels, image_hw):
+    """Slots a (channels, H, W) mux layout occupies in one ciphertext, rounded up to
+    a power of two: the padded spatial grid times the channel count, whatever the gap."""
+    h, w = image_hw
+    used = (1 << (h - 1).bit_length()) * (1 << (w - 1).bit_length()) * channels
+    return 1 << (used - 1).bit_length()
+
+
+def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n) -> HomValue:
+    """The backend op leaves one ciphertext packed at the output layout's period."""
+    if internal_n is None:
+        return input
+    if max(in_slots, out_slots) > internal_n:
+        raise NotImplementedError(
+            "build-side shape inference covers mux layouts that fit one ciphertext; "
+            f"this one needs {max(in_slots, out_slots)} of {internal_n} slots")
+    return input.make_copy(tensor_shape=(out_slots,), n_slots=out_slots)
+
 
 class HomMuxConv(HomOp):
     """Aligned convolution on the mux layout (weight only; fold BN bias separately).
@@ -52,6 +71,12 @@ class HomMuxConv(HomOp):
         self.with_modswitch = with_modswitch
         if t_out is not None:
             self.t_out = t_out
+
+    def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
+        c_out, c_in, kh, kw = self.kernel_shape
+        out_hw = conv_output_hw(self.image_hw, (kh, kw), self.stride, self.padding, self.dilation)
+        return _infer_mux_output(input, _mux_slots(c_in, self.image_hw),
+                                 _mux_slots(c_out, out_hw), internal_n)
 
     def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
         return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
@@ -132,6 +157,11 @@ class HomMuxStrideRepack(HomOp):
         self.stride = _normalize_tuple(stride, 2, 'stride')
         self.t_new = t_new
         self.with_modswitch = with_modswitch
+
+    def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
+        (h, w), (sh, sw) = self.image_hw, self.stride
+        return _infer_mux_output(input, _mux_slots(self.channels, (h, w)),
+                                 _mux_slots(self.channels, (h // sh, w // sw)), internal_n)
 
     def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
         return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
