@@ -91,10 +91,12 @@ jobs:
       - name: Publish to PyPI using trusted publishing
         run: uv publish --verbose dist/*.whl
 
+      # Tag the released commit here (this public repo can't use the private github-actions-templates create-git-tag action).
       - name: Create Git tag
-        uses: Lattica-ai/github-actions-templates/actions/create-git-tag@main
-        with:
-          tag_type: "pypi"
-          target: "${{ needs.build.outputs.package_name }}"
-          identifier: "v${{ needs.build.outputs.version }}"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          TAG: pypi-${{ needs.build.outputs.package_name }}-v${{ needs.build.outputs.version }}
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
