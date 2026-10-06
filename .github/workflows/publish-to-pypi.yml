@@ -91,7 +91,7 @@ jobs:
       - name: Publish to PyPI using trusted publishing
         run: uv publish --verbose dist/*.whl
 
-      # Tag the released commit as pypi-<package>-v<version>.
+      # Add a git tag like pypi-lattica-studio-v0.5.0 to the released commit.
       - name: Create Git tag
         env:
           TAG: pypi-${{ needs.build.outputs.package_name }}-v${{ needs.build.outputs.version }}
