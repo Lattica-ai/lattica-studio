@@ -1,6 +1,6 @@
 [project]
 name = "lattica-studio"
-version = "0.4.0"
+version = "0.5.0"
 description = "Lattica Studio"
 authors = [
     {name = "LatticaAI Inc.", email = "support@lattica.ai"},
@@ -10,8 +10,8 @@ license = "LicenseRef-LatticaAI-Evaluation"
 license-files = ["LICENSE.md"]
 requires-python = ">=3.11"
 dependencies = [
-    "lattica-query>=2.3.0",
-    "lattica-build>=0.4.0",
+    "lattica-query>=2.4.0",
+    "lattica-build>=0.5.0",
     "python-dotenv>=1,<2",
     "pyyaml",
 ]
