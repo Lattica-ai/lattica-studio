@@ -91,7 +91,7 @@ jobs:
       - name: Publish to PyPI using trusted publishing
         run: uv publish --verbose dist/*.whl
 
-      # Tag the released commit here (this public repo can't use the private github-actions-templates create-git-tag action).
+      # Tag the released commit as pypi-<package>-v<version>.
       - name: Create Git tag
         env:
           TAG: pypi-${{ needs.build.outputs.package_name }}-v${{ needs.build.outputs.version }}
