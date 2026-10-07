@@ -7,7 +7,6 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.polynomials.polynomial_evaluation_utils import find_optimal_k_m
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch, infer_modswitch_by_num_levels
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
@@ -81,9 +80,8 @@ class HomPolyEvalBase(HomOp):
             )
 
         degree = self.coefs.shape[-1] - 1
-        if degree > 4:  # PS
-            m, k = find_optimal_k_m(degree)
-            num_levels = math.ceil(math.log2(k)) + m
+        if degree > 4:  # depth-optimal tree (the backend's BackendHomPolyEvalTree)
+            num_levels = math.ceil(math.log2(degree + 1))
         else:  # direct
             num_levels = degree - 1
         input = infer_modswitch_by_num_levels(
