@@ -1,16 +1,14 @@
-"""Build-side operators for the multiplexed ("gap") packing convolution and its
-relayout companions. Each is a leaf HomOp whose serialized attributes match the
-corresponding backend op's constructor (see
-``latticabe.homomorphic_operations.conv_mux``):
+"""Build-side operators for the multiplexed ("gap") packing convolution. Each is a
+leaf HomOp whose serialized attributes match the corresponding backend op's
+constructor (see ``latticabe.homomorphic_operations.conv_mux``):
 
-    HomMuxConv          -> BackendHomMuxConv          (weight-only leaf)
-    HomMuxStrideRepack  -> BackendHomMuxStrideRepack  (no data; geometric masks)
-    HomMuxBiasAdd       -> BackendHomMuxBiasAdd       (per-channel bias leaf)
+    HomMuxConv     -> BackendHomMuxConv     (weight-only leaf)
+    HomMuxBiasAdd  -> BackendHomMuxBiasAdd  (per-channel bias leaf)
 
 LAYOUT CONTRACT: input and output are ONE ciphertext in the mux gap layout, with
 external_shape == (n_slots,). The output is packed at its own layout's period, so a
-conv that adds channels widens the ciphertext and a stride repack narrows it; the
-bias add keeps it. Each conv and repack spends one mult level on the mask multiply.
+conv that adds channels widens the ciphertext and a strided conv narrows it; the
+bias add keeps it. Each conv spends one mult level on the mask multiply.
 
 See `operators/ml/README.md` for usage details.
 """
@@ -140,32 +138,6 @@ class HomMuxConvBn(HomOp):
         b_fused = delta * (beta + (bias - mean) * scale)
         self.conv.set_data(w_fused)
         self.bias_add.set_data(b_fused)
-
-
-class HomMuxStrideRepack(HomOp):
-    """Decimate the spatial grid by ``stride`` and re-interleave at gap ``t_new``."""
-
-    OP_TYPE = HomOpType.MuxStrideRepack
-
-    def __init__(self, channels, image_hw, t_in,
-                 stride: Union[int, Tuple[int, int]], t_new: int,
-                 with_modswitch: bool = True) -> None:
-        super().__init__()
-        self.channels = channels
-        self.image_hw = _normalize_tuple(image_hw, 2, 'image_hw')
-        self.t_in = t_in
-        self.stride = _normalize_tuple(stride, 2, 'stride')
-        self.t_new = t_new
-        self.with_modswitch = with_modswitch
-
-    def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
-        (h, w), (sh, sw) = self.image_hw, self.stride
-        return _infer_mux_output(input, _mux_slots(self.channels, (h, w)),
-                                 _mux_slots(self.channels, (h // sh, w // sw)), internal_n)
-
-    def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
-        return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
-                                        rows_budget=None, op_scale_up=None)
 
 
 class HomMuxBiasAdd(HomOp):
