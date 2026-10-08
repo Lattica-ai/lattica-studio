@@ -3,7 +3,7 @@
 The SQL query and table schema are public compilation inputs. Database values
 and named query parameters are prepared as separate plaintext tensors and are
 encrypted by the normal client runtime. Results retain their physical row
-positions while encrypted;
+positions while encrypted.
 
 Version intentionally supports one numeric table, simple projections, a
 required ``WHERE`` clause, named parameters, ``>``/``<``, and ``AND``/``OR``.
@@ -13,10 +13,11 @@ with surprising semantics.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from numbers import Real
 from typing import ClassVar, Literal, TypeAlias
 
@@ -25,21 +26,23 @@ import torch
 from sqlglot import exp
 from sqlglot.errors import ParseError
 
+from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.base_classes.hom_op import HomOp
-from lattica_build.operators.arithmetic.h_axis_sum import HomAxisSum
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
-from lattica_build.operators.client_ops import Repeat
 from lattica_build.operators.comparison.h_compare import HomCompare
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
+from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
+from lattica_build.params.level_and_scale_tracing import (
+    ModulusChain,
+    init_active_rows_cols,
+)
 from lattica_build.params.params import HomParams
-
 
 SqlColumnKind: TypeAlias = Literal["real", "integer"]
 _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -78,7 +81,9 @@ class SqlColumn:
     kind: SqlColumnKind = "real"
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "name", _validate_identifier(self.name, label="column name"))
+        object.__setattr__(
+            self, "name", _validate_identifier(self.name, label="column name")
+        )
         minimum = _validate_real(self.min_value, label=f"{self.name}.min_value")
         maximum = _validate_real(self.max_value, label=f"{self.name}.max_value")
         if minimum >= maximum:
@@ -102,12 +107,16 @@ class SqlTableSchema:
     columns: tuple[SqlColumn, ...]
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "name", _validate_identifier(self.name, label="table name"))
+        object.__setattr__(
+            self, "name", _validate_identifier(self.name, label="table name")
+        )
         columns = tuple(self.columns)
         if not columns:
             raise ValueError("SqlTableSchema.columns cannot be empty.")
         if not all(isinstance(column, SqlColumn) for column in columns):
-            raise TypeError("SqlTableSchema.columns must contain only SqlColumn values.")
+            raise TypeError(
+                "SqlTableSchema.columns must contain only SqlColumn values."
+            )
 
         names: set[str] = set()
         for column in columns:
@@ -127,12 +136,17 @@ class SqlSelectOptions:
     x_accuracy: int = 9
     y_accuracy: int = 10
     selection_threshold: float = 0.5
+    bootstrap: Literal["auto", "never", "always"] = "auto"
 
     def __post_init__(self) -> None:
+        if self.bootstrap not in ("auto", "never", "always"):
+            raise ValueError("bootstrap must be auto, never, or always.")
         if self.dialect is not None and (
             not isinstance(self.dialect, str) or not self.dialect.strip()
         ):
-            raise ValueError("SqlSelectOptions.dialect must be None or a non-empty string.")
+            raise ValueError(
+                "SqlSelectOptions.dialect must be None or a non-empty string."
+            )
         if self.dialect is not None:
             object.__setattr__(self, "dialect", self.dialect.strip())
         for name in ("x_accuracy", "y_accuracy"):
@@ -145,7 +159,9 @@ class SqlSelectOptions:
             label="SqlSelectOptions.selection_threshold",
         )
         if not 0 < threshold < 1:
-            raise ValueError("SqlSelectOptions.selection_threshold must be between 0 and 1.")
+            raise ValueError(
+                "SqlSelectOptions.selection_threshold must be between 0 and 1."
+            )
         object.__setattr__(self, "selection_threshold", threshold)
 
 
@@ -153,13 +169,12 @@ class SqlSelectOptions:
 class _ParameterBinding:
     name: str
     column_index: int
+    column_is_greater: bool
 
 
 @dataclass(frozen=True)
 class _Comparison:
-    column_index: int
     binding_index: int
-    column_is_greater: bool
 
 
 @dataclass(frozen=True)
@@ -172,26 +187,12 @@ class _BooleanPredicate:
 _Predicate: TypeAlias = _Comparison | _BooleanPredicate
 
 
-def _comparison_directions(predicate: _Predicate) -> dict[int, bool]:
-    """Return whether the column is the greater operand for each binding."""
-
-    if isinstance(predicate, _Comparison):
-        return {predicate.binding_index: predicate.column_is_greater}
-    return {
-        **_comparison_directions(predicate.left),
-        **_comparison_directions(predicate.right),
-    }
-
-
 def _flatten_boolean_operands(
     predicate: _Predicate,
     *,
     operator: Literal["and", "or"],
 ) -> list[_Predicate]:
-    if (
-        isinstance(predicate, _BooleanPredicate)
-        and predicate.operator == operator
-    ):
+    if isinstance(predicate, _BooleanPredicate) and predicate.operator == operator:
         return [
             *_flatten_boolean_operands(predicate.left, operator=operator),
             *_flatten_boolean_operands(predicate.right, operator=operator),
@@ -232,7 +233,11 @@ def _balance_predicate(predicate: _Predicate) -> _Predicate:
     )
     return _build_balanced_boolean(
         balanced.operator,
-        _flatten_boolean_operands(balanced, operator=balanced.operator),
+        list(
+            dict.fromkeys(
+                _flatten_boolean_operands(balanced, operator=balanced.operator)
+            )
+        ),
     )
 
 
@@ -241,97 +246,51 @@ class _SelectPlan:
     predicate: _Predicate
     parameter_bindings: tuple[_ParameterBinding, ...]
     projected_column_indices: tuple[int, ...]
-    projects_all_columns: bool
 
 
-@dataclass(frozen=True)
-class _SubringLayout:
-    active_slots: int
-    main_slots: int
-    subring_slots: int
-    log_n_subring: int
-    repetitions: int
+@dataclass(frozen=True, kw_only=True)
+class SqlPackingPlan:
+    """Public shapes and periods; independent of the private table values."""
 
-
-@dataclass(frozen=True)
-class _ParameterLayout:
+    row_count: int
+    ring_slots: int
+    row_slots: int
     binding_count: int
     pack_width: int
     pack_count: int
-    packed_slots: int
+    working_slots: int
+    output_channels: int
 
     @property
-    def input_shape(self) -> tuple[int, int]:
-        return (self.pack_count, self.packed_slots)
+    def parameter_shape(self) -> tuple[int, int]:
+        return (self.pack_count, self.working_slots)
+
+    @property
+    def output_shape(self) -> tuple[int, int]:
+        return (self.output_channels, self.working_slots)
 
 
-def _subring_layout_for_active_slots(
-    active_slots: int,
-    *,
-    ring_dimension: int,
-) -> _SubringLayout:
-    """Derive the smallest power-of-two subring that holds all logical rows."""
-
-    if (
-        isinstance(active_slots, bool)
-        or not isinstance(active_slots, int)
-        or active_slots <= 0
-    ):
+def _plan_packing(
+    row_count: int, binding_count: int, output_columns: int, hom_params: HomParams
+) -> SqlPackingPlan:
+    if isinstance(row_count, bool) or not isinstance(row_count, int) or row_count <= 0:
+        raise ValueError("row_count must be a positive integer.")
+    ring_slots = hom_params.internal_n
+    if row_count > ring_slots:
         raise ValueError(
-            f"active_slots must be a positive integer; got {active_slots!r}."
+            f"{row_count} rows exceed the ring capacity of {ring_slots} slots."
         )
-    if (
-        isinstance(ring_dimension, bool)
-        or not isinstance(ring_dimension, int)
-        or ring_dimension < 2
-        or ring_dimension & (ring_dimension - 1)
-    ):
-        raise ValueError(
-            "ring_dimension must be a power of two greater than or equal to 2; "
-            f"got {ring_dimension!r}."
-        )
-
-    main_slots = ring_dimension // 2
-    if active_slots > main_slots:
-        raise ValueError(
-            f"{active_slots} active slots exceed the main ring capacity of "
-            f"{main_slots} slots."
-        )
-
-    subring_slots = 1 << (active_slots - 1).bit_length()
-    return _SubringLayout(
-        active_slots=active_slots,
-        main_slots=main_slots,
-        subring_slots=subring_slots,
-        log_n_subring=subring_slots.bit_length(),
-        repetitions=main_slots // subring_slots,
-    )
-
-
-def _parameter_layout_for_bindings(
-    binding_count: int,
-    *,
-    subring_layout: _SubringLayout,
-) -> _ParameterLayout:
-    """Pack comparison bindings into the unused row-sized SIMD blocks."""
-
-    if (
-        isinstance(binding_count, bool)
-        or not isinstance(binding_count, int)
-        or binding_count <= 0
-    ):
-        raise ValueError(
-            f"binding_count must be a positive integer; got {binding_count!r}."
-        )
-
-    desired_width = 1 << (binding_count - 1).bit_length()
-    pack_width = min(subring_layout.repetitions, desired_width)
-    pack_count = (binding_count + pack_width - 1) // pack_width
-    return _ParameterLayout(
+    row_slots = 1 << (row_count - 1).bit_length()
+    pack_width = min(ring_slots // row_slots, 1 << (binding_count - 1).bit_length())
+    return SqlPackingPlan(
+        row_count=row_count,
+        ring_slots=ring_slots,
+        row_slots=row_slots,
         binding_count=binding_count,
         pack_width=pack_width,
-        pack_count=pack_count,
-        packed_slots=pack_width * subring_layout.subring_slots,
+        pack_count=(binding_count + pack_width - 1) // pack_width,
+        working_slots=pack_width * row_slots,
+        output_channels=output_columns + 1,
     )
 
 
@@ -357,16 +316,14 @@ class SqlSelectResult:
 
 def _normalize(values: torch.Tensor, column: SqlColumn) -> torch.Tensor:
     return (
-        2.0 * (values - column.min_value) / (column.max_value - column.min_value)
-        - 1.0
+        2.0 * (values - column.min_value) / (column.max_value - column.min_value) - 1.0
     )
 
 
 def _denormalize(values: torch.Tensor, column: SqlColumn) -> torch.Tensor:
-    return (
-        (values + 1.0) * (column.max_value - column.min_value) / 2.0
-        + column.min_value
-    )
+    return (values + 1.0) * (
+        column.max_value - column.min_value
+    ) / 2.0 + column.min_value
 
 
 def _as_real_tensor(value: object, *, label: str) -> torch.Tensor:
@@ -477,25 +434,21 @@ def _pad_last_dimension(
     return padded
 
 
-def _repeat_subring_block(
-    values: torch.Tensor,
-    *,
-    repetitions: int,
-) -> torch.Tensor:
-    """Repeat each row's complete subring block across the main ring."""
-
-    if values.ndim != 2:
-        raise ValueError(
-            f"Expected a two-dimensional tensor; got {values.ndim} dimensions."
-        )
-    return values.repeat(1, repetitions)
+def _normalize_comparison(values: torch.Tensor, column: SqlColumn) -> torch.Tensor:
+    # Integer comparisons use half-integer boundaries, including just outside
+    # the public bounds. Leave room for those boundaries in the fit domain.
+    padding = 0.5 if column.kind == "integer" else 0.0
+    return (values - (column.min_value - padding)) / (
+        column.max_value - column.min_value + 2 * padding
+    ) - 0.5
 
 
 @dataclass(frozen=True, kw_only=True)
 class CompiledSqlSelect:
-    """A built pipeline plus its private input and output codecs."""
+    """An immutable plan, its graph, and codecs for runtime private inputs."""
 
     PARAMETERS_INPUT_NAME: ClassVar[str] = "parameters"
+    COMPARISONS_INPUT_NAME: ClassVar[str] = "comparison_database"
     DATABASE_INPUT_NAME: ClassVar[str] = "database"
 
     sql: str
@@ -503,202 +456,189 @@ class CompiledSqlSelect:
     hom_params: HomParams
     options: SqlSelectOptions
     pipeline: HomomorphicPipeline
-    prepared_database: torch.Tensor = field(repr=False, compare=False)
+    packing: SqlPackingPlan
     parameter_names: tuple[str, ...]
     projected_columns: tuple[SqlColumn, ...]
-    _parameter_bindings: tuple[_ParameterBinding, ...] = field(repr=False)
-    _predicate: _Predicate = field(repr=False)
-    _projected_column_indices: tuple[int, ...] = field(repr=False)
-    _subring_layout: _SubringLayout = field(repr=False)
-    _parameter_layout: _ParameterLayout = field(repr=False)
-
-    @property
-    def database_shape(self) -> tuple[int, int]:
-        return (
-            int(self.prepared_database.shape[0]),
-            int(self.prepared_database.shape[1]),
-        )
+    _plan: _SelectPlan = field(repr=False)
+    prepared_database: dict[str, torch.Tensor] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     @property
     def row_count(self) -> int:
-        return self._subring_layout.active_slots
+        return self.packing.row_count
 
     @property
     def subring_slots(self) -> int:
-        return self._subring_layout.subring_slots
-
-    @property
-    def log_n_subring(self) -> int:
-        return self._subring_layout.log_n_subring
-
-    @property
-    def repetitions(self) -> int:
-        return self._subring_layout.repetitions
+        return self.packing.row_slots
 
     @property
     def parameter_binding_count(self) -> int:
-        return self._parameter_layout.binding_count
+        return self.packing.binding_count
 
     @property
     def parameter_pack_width(self) -> int:
-        return self._parameter_layout.pack_width
+        return self.packing.pack_width
 
     @property
     def parameter_ciphertext_count(self) -> int:
-        return self._parameter_layout.pack_count
+        return self.packing.pack_count
 
     @property
     def parameter_shape(self) -> tuple[int, int]:
-        """Packed client input shape before repetition to the main ring."""
+        return self.packing.parameter_shape
 
-        return self._parameter_layout.input_shape
+    @property
+    def database_shape(self) -> tuple[int, int]:
+        """Shape of the projected database view (including validity)."""
+        return self.packing.output_shape
 
     @property
     def output_shape(self) -> tuple[int, int]:
-        return self.database_shape
+        return self.packing.output_shape
 
-    def prepare_database(self, data: Mapping[str, object]) -> torch.Tensor:
-        """Prepare replacement values with the compiled database's row count."""
+    @property
+    def bootstrap_count(self) -> int:
+        return len(self.pipeline.hom.bootstrap_predicates)
 
-        logical_database = _prepare_database_tensor(
-            data,
-            schema=self.schema,
-            expected_row_count=self.row_count,
+    def prepare_database(self, data: Mapping[str, object]) -> dict[str, torch.Tensor]:
+        """Prepare both encrypted views once per database upload/update.
+
+        The returned mapping is passed directly to encrypt_and_upload_custom_data.
+        Query thresholds are absent from these reusable views.
+        """
+        logical = _prepare_database_tensor(
+            data, schema=self.schema, expected_row_count=self.row_count
         )
-        subring_database = _pad_last_dimension(
-            logical_database,
-            size=self.subring_slots,
+        output_indices = (0, *(i + 1 for i in self._plan.projected_column_indices))
+        output = _pad_last_dimension(
+            logical[list(output_indices)], size=self.subring_slots
         )
-        return _repeat_subring_block(
-            subring_database,
-            repetitions=self.repetitions,
-        )
+        output = output.repeat(1, self.parameter_pack_width)
+        comparisons = torch.zeros(self.parameter_shape, dtype=torch.float64)
+        for index, binding in enumerate(self._plan.parameter_bindings):
+            column = self.schema.columns[binding.column_index]
+            values = _as_real_tensor(data[column.name], label=f"column {column.name!r}")
+            direction = 1 if binding.column_is_greater else -1
+            pack, block = divmod(index, self.parameter_pack_width)
+            start = block * self.subring_slots
+            comparisons[pack, start : start + self.row_count] = (
+                direction * _normalize_comparison(values, column)
+            )
+        return {
+            self.COMPARISONS_INPUT_NAME: comparisons,
+            self.DATABASE_INPUT_NAME: output,
+        }
 
     def prepare_parameters(self, values: Mapping[str, object]) -> torch.Tensor:
-        """Normalize and direction-sign private values into packed row blocks."""
-
+        """Pack runtime thresholds using the same normalization as the database."""
         if not isinstance(values, Mapping):
-            raise TypeError("prepare_parameters expects a mapping of parameter names to values.")
+            raise TypeError(
+                "prepare_parameters expects a mapping of parameter names to values."
+            )
         missing = [name for name in self.parameter_names if name not in values]
         unknown = [name for name in values if name not in self.parameter_names]
         if missing or unknown:
             raise ValueError(
-                "Query parameters must match the SQL placeholders exactly. "
-                f"Missing: {missing or 'none'}; unknown: {unknown or 'none'}."
+                f"Query parameters must match SQL placeholders. Missing: {missing}; unknown: {unknown}."
             )
-
         prepared = torch.zeros(self.parameter_shape, dtype=torch.float64)
-        column_is_greater = _comparison_directions(self._predicate)
-        for binding_index, binding in enumerate(self._parameter_bindings):
+        for index, binding in enumerate(self._plan.parameter_bindings):
             column = self.schema.columns[binding.column_index]
-            raw_value = _as_real_tensor(
-                values[binding.name],
-                label=f"parameter :{binding.name}",
+            value = _as_real_tensor(
+                values[binding.name], label=f"parameter :{binding.name}"
             )
-            if raw_value.numel() != 1:
+            if value.numel() != 1:
                 raise ValueError(f"parameter :{binding.name} must be a scalar.")
-            raw_value = raw_value.reshape(())
-            _validate_in_bounds(raw_value, column, label=f"parameter :{binding.name}")
-            pack_index, block_index = divmod(
-                binding_index,
-                self.parameter_pack_width,
-            )
-            block_start = block_index * self.subring_slots
-            block_end = block_start + self.subring_slots
-            direction = 1.0 if column_is_greater[binding_index] else -1.0
-            prepared[pack_index, block_start:block_end].fill_(
-                direction * float(_normalize(raw_value, column).item())
+            value = value.reshape(())
+            _validate_in_bounds(value, column, label=f"parameter :{binding.name}")
+            if column.kind == "integer":
+                # x > t iff x > floor(t)+1/2, and x < t iff x < ceil(t)-1/2.
+                # Equality is therefore separated from the sign polynomial's transition.
+                value = (
+                    torch.floor(value) + 0.5
+                    if binding.column_is_greater
+                    else torch.ceil(value) - 0.5
+                )
+            direction = 1 if binding.column_is_greater else -1
+            pack, block = divmod(index, self.parameter_pack_width)
+            start = block * self.subring_slots
+            prepared[pack, start : start + self.subring_slots] = (
+                direction * _normalize_comparison(value, column)
             )
         return prepared
-
-    def _unpack_parameters_for_clear(
-        self,
-        prepared_parameters: torch.Tensor,
-    ) -> torch.Tensor:
-        """Restore one repeated row block per comparison binding for clear evaluation."""
-
-        unpacked = torch.empty(
-            (self.parameter_binding_count, self._subring_layout.main_slots),
-            dtype=prepared_parameters.dtype,
-            device=prepared_parameters.device,
-        )
-        column_is_greater = _comparison_directions(self._predicate)
-        for binding_index in range(self.parameter_binding_count):
-            pack_index, block_index = divmod(
-                binding_index,
-                self.parameter_pack_width,
-            )
-            block_start = block_index * self.subring_slots
-            block_end = block_start + self.subring_slots
-            direction = 1.0 if column_is_greater[binding_index] else -1.0
-            unpacked[binding_index] = direction * prepared_parameters[
-                pack_index,
-                block_start:block_end,
-            ].repeat(self.repetitions)
-        return unpacked
 
     def apply_clear(
         self,
         prepared_parameters: torch.Tensor,
         *,
-        prepared_database: torch.Tensor | None = None,
+        prepared_database: Mapping[str, torch.Tensor] | None = None,
     ) -> torch.Tensor:
-        """Evaluate this SQL selection locally on prepared plaintext inputs.
-
-        This is a client-side verification helper for the current multi-input
-        SQL example. It returns the same normalized, masked tensor layout as
-        the encrypted pipeline so callers can decode both paths identically.
-        """
-
+        """Exact predicate reference, independent of the approximate operator graph."""
         parameters = _validate_prepared_tensor(
             prepared_parameters,
             expected_shape=self.parameter_shape,
             label="prepared SQL parameters",
         )
-        parameters = self._unpack_parameters_for_clear(parameters)
-        database = _validate_prepared_tensor(
-            self.prepared_database if prepared_database is None else prepared_database,
-            expected_shape=self.database_shape,
-            label="prepared SQL database",
+        data = (
+            self.prepared_database if prepared_database is None else prepared_database
         )
-
-        selected = _evaluate_clear_predicate(
-            self._predicate,
-            parameters=parameters,
-            database=database,
-        )
-        projection = torch.zeros_like(database)
-        projection[_VALIDITY_CHANNEL].fill_(1.0)
-        for column_index in self._projected_column_indices:
-            projection[column_index + 1].fill_(1.0)
-        return database * projection * selected.to(dtype=torch.float64).unsqueeze(0)
-
-    def decode_result(self, result: torch.Tensor) -> SqlSelectResult:
-        """Compact and denormalize a decrypted masked result tensor."""
-
-        decoded = _as_real_tensor(result, label="decrypted SQL result")
-        if tuple(decoded.shape) != self.output_shape:
+        if data is None:
             raise ValueError(
-                f"Expected decrypted SQL result shape {self.output_shape}, "
-                f"got {tuple(decoded.shape)}."
+                "Supply prepared_database when compiling with row_count only."
+            )
+        expected_names = {self.COMPARISONS_INPUT_NAME, self.DATABASE_INPUT_NAME}
+        if set(data) != expected_names:
+            raise ValueError(
+                f"Prepared database must contain exactly {sorted(expected_names)}."
+            )
+        comparisons = _validate_prepared_tensor(
+            data[self.COMPARISONS_INPUT_NAME],
+            expected_shape=self.parameter_shape,
+            label="prepared comparison database",
+        )
+        output = _validate_prepared_tensor(
+            data[self.DATABASE_INPUT_NAME],
+            expected_shape=self.output_shape,
+            label="prepared output database",
+        )
+        values = []
+        for index in range(self.parameter_binding_count):
+            pack, block = divmod(index, self.parameter_pack_width)
+            start = block * self.subring_slots
+            block_slice = slice(start, start + self.subring_slots)
+            values.append(
+                comparisons[pack, block_slice] > parameters[pack, block_slice]
             )
 
+        def evaluate(predicate):
+            if isinstance(predicate, _Comparison):
+                return values[predicate.binding_index]
+            left, right = evaluate(predicate.left), evaluate(predicate.right)
+            return left & right if predicate.operator == "and" else left | right
+
+        selected = evaluate(self._plan.predicate).repeat(self.parameter_pack_width)
+        return output * selected.to(output.dtype).unsqueeze(0)
+
+    def decode_result(self, result: torch.Tensor) -> SqlSelectResult:
+        """Compact physical rows, preserving projection order and original row indices."""
+        decoded = _validate_prepared_tensor(
+            result, expected_shape=self.output_shape, label="decrypted SQL result"
+        )
         decoded = decoded[:, : self.row_count]
-        selected = decoded[_VALIDITY_CHANNEL] > self.options.selection_threshold
-        row_indices = torch.nonzero(selected, as_tuple=False).flatten()
-        columns: dict[str, torch.Tensor] = {}
-        for column in self.projected_columns:
-            column_index = self.schema.columns.index(column)
-            values = _denormalize(decoded[column_index + 1, selected], column)
-            columns[column.name] = values
-        return SqlSelectResult(row_indices=row_indices, columns=columns)
+        selected = decoded[0] > self.options.selection_threshold
+        columns = {
+            column.name: _denormalize(decoded[i + 1, selected], column)
+            for i, column in enumerate(self.projected_columns)
+        }
+        return SqlSelectResult(
+            row_indices=torch.nonzero(selected, as_tuple=False).flatten(),
+            columns=columns,
+        )
 
 
 def _validate_prepared_tensor(
-    value: object,
-    *,
-    expected_shape: tuple[int, int],
-    label: str,
+    value: object, *, expected_shape: tuple[int, int], label: str
 ) -> torch.Tensor:
     tensor = _as_real_tensor(value, label=label)
     if tuple(tensor.shape) != expected_shape:
@@ -708,266 +648,177 @@ def _validate_prepared_tensor(
     return tensor
 
 
-def _evaluate_clear_predicate(
-    predicate: _Predicate,
-    *,
-    parameters: torch.Tensor,
-    database: torch.Tensor,
-) -> torch.Tensor:
-    if isinstance(predicate, _Comparison):
-        column = database[predicate.column_index + 1]
-        parameter = parameters[predicate.binding_index]
-        return column > parameter if predicate.column_is_greater else parameter > column
+class _RotateAndAdd(HomOp):
+    """Explicit x + rotate(x), with identical clear and encrypted semantics."""
 
-    left = _evaluate_clear_predicate(
-        predicate.left,
-        parameters=parameters,
-        database=database,
-    )
-    right = _evaluate_clear_predicate(
-        predicate.right,
-        parameters=parameters,
-        database=database,
-    )
-    if predicate.operator == "and":
-        return torch.logical_and(left, right)
-    return torch.logical_or(left, right)
+    def __init__(self, offset: int):
+        super().__init__()
+        self.rotate = HomRotateSum(rotations=(offset,), perform_sum=False)
+        self.squeeze = HomSqueeze(dim=0)
 
-
-def _build_database_packing_pipeline(
-    *,
-    plan: _SelectPlan,
-    database_channels: int,
-    subring_layout: _SubringLayout,
-    parameter_layout: _ParameterLayout,
-) -> SequentialHomOp:
-    """Select and sign each comparison column in its parameter block."""
-
-    mask = torch.zeros(
-        (
-            parameter_layout.pack_count,
-            database_channels,
-            subring_layout.main_slots,
-        ),
-        dtype=torch.float64,
-    )
-    column_is_greater = _comparison_directions(plan.predicate)
-    for binding_index, binding in enumerate(plan.parameter_bindings):
-        pack_index, block_index = divmod(
-            binding_index,
-            parameter_layout.pack_width,
-        )
-        direction = 1.0 if column_is_greater[binding_index] else -1.0
-        for repeated_block_index in range(
-            block_index,
-            subring_layout.repetitions,
-            parameter_layout.pack_width,
-        ):
-            block_start = repeated_block_index * subring_layout.subring_slots
-            mask[
-                pack_index,
-                binding.column_index + 1,
-                block_start : block_start + subring_layout.subring_slots,
-            ] = direction
-
-    mask_database = HomConstMul(dims=tuple(mask.shape))
-    mask_database.set_data(mask)
-    return SequentialHomOp(
-        HomUnsqueeze(dim=0),
-        mask_database,
-        HomAxisSum(dim=1),
-    )
+    def forward(self, x):
+        return x + self.squeeze(self.rotate(x))
 
 
 def _build_comparison_unpacking_pipeline(
-    *,
-    subring_layout: _SubringLayout,
-    parameter_layout: _ParameterLayout,
+    packing: SqlPackingPlan,
 ) -> SequentialHomOp | None:
-    """Broadcast packed comparison blocks into one ciphertext lane per binding."""
-
-    if parameter_layout.pack_width == 1:
+    if packing.pack_width == 1:
         return None
-
     mask = torch.zeros(
-        (1, parameter_layout.pack_width, subring_layout.main_slots),
-        dtype=torch.float64,
+        (1, packing.pack_width, packing.working_slots), dtype=torch.float64
     )
-    for block_index in range(parameter_layout.pack_width):
-        for repeated_block_index in range(
-            block_index,
-            subring_layout.repetitions,
-            parameter_layout.pack_width,
-        ):
-            block_start = repeated_block_index * subring_layout.subring_slots
-            mask[
-                0,
-                block_index,
-                block_start : block_start + subring_layout.subring_slots,
-            ] = 1.0
-
-    flattened_binding_count = (
-        parameter_layout.pack_count * parameter_layout.pack_width
-    )
-    mask_comparisons = HomConstMul(dims=tuple(mask.shape))
-    mask_comparisons.set_data(mask)
-    ops: list[HomOp] = [
+    for block in range(packing.pack_width):
+        mask[0, block, block * packing.row_slots : (block + 1) * packing.row_slots] = 1
+    mask_op = HomConstMul(dims=tuple(mask.shape))
+    mask_op.set_data(mask)
+    ops = [
         HomUnsqueeze(dim=1),
-        mask_comparisons,
-        *(
-            HomRotateSum(
-                rotations=(subring_layout.subring_slots * (1 << stage),),
-            )
-            for stage in range(parameter_layout.pack_width.bit_length() - 1)
-        ),
-        HomReshape((flattened_binding_count, subring_layout.main_slots)),
+        mask_op,
+        HomReshape((packing.pack_count * packing.pack_width, packing.working_slots)),
     ]
-    if flattened_binding_count != parameter_layout.binding_count:
-        ops.append(
-            HomSlice(
-                dim=0,
-                key=slice(0, parameter_layout.binding_count),
-            )
-        )
+    # Remove dummy lanes before rotating; their encrypted work is unnecessary.
+    if packing.pack_count * packing.pack_width != packing.binding_count:
+        ops.append(HomSlice(dim=0, key=slice(0, packing.binding_count)))
+    ops.extend(
+        _RotateAndAdd(packing.row_slots * (1 << stage))
+        for stage in range(packing.pack_width.bit_length() - 1)
+    )
     return SequentialHomOp(*ops)
 
 
-def _build_projection_selector(
+def _plan_bootstraps(
     plan: _SelectPlan,
-    *,
-    database_channels: int,
-) -> torch.Tensor | None:
-    if plan.projects_all_columns:
-        return None
+    compare: HomCompare,
+    packing: SqlPackingPlan,
+    params: HomParams,
+    policy: str,
+) -> frozenset[_Predicate]:
+    """Budget the comparator with the real tracer; schedule Boolean refreshes.
 
-    projection = torch.zeros((database_channels, 1), dtype=torch.float64)
-    projection[_VALIDITY_CHANNEL, 0] = 1.0
-    for column_index in plan.projected_column_indices:
-        projection[column_index + 1, 0] = 1.0
-    return projection
+    Reserve two modulus columns at the output. The exact serialized modulus
+    and scale are checked separately before returning a compiled pipeline.
+    """
+    probe = replace(params)
+    probe.mod_chain = ModulusChain(probe)
+    rows, cols = init_active_rows_cols(probe)
+    available = sum(map(sum, cols))
+    value = HomValue(
+        id="a",
+        tensor_shape=packing.parameter_shape,
+        n_axis=1,
+        n_slots=packing.working_slots,
+        active_rows=rows,
+        active_cols=cols,
+        pt_scale=probe.pt_scale,
+    )
+    try:
+        _, result = compare.serialize(
+            {}, value, value.make_copy(id="b"), hom_params=probe
+        )
+    except (ValueError, RuntimeError, IndexError) as exc:
+        raise SqlCompileError(
+            "The comparison exceeds the modulus budget; increase it or reduce comparison accuracy."
+        ) from exc
+    comparison_depth = available - sum(map(sum, result.active_cols))
+    limit = available - 2
+    trunk_depth = comparison_depth + (packing.pack_width > 1)
+    if trunk_depth > limit:
+        raise SqlCompileError(
+            "The comparison/unpacking leaves insufficient modulus headroom; increase the modulus budget."
+        )
+    refresh = set()
+    depths = {}
+
+    def refresh_at(predicate):
+        if policy == "never":
+            raise SqlCompileError(
+                "The query needs bootstrapping or a larger modulus budget (bootstrap='never')."
+            )
+        refresh.add(predicate)
+        depths[predicate] = 0
+
+    def depth(predicate):
+        if predicate in depths:
+            return depths[predicate]
+        if isinstance(predicate, _Comparison):
+            result = trunk_depth
+        else:
+            depth(predicate.left)
+            depth(predicate.right)
+            for child in (predicate.left, predicate.right):
+                if depths[child] + 1 > limit:
+                    refresh_at(child)
+            result = max(depths[predicate.left], depths[predicate.right]) + 1
+        depths[predicate] = result
+        return result
+
+    if depth(plan.predicate) + 1 > limit or policy == "always":
+        refresh_at(plan.predicate)
+    if refresh and params.num_init_rows is not None:
+        # A reduced initial chain needs a separate schedule from the full chain
+        # after bootstrap. Refuse to silently build with an incorrect budget.
+        raise SqlCompileError(
+            "SQL automatic bootstrap planning requires num_init_rows=None."
+        )
+    return frozenset(refresh)
 
 
 class HomSqlPipeline(HomOp):
     def __init__(
         self,
-        *,
         plan: _SelectPlan,
-        schema: SqlTableSchema,
+        packing: SqlPackingPlan,
         options: SqlSelectOptions,
-        subring_layout: _SubringLayout,
-        parameter_layout: _ParameterLayout,
-        log_n_subring: int,
-        bootstrap_target_output_scale: int,
-    ) -> None:
+        hom_params: HomParams,
+    ):
         super().__init__()
         self._predicate = plan.predicate
-        database_channels = len(schema.columns) + 1
-
-        self._binding_selectors = tuple(
-            self._selector(len(plan.parameter_bindings), binding_index)
-            for binding_index in range(len(plan.parameter_bindings))
-        )
-        self.pack_database = _build_database_packing_pipeline(
-            plan=plan,
-            database_channels=database_channels,
-            subring_layout=subring_layout,
-            parameter_layout=parameter_layout,
-        )
-        self.unpack_comparisons = _build_comparison_unpacking_pipeline(
-            subring_layout=subring_layout,
-            parameter_layout=parameter_layout,
-        )
-        self._projection_selector = _build_projection_selector(
-            plan,
-            database_channels=database_channels,
-        )
-
-        self.encrypted_zero = HomConstMul(
-            dims=(),
-            with_modswitch=False,
-            pt_scale=1,
-        )
-        self.encrypted_zero.set_data(torch.tensor(0.0, dtype=torch.float64))
-        self.sum_channel = HomAxisSum(dim=0)
+        self.parameters_shape = HomReshape(packing.parameter_shape)
         self.compare = HomCompare(
             x_accuracy=options.x_accuracy,
             y_accuracy=options.y_accuracy,
-            left=-1.0,
-            right=1.0,
+            left=-0.5,
+            right=0.5,
         )
-        self.bootstrap_predicate = Bootstrap(
-            log_n_subring=log_n_subring,
-            target_output_scale=bootstrap_target_output_scale,
+        self.unpack_comparisons = _build_comparison_unpacking_pipeline(packing)
+        self.bootstrap_predicates = _plan_bootstraps(
+            plan, self.compare, packing, hom_params, options.bootstrap
+        )
+        # Do not register an unused Bootstrap: its presence adds bootstrap primes
+        # and keys even if forward never calls it.
+        self.bootstrap = (
+            Bootstrap(target_output_scale=hom_params.pt_scale)
+            if self.bootstrap_predicates
+            else None
         )
 
-    @staticmethod
-    def _selector(channel_count: int, channel_index: int) -> torch.Tensor:
-        selector = torch.zeros((channel_count, 1), dtype=torch.float64)
-        selector[channel_index, 0] = 1.0
-        return selector
-
-    def _extract_channel(
-        self,
-        values: HomValue,
-        selector: torch.Tensor,
-    ) -> HomValue:
-        return self.sum_channel(values * selector)
-
-    def _evaluate_predicate(
-        self,
-        predicate: _Predicate,
-        *,
-        comparison_values: HomValue,
-        binding_values: dict[int, HomValue],
-    ) -> HomValue:
+    def _evaluate_predicate(self, predicate, values, cache):
+        if predicate in cache:
+            return cache[predicate]
         if isinstance(predicate, _Comparison):
-            if predicate.binding_index not in binding_values:
-                binding_values[predicate.binding_index] = self._extract_channel(
-                    comparison_values,
-                    self._binding_selectors[predicate.binding_index],
-                )
-            return binding_values[predicate.binding_index]
+            result = HomSlice(dim=0, key=predicate.binding_index)(values)
+        else:
+            left = self._evaluate_predicate(predicate.left, values, cache)
+            right = self._evaluate_predicate(predicate.right, values, cache)
+            both = left * right
+            result = both if predicate.operator == "and" else left + right - both
+        if predicate in self.bootstrap_predicates:
+            result = self.bootstrap(result)
+        cache[predicate] = result
+        return result
 
-        left = self._evaluate_predicate(
-            predicate.left,
-            comparison_values=comparison_values,
-            binding_values=binding_values,
-        )
-        right = self._evaluate_predicate(
-            predicate.right,
-            comparison_values=comparison_values,
-            binding_values=binding_values,
-        )
-        both = left * right
-        if predicate.operator == "and":
-            return both
-        return left + right - both
-
-    def _unpack_comparisons(self, packed_comparisons: HomValue) -> HomValue:
-        if self.unpack_comparisons is None:
-            return packed_comparisons
-        return self.unpack_comparisons(packed_comparisons)
-
-    def forward(self, parameters: HomValue, database: HomValue) -> HomValue:
-        packed_database = self.pack_database(database)
-        signed_difference = packed_database - parameters
-        packed_comparisons = self.compare(
-            signed_difference,
-            self.encrypted_zero(signed_difference),
-        )
-        comparison_values = self._unpack_comparisons(packed_comparisons)
-        predicate = self._evaluate_predicate(
-            self._predicate,
-            comparison_values=comparison_values,
-            binding_values={},
-        )
-        predicate = self.bootstrap_predicate(predicate)
-        projected_database = (
-            database
-            if self._projection_selector is None
-            else database * self._projection_selector
-        )
-        return projected_database * predicate
+    def forward(
+        self, parameters: HomValue, comparison_database: HomValue, database: HomValue
+    ) -> HomValue:
+        # Establish the primary ciphertext state before the backend binds a
+        # custom input to it. This reshape only changes metadata.
+        parameters = self.parameters_shape(parameters)
+        values = self.compare(comparison_database, parameters)
+        if self.unpack_comparisons is not None:
+            values = self.unpack_comparisons(values)
+        predicate = self._evaluate_predicate(self._predicate, values, {})
+        return database * predicate
 
 
 def _matches_identifier(identifier: exp.Identifier, expected: str) -> bool:
@@ -1022,11 +873,15 @@ def _compile_predicate(
     if isinstance(expression, exp.Paren):
         return _compile_predicate(expression.this, schema=schema, bindings=bindings)
     if isinstance(expression, (exp.And, exp.Or)):
-        operator: Literal["and", "or"] = "and" if isinstance(expression, exp.And) else "or"
+        operator: Literal["and", "or"] = (
+            "and" if isinstance(expression, exp.And) else "or"
+        )
         return _BooleanPredicate(
             operator=operator,
             left=_compile_predicate(expression.this, schema=schema, bindings=bindings),
-            right=_compile_predicate(expression.expression, schema=schema, bindings=bindings),
+            right=_compile_predicate(
+                expression.expression, schema=schema, bindings=bindings
+            ),
         )
     if not isinstance(expression, (exp.GT, exp.LT)):
         raise SqlCompileError(
@@ -1050,13 +905,15 @@ def _compile_predicate(
             f"got {expression.sql()!r}."
         )
 
-    binding_index = len(bindings)
-    bindings.append(_ParameterBinding(name=parameter_name, column_index=column_index))
-    return _Comparison(
+    binding = _ParameterBinding(
+        name=parameter_name,
         column_index=column_index,
-        binding_index=binding_index,
         column_is_greater=column_is_greater,
     )
+    if binding not in bindings:
+        bindings.append(binding)
+    binding_index = bindings.index(binding)
+    return _Comparison(binding_index=binding_index)
 
 
 def _parse_select(
@@ -1107,7 +964,9 @@ def _parse_select(
         raise SqlCompileError("SELECT must read from exactly one named table.")
     table = tables[0]
     if table.alias or table.db or table.catalog:
-        raise SqlCompileError("Table aliases and database/catalog qualifiers are not supported.")
+        raise SqlCompileError(
+            "Table aliases and database/catalog qualifiers are not supported."
+        )
     table_identifier = table.args.get("this")
     if not isinstance(table_identifier, exp.Identifier) or not _matches_identifier(
         table_identifier, schema.name
@@ -1123,7 +982,6 @@ def _parse_select(
         if any(value for value in projections[0].args.values()):
             raise SqlCompileError("SELECT * modifiers are not supported.")
         projected_indices = tuple(range(len(schema.columns)))
-        projects_all = True
     else:
         if any(isinstance(projection, exp.Star) for projection in projections):
             raise SqlCompileError("SELECT * cannot be mixed with explicit columns.")
@@ -1138,9 +996,6 @@ def _parse_select(
         if len(set(projected_indices_list)) != len(projected_indices_list):
             raise SqlCompileError("Duplicate projected columns are not supported.")
         projected_indices = tuple(projected_indices_list)
-        projects_all = len(projected_indices) == len(schema.columns) and set(
-            projected_indices
-        ) == set(range(len(schema.columns)))
 
     where = statement.args.get("where")
     if not isinstance(where, exp.Where):
@@ -1153,7 +1008,6 @@ def _parse_select(
         predicate=predicate,
         parameter_bindings=tuple(bindings),
         projected_column_indices=projected_indices,
-        projects_all_columns=projects_all,
     )
 
 
@@ -1161,12 +1015,18 @@ def compile_sql_select(
     sql: str,
     *,
     schema: SqlTableSchema,
-    database: Mapping[str, object],
     hom_params: HomParams,
+    database: Mapping[str, object] | None = None,
+    row_count: int | None = None,
     options: SqlSelectOptions | None = None,
 ) -> CompiledSqlSelect:
-    """Compile SQL for one exact database shape and retain its packed input."""
+    """Compile a public query and shape; private inputs can be prepared later.
 
+    Supply either row_count or database. The latter is a convenience which also
+    prepares the two database views; neither view is embedded in the graph.
+    Real comparisons retain a transition band around equality. Integer columns
+    use half-integer thresholds so strict > and < exclude equal values.
+    """
     if not isinstance(schema, SqlTableSchema):
         raise TypeError("schema must be a SqlTableSchema.")
     if not isinstance(hom_params, HomParams):
@@ -1175,58 +1035,70 @@ def compile_sql_select(
         options = SqlSelectOptions()
     elif not isinstance(options, SqlSelectOptions):
         raise TypeError("options must be a SqlSelectOptions or None.")
-
+    if (database is None) == (row_count is None):
+        raise ValueError("Supply exactly one of database or row_count.")
     plan = _parse_select(sql, schema=schema, options=options)
-    logical_database = _prepare_database_tensor(database, schema=schema)
-    subring_layout = _subring_layout_for_active_slots(
-        int(logical_database.shape[1]),
-        ring_dimension=hom_params.n,
-    )
-    parameter_layout = _parameter_layout_for_bindings(
+    if database is not None:
+        row_count = int(_prepare_database_tensor(database, schema=schema).shape[1])
+    packing = _plan_packing(
+        row_count,
         len(plan.parameter_bindings),
-        subring_layout=subring_layout,
+        len(plan.projected_column_indices),
+        hom_params,
     )
-    subring_database = _pad_last_dimension(
-        logical_database,
-        size=subring_layout.subring_slots,
-    )
-    prepared_database = _repeat_subring_block(
-        subring_database,
-        repetitions=subring_layout.repetitions,
-    )
-    pipeline = HomSqlPipeline(
-        plan=plan,
-        schema=schema,
-        options=options,
-        subring_layout=subring_layout,
-        parameter_layout=parameter_layout,
-        log_n_subring=subring_layout.log_n_subring,
-        bootstrap_target_output_scale=hom_params.pt_scale,
-    )
+    # Keep the caller's reusable HE configuration unchanged.
+    params = replace(hom_params, n_slots=packing.working_slots)
+    hom = HomSqlPipeline(plan, packing, options, params)
     pipeline = HomomorphicPipeline(
-        hom=pipeline,
-        client_pre=[Repeat(dim=1)],
+        hom=hom,
         input_shape={
-            CompiledSqlSelect.PARAMETERS_INPUT_NAME: parameter_layout.input_shape,
-            CompiledSqlSelect.DATABASE_INPUT_NAME: tuple(prepared_database.shape),
+            CompiledSqlSelect.PARAMETERS_INPUT_NAME: packing.parameter_shape,
+            CompiledSqlSelect.COMPARISONS_INPUT_NAME: packing.parameter_shape,
+            CompiledSqlSelect.DATABASE_INPUT_NAME: packing.output_shape,
+        },
+        custom_n_slots={
+            CompiledSqlSelect.COMPARISONS_INPUT_NAME: packing.working_slots,
+            CompiledSqlSelect.DATABASE_INPUT_NAME: packing.working_slots,
         },
         n_axis=-1,
     )
-
-    parameter_names = tuple(dict.fromkeys(binding.name for binding in plan.parameter_bindings))
-    projected_columns = tuple(schema.columns[index] for index in plan.projected_column_indices)
-    return CompiledSqlSelect(
+    # Reject empty/exhausted output chains, which the general tracer can serialize.
+    # Check actual primes and scale, rather than assuming every level has 30 bits.
+    try:
+        graph, _ = pipeline.serialize(params)
+        output = json.loads(graph)["pipeline_sections"]["hom"]["body_output"]
+        modulus_bits = sum(
+            math.log2(params.mod_chain.factors_per_row[row][col])
+            for row, cols in zip(output["active_rows"], output["active_cols"])
+            for col, active in enumerate(cols)
+            if active
+        )
+        scale_bits = math.log2(float(output["pt_scale"]))
+        if modulus_bits - scale_bits < 20:
+            raise SqlCompileError(
+                "The output has insufficient modulus headroom; increase the modulus budget or enable bootstrapping."
+            )
+    except (ValueError, RuntimeError, IndexError) as exc:
+        if isinstance(exc, SqlCompileError):
+            raise
+        raise SqlCompileError(
+            "Cannot fit SQL into the supplied HE parameters; increase the modulus budget."
+        ) from exc
+    compiled = CompiledSqlSelect(
         sql=sql,
         schema=schema,
-        hom_params=hom_params,
+        hom_params=params,
         options=options,
         pipeline=pipeline,
-        prepared_database=prepared_database,
-        parameter_names=parameter_names,
-        projected_columns=projected_columns,
-        _parameter_bindings=plan.parameter_bindings,
-        _predicate=plan.predicate,
-        _projected_column_indices=plan.projected_column_indices,
-        _subring_layout=subring_layout,
-        _parameter_layout=parameter_layout,
+        packing=packing,
+        parameter_names=tuple(dict.fromkeys(b.name for b in plan.parameter_bindings)),
+        projected_columns=tuple(
+            schema.columns[i] for i in plan.projected_column_indices
+        ),
+        _plan=plan,
     )
+    if database is not None:
+        compiled = replace(
+            compiled, prepared_database=compiled.prepare_database(database)
+        )
+    return compiled

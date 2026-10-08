@@ -89,6 +89,19 @@ uv run --project lattica_build_src --with sqlglot \
   --out /tmp/sql-select-where.zip
 ```
 
+`sql_select_where.Pipeline()` supplies matching parameters, deterministic query
+inputs, both database views, and result verification for local runners. The
+default example has no bootstrap. For other queries, `SqlSelectOptions.bootstrap`
+can be `"auto"` (default), `"never"` (reject insufficient budgets), or `"always"`
+(also refresh the final predicate). Compilation rejects exhausted output chains.
+
+`compile_sql_select(..., row_count=..., schema=..., hom_params=...)` can compile
+without private data. `prepare_database(...)` returns the custom-input mapping
+for upload; `prepare_parameters(...)` prepares each query. `packing` describes
+the physical ring capacity, row block, comparison packs, and logical working
+period, while `bootstrap_count` reports the planned refresh count. Use the
+returned `hom_params` for deployment because its `n_slots` matches the graph.
+
 ## Use the Python API
 
 ```python
