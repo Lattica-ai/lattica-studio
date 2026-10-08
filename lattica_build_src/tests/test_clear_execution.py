@@ -20,6 +20,7 @@ from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
+from lattica_build.operators.slots.h_conj import HomConj
 from lattica_build.operators.slots.h_expand import HomExpand
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
@@ -48,6 +49,8 @@ def test_leaf_clear_execution_and_data():
 def test_slot_client_and_fhe_clear_execution():
     x = torch.arange(8, dtype=torch.float32)
     assert torch.equal(HomExpand()(x), x.unsqueeze(0).expand(8, 8))
+    z = torch.complex(x, -x)
+    assert torch.equal(HomConj()(z), z.conj())
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
     assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
     assert torch.equal(HomSumSlots(k=3)(x), x[:3].sum().expand_as(x))

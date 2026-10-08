@@ -6,6 +6,7 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 
 | Operator | Operational intent |
 | --- | --- |
+| `HomConj` | Conjugates every slot with one key switch. Adding the input back (`x + HomConj()(x)`) gives `2 * Re(x)`, e.g. to get a real result from complex-packed inputs. |
 | `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots. |
 | `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration. |
 | `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns) induced by slot layout. |
@@ -31,6 +32,7 @@ binary-style schedules, this is typically completed in `log2(k)` stages.
   multiplications in addition to rotations.
 - `HomSumSlots` is rotation/addition-only in this model and does not consume
   levels.
+- `HomConj` is a single key switch and does not consume levels.
 - `HomExpand` and `HomRunningSum` compute consumed levels exactly from the
   selected stage count and `stages_per_level`.
 - `stages_per_level` means "how many stages are packed into one consumed
