@@ -1,8 +1,9 @@
 """Reusable encrypted SQL selection pipeline builder.
 
-Edit ``SQL_QUERY``, ``DATA_SEED``, or the HE constants to experiment. Changing
-the query or database dimensions requires redeployment. Threshold values and
-replacement rows are prepared at runtime by ``CompiledSqlSelect``.
+Edit ``SQL_QUERY``, ``DATA_SEED``, or the HE constants to experiment. The query
+structure and batch capacity are compiled; threshold values and replacement
+rows up to that capacity are runtime inputs. Larger tables can reuse the same
+compiled plan through ``CompiledSqlSelect.iter_database_batches``.
 """
 
 from __future__ import annotations

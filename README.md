@@ -155,7 +155,8 @@ It includes a `Pipeline` wrapper for the Build CLI and local backend runners.
 SQL sends query `parameters` with `run_query` and uploads two encrypted database
 views as custom data: packed comparison columns and projected output columns.
 Both views are prepared once per database update, so each query avoids encrypted
-database packing. Only projected columns and a validity channel are returned.
+database packing. Projected columns and validity share packed ciphertexts; the
+client unpacks and compacts the result after decryption.
 The query structure (SQL text, schema, dimensions) is baked in at compile time,
 but the threshold **values** are runtime inputs — pick them per query with
 `prepare_parameters(...)`; no recompilation is needed to change them. To run it
@@ -192,15 +193,24 @@ For a different database or query, compile with
 `compile_sql_select(query, schema=..., database=..., hom_params=..., options=...)`
 and upload the mapping returned by `compiled.prepare_database(...)` to replace
 rows without recompilation. To compile before private rows are available, pass
-`row_count=...` instead of `database=...`. Query structure, schema, and row count
-are compilation inputs; threshold values and replacement rows are runtime inputs.
+`row_count=...` instead of `database=...`. This is the **capacity per batch**;
+shorter and empty tables are accepted, and a batch can span multiple ciphertexts.
+Query structure, schema, and capacity are compilation inputs; threshold values
+and replacement rows are runtime inputs. For tables exceeding the compiled
+capacity, `compiled.iter_database_batches(columns)` yields `(offset, views)`.
+Upload each view mapping and run the same query, then call
+`compiled.decode_result(result, row_offset=offset)` to preserve source row indices.
 
-The compiler derives the logical slot period, shares repeated comparisons, and
-plans bootstraps from the available modulus budget. Use `compiled.hom_params`
+The compiler chooses row blocks and column packing, shares equivalent predicates,
+folds compatible thresholds privately on the client, and reduces suitable Boolean
+groups while they remain packed. It plans refreshes within comparisons and across
+the Boolean graph using the available modulus budget. Use `compiled.hom_params`
 with `compiled.pipeline`; the original parameter object is left unchanged.
-The default 100-row example uses 512 logical slots and no bootstrap. Integer
-comparisons use half-integer boundaries to exclude equal values; real comparisons
-are approximate within the configured transition band around the threshold.
+The default 100-row example uses 512 logical slots, two output ciphertexts, and
+no bootstrap. Comparison precision adapts to integer ranges and expression size.
+For real columns, `SqlColumn(comparison_resolution=...)` specifies the threshold
+distance in original units outside which classification is required. Real values
+closer to the threshold remain within an approximate transition band.
 
 ### Display tables quickly
 
