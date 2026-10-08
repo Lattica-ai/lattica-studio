@@ -21,13 +21,17 @@ BOOT_CONFIGURATION = {
     'n_cosine_levels' : 5,
     'n_double_angle' : 3,
     'n_arcsine_levels' : 0,
+    # EvalMod's cosine as an even polynomial in y = x - 1/(4K), degree 2**n_cosine_levels - 2
+    # (30): the backend's tree evaluates it through z = T_2(y) in n_cosine_levels levels.
+    # False: the plain fit, degree optimal_poly_deg_per_depth(n_cosine_levels) (27).
+    'even_cosine' : True,
     # Sparse-secret encapsulation: ModRaise switches q0 to an ephemeral secret
     # of this hamming weight, raises the modulus, and switches back, so the
     # wrap count |I| depends on it rather than on sk_hw. ModRaise always
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
     # Bound on the ModRaise wrap count |I|: Han-Ki needs degree 2K-2, so depth 5
-    # (degree 27) allows K <= 14. At H=32, |I| >= 14 has probability 2**-38.8.
+    # (degree 27, or 30 even) allows K <= 14 (16). At H=32, |I| >= 14 has probability 2**-38.8.
     'k' : 14,
 
     # Headroom q0/|m| for messages bounded by 1:
@@ -99,7 +103,11 @@ class BootstrappingParams:
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
         self.q_base_precision = self.get_q_base_precision()
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
-        self.cosine_deg = self.optimal_poly_deg_per_depth(self.n_cosine_levels)
+        self.even_cosine = BOOT_CONFIGURATION['even_cosine']
+        if self.even_cosine:
+            self.cosine_deg = 2 ** self.n_cosine_levels - 2
+        else:
+            self.cosine_deg = self.optimal_poly_deg_per_depth(self.n_cosine_levels)
         # Han-Ki silently raises a lower degree to 2K-2, deeper than provisioned.
         if 2 * self.k - 2 > self.cosine_deg:
             raise ValueError(
