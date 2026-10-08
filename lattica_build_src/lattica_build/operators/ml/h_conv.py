@@ -196,17 +196,24 @@ class HomConv(HomOp):
 
         # Present packed tiles as the batch dimension expected by conv2d.
         conv_input = input.reshape(channels, n_tiles, height, width).permute(1, 0, 2, 3)
+        # Homomorphic convolution retains one output slot per input pixel,
+        # including partial windows at the bottom and right image boundaries.
+        top, left = (p * d for p, d in zip(self.padding, self.dilation))
+        bottom = max(0, (self.kernel_size[0] - 1) * self.dilation[0] - top)
+        right = max(0, (self.kernel_size[1] - 1) * self.dilation[1] - left)
+        conv_input = functional.pad(conv_input, (left, right, top, bottom))
         raw_result = functional.conv2d(
             conv_input,
             weight,
             bias=bias,
             # Compute the dense full-resolution result first. The strided layout is applied afterward.
             stride=1,
-            padding=tuple(p * d for p, d in zip(self.padding, self.dilation)),
+            padding=0,
             dilation=self.dilation,
             groups=self.groups,
         )
 
+        raw_result = raw_result[..., :height, :width]
         result = raw_result
         if self.strided:
             # Keep only positions used by the backend's strided output grid.

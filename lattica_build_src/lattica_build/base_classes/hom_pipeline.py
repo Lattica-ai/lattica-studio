@@ -235,24 +235,21 @@ class HomomorphicPipeline:
                 f"Valid keys: input names {list(self.input_shape)}, 'accuracy', 'expected_output'.")
 
     def _serialize_verification_data(self, tensors):
+        """Export only user-supplied verification tensors, never compute a reference."""
         self._validate_verification_data_keys()
-        
-        res = {}
-        if 'accuracy' in self.verification_data.keys():
-            accuracy = self.verification_data['accuracy']
-            if not isinstance(accuracy, (float, int)):
-                raise ValueError("verification_data['accuracy'] must be a float or int")
-        else:
-            accuracy = _DEFAULT_VERIFICATION_ACCURACY
-        res['accuracy'] = float(accuracy)
-        for input_name in self.input_shape.keys():
-            if input_name in self.verification_data.keys():
-                input_tensor = self.verification_data[input_name]
-                tensors[f'ver_input_{input_name}'] = input_tensor
-        if 'expected_output' in self.verification_data.keys():
-            output_tensor = self.verification_data['expected_output']
-            tensors[f'ver_output'] = output_tensor
-        return res
+
+        accuracy = self.verification_data.get('accuracy', _DEFAULT_VERIFICATION_ACCURACY)
+        if not isinstance(accuracy, (float, int)):
+            raise ValueError("verification_data['accuracy'] must be a float or int")
+        for input_name in self.input_shape:
+            if input_name in self.verification_data:
+                tensors[f'ver_input_{input_name}'] = self.verification_data[input_name]
+        if 'expected_output' in self.verification_data:
+            # An explicitly supplied reference may be a view of its input.
+            tensors['ver_output'] = self.verification_data['expected_output'].clone(
+                memory_format=torch.contiguous_format,
+            )
+        return {'accuracy': float(accuracy)}
 
     def _serialize_modulus_chain(self, hom_params: HomParams) -> dict:
         """Serialize modulus-chain metadata into JSON-friendly lists."""
@@ -320,7 +317,7 @@ class HomomorphicPipeline:
             zf.writestr(_TENSORS_FILENAME, tensor_bytes)
 
     @classmethod
-    def load(cls, source: Union[str, os.PathLike, BinaryIO]) -> 'HomomorphicPipeline':
+    def load(cls, source: Union[str, os.PathLike, BinaryIO]) -> Tuple[bytes, bytes]:
         with zipfile.ZipFile(source, "r") as zf:
             graph_bytes = zf.read(_GRAPH_FILENAME)
             tensor_bytes = zf.read(_TENSORS_FILENAME)

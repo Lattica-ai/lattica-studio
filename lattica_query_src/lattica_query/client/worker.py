@@ -60,10 +60,7 @@ class WorkerGateway:
     def execute_clear(self, plaintext: Any) -> Any:
         result = self._require_binary_result(
             "apply_clear",
-            self._transport.invoke(
-                "apply_clear",
-                payload=serialize_tensor(plaintext),
-            ),
+            self._transport.invoke("apply_clear", payload=serialize_tensor(plaintext)),
         )
         return deserialize_tensor(result)
 
