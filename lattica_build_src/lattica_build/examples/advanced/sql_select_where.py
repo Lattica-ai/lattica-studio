@@ -1,9 +1,8 @@
 """Reusable encrypted SQL selection pipeline builder.
 
 Edit ``SQL_QUERY``, ``DATA_SEED``, or the HE constants to experiment. Changing
-the query or database dimensions requires redeployment. Runtime concerns
-(query parameters, input preparation, and result verification/display) live in
-the client demo adapter ``lattica_internal_demos.sql_select_where``.
+the query or database dimensions requires redeployment. Threshold values and
+replacement rows are prepared at runtime by ``CompiledSqlSelect``.
 """
 
 from __future__ import annotations
@@ -13,16 +12,17 @@ from dataclasses import dataclass
 import torch
 
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
-from lattica_build.params.params import (
-    DecompositionType,
-    HomParams,
-)
+from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.examples.advanced.sql_pipeline_compiler import (
     CompiledSqlSelect,
     SqlColumn,
     SqlSelectOptions,
     SqlTableSchema,
     compile_sql_select,
+)
+from lattica_build.params.params import (
+    DecompositionType,
+    HomParams,
 )
 
 NUM_ROWS = 100
@@ -31,13 +31,14 @@ VALUE_MIN = 40
 VALUE_MAX = 100
 
 N = 2**14
-Q_LIST_PRECISION = ((60, 30),) * 9
+Q_LIST_PRECISION = ((60, 30),) * 10
 PT_SCALE = 2**30
 SK_HW = 192
 NUM_SPECIAL_PRIMES = 9
 
 X_ACCURACY = 9
 Y_ACCURACY = 10
+EXAMPLE_PARAMETERS = {"threshold1": 90.0, "threshold2": 80.0, "threshold3": 85.0}
 
 SQL_QUERY = """
     SELECT *
@@ -120,11 +121,48 @@ def compile_example(
     )
 
 
+class Pipeline(PipelineWrapper):
+    """CLI and local-runner adapter sharing one compiled graph and HE config."""
+
+    def __init__(self) -> None:
+        self.compiled = compile_example(generate_example_table())
+
+    def build_pipeline(self) -> HomomorphicPipeline:
+        pipeline = self.compiled.pipeline
+        parameters = self._set_example_pt()
+        pipeline.verification_data = {
+            self.compiled.PARAMETERS_INPUT_NAME: parameters,
+            **self.compiled.prepared_database,
+            "expected_output": self.compiled.apply_clear(parameters),
+            "accuracy": 2**-8,
+        }
+        return pipeline
+
+    def build_params(self) -> HomParams:
+        return self.compiled.hom_params
+
+    def _set_example_pt(self) -> torch.Tensor:
+        return self.compiled.prepare_parameters(EXAMPLE_PARAMETERS)
+
+    def _set_custom_data(self) -> None:
+        self.custom_data = self.compiled.prepared_database
+
+    def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
+        return self.compiled.apply_clear(example_pt)
+
+    def verify_results(self, actual: torch.Tensor, expected: torch.Tensor) -> None:
+        reference = self.compute_expected(self.exmpl_pt)
+        actual_rows = self.compiled.decode_result(actual).row_indices
+        expected_rows = self.compiled.decode_result(reference).row_indices
+        torch.testing.assert_close(actual_rows, expected_rows, rtol=0, atol=0)
+        torch.testing.assert_close(actual, reference, rtol=0, atol=2**-8)
+
+
 def build_pipeline() -> HomomorphicPipeline:
-    """Build the deterministic example pipeline for the Lattica Build CLI."""
-    return compile_example(generate_example_table()).pipeline
+    """Compatibility entry point for callers using the module-level API."""
+    return Pipeline().build_pipeline()
 
 
 def build_params() -> HomParams:
     """Build the HE parameters paired with the deterministic example pipeline."""
-    return example_hom_params()
+    return Pipeline().build_params()

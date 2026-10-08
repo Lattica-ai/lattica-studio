@@ -150,11 +150,12 @@ A complete, runnable version of the flow above lives in
 
 The encrypted SQL `SELECT ... WHERE` build definition is
 [`lattica_build.examples.advanced.sql_select_where`](./lattica_build_src/lattica_build/examples/advanced/sql_select_where.py).
-Its full internal-demo runner (with result verification) lives in the `client`
-repository at `tests/src/run_sql_select_where.py`.
+It includes a `Pipeline` wrapper for the Build CLI and local backend runners.
 
-SQL is a **two-input** pipeline: the query `parameters` are sent with
-`run_query`, and the encrypted `database` is uploaded separately as custom data.
+SQL sends query `parameters` with `run_query` and uploads two encrypted database
+views as custom data: packed comparison columns and projected output columns.
+Both views are prepared once per database update, so each query avoids encrypted
+database packing. Only projected columns and a validity channel are returned.
 The query structure (SQL text, schema, dimensions) is baked in at compile time,
 but the threshold **values** are runtime inputs — pick them per query with
 `prepare_parameters(...)`; no recompilation is needed to change them. To run it
@@ -182,17 +183,24 @@ with studio.workers.running(model_id, stop_on_exit=True):
     parameters = compiled.prepare_parameters(          # pick your own thresholds
         {"threshold1": 90.0, "threshold2": 80.0, "threshold3": 85.0}
     )
-    client.encrypt_and_upload_custom_data(             # the "database" = second encrypted input
-        sk, {compiled.DATABASE_INPUT_NAME: compiled.prepared_database}
-    )
+    client.encrypt_and_upload_custom_data(sk, compiled.prepared_database)
     result = compiled.decode_result(client.run_query(sk, parameters))
     print(result)
 ```
 
 For a different database or query, compile with
 `compile_sql_select(query, schema=..., database=..., hom_params=..., options=...)`
-and supply your rows via `compiled.prepare_database(...)`; recompilation is only
-required for such structural changes, not for new threshold values.
+and upload the mapping returned by `compiled.prepare_database(...)` to replace
+rows without recompilation. To compile before private rows are available, pass
+`row_count=...` instead of `database=...`. Query structure, schema, and row count
+are compilation inputs; threshold values and replacement rows are runtime inputs.
+
+The compiler derives the logical slot period, shares repeated comparisons, and
+plans bootstraps from the available modulus budget. Use `compiled.hom_params`
+with `compiled.pipeline`; the original parameter object is left unchanged.
+The default 100-row example uses 512 logical slots and no bootstrap. Integer
+comparisons use half-integer boundaries to exclude equal values; real comparisons
+are approximate within the configured transition band around the threshold.
 
 ### Display tables quickly
 

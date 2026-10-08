@@ -30,6 +30,11 @@ class HomReshape(HomOp):
         except RuntimeError as error:
             raise ValueError("Reshape is incompatible with input size.") from error
 
+        # An identity reshape must preserve the packed axis, including shapes
+        # such as (1, 1) where more than one axis passes the checks below.
+        if output_shape == input.tensor_shape:
+            return input.make_copy()
+
         if input.n_axis is None:
             return input.make_copy(tensor_shape=output_shape)
 
@@ -50,4 +55,3 @@ class HomReshape(HomOp):
 
     def forward_clear(self, input):
         return input.reshape(self.dims)
-

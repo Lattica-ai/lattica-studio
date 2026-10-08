@@ -38,7 +38,7 @@ jobs:
           echo "lattica-fhe-core" > "$RUNNER_TEMP/overrides.txt"
           # Install the three packages from this checkout.
           uv pip install --no-sources --override "$RUNNER_TEMP/overrides.txt" \
-            -e lattica_build_src -e lattica_query_src -e lattica_studio_src
+            -e lattica_build_src -e lattica_query_src -e lattica_studio_src "sqlglot==30.14.0"
 
       - name: Run the tests
         env:
