@@ -79,8 +79,10 @@ These modules live under `lattica_build.examples.advanced`.
 `resnet20` downloads a pretrained model when its pipeline is built. All basic
 examples are self-contained.
 
-The SQL parser is intentionally not a package dependency. Build the SQL example
-from a repository checkout with an ephemeral dependency:
+## SQL filtering
+
+Supports one numeric table, column selection, named thresholds, `>`, `<`, `AND`,
+and `OR`. Build from the repository root with the optional SQL parser:
 
 ```bash
 uv run --project lattica_build_src --with sqlglot \
@@ -89,18 +91,16 @@ uv run --project lattica_build_src --with sqlglot \
   --out /tmp/sql-select-where.zip
 ```
 
-`sql_select_where.Pipeline()` supplies matching parameters, deterministic query
-inputs, both database views, and result verification for local runners. The
-default example has no bootstrap. For other queries, `SqlSelectOptions.bootstrap`
-can be `"auto"` (default), `"never"` (reject insufficient budgets), or `"always"`
-(also refresh the final predicate). Compilation rejects exhausted output chains.
+- Compile with `compile_sql_select(sql, schema=..., row_count=..., hom_params=...)`
+  using public schema and batch capacity. Use the returned `hom_params` with the pipeline.
+- Prepare private inputs with `prepare_database()` and `prepare_parameters()`;
+  call `decode_result()` after decryption.
+- For tables larger than `row_count`, reuse the pipeline with `iter_database_batches()`.
+- Real-number comparisons are approximate near thresholds; set the column's
+  `comparison_resolution` to control the transition width.
 
-`compile_sql_select(..., row_count=..., schema=..., hom_params=...)` can compile
-without private data. `prepare_database(...)` returns the custom-input mapping
-for upload; `prepare_parameters(...)` prepares each query. `packing` describes
-the physical ring capacity, row block, comparison packs, and logical working
-period, while `bootstrap_count` reports the planned refresh count. Use the
-returned `hom_params` for deployment because its `n_slots` matches the graph.
+See [the SQL example](advanced/sql_select_where.py) and
+[deployment usage](../../../README.md) for a complete flow.
 
 ## Use the Python API
 
