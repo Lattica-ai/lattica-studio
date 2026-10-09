@@ -307,7 +307,12 @@ class HomomorphicPipeline:
             "pipeline_sections":             self._serialize_pipeline_sections(tensors, hom_params)
         }
         graph_bytes = json.dumps(attributes_dict).encode("utf-8")
-        tensors_bytes = safetensors_save(tensors)
+        # safetensors has no complex dtype: complex tensors are stored as their real
+        # view [..., 2] and listed in the metadata, which the loader uses to restore them
+        complex_names = [name for name, t in tensors.items() if t.is_complex()]
+        for name in complex_names:
+            tensors[name] = torch.view_as_real(tensors[name].resolve_conj().contiguous())
+        tensors_bytes = safetensors_save(tensors, metadata={"complex_tensors": json.dumps(complex_names)})
 
         return graph_bytes, tensors_bytes
 

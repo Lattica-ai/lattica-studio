@@ -101,13 +101,13 @@ class HomOp:
         if not self.is_leaf_op():
             raise RuntimeError("data should only be set directly on base ops")
 
-        dtype = torch.float64
-        converted_data = tuple(
-            item.to(dtype=dtype).contiguous()
-            if torch.is_tensor(item)
-            else torch.tensor(item, dtype=dtype)
-            for item in data
-        )
+        # complex data (e.g. a complex-packed db) keeps its imaginary parts
+        def convert(item):
+            if not torch.is_tensor(item):
+                item = torch.tensor(item)
+            dtype = torch.complex128 if item.is_complex() else torch.float64
+            return item.to(dtype=dtype).contiguous()
+        converted_data = tuple(convert(item) for item in data)
         if len(converted_data) == 1:
             self.data = converted_data[0]
             if hasattr(self, "dims"):
