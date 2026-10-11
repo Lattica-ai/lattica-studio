@@ -19,7 +19,6 @@ from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.fhe.h_mod_switch import HomModSwitch
 from lattica_build.operators.fhe.h_ring_switch import HomRingSwitch
 from lattica_build.operators.ml.h_conv import HomConv
-from lattica_build.operators.ml.h_avg_pool import HomAvgPool
 from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
 from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
@@ -119,29 +118,28 @@ def test_rotate_sum_clear_counts_each_requested_view_once(include_identity, perf
 
 
 @pytest.mark.parametrize('batched', [False, True])
-def test_convolution_clear_returns_compact_strided_images(batched):
-    image = torch.arange(25., dtype=torch.float64).reshape(1, 5, 5)
-    op = HomConv(1, 1, kernel_size=2, stride=2, padding=0)
-    op.set_data(torch.ones((1, 1, 2, 2), dtype=torch.float64))
-    expected = torch.tensor([[[12., 20.], [52., 60.]]], dtype=torch.float64)
+def test_convolution_clear_requires_packed_images(batched):
+    image = torch.ones((1, 5, 5), dtype=torch.float64)
+    op = HomConv(1, 1, kernel_size=3, stride=2, padding=1)
+    op.set_data(torch.ones((1, 1, 3, 3), dtype=torch.float64))
     if batched:
-        image = torch.stack((image, image + 1))
-        expected = torch.stack((expected, expected + 4))
-    torch.testing.assert_close(op(image), expected)
-    torch.testing.assert_close(HomAvgPool(1, kernel_size=2, stride=2)(image), expected / 4)
+        image = image.unsqueeze(0)
+    with pytest.raises(ValueError, match='unbatched packed tensor'):
+        op(image)
 
 
 def test_convolution_clear_groups_dilation_and_bias():
     image = torch.arange(2 * 6 * 8., dtype=torch.float64).reshape(2, 6, 8)
-    weight = torch.arange(8., dtype=torch.float64).reshape(2, 1, 2, 2)
+    weight = torch.arange(18., dtype=torch.float64).reshape(2, 1, 3, 3)
     bias = torch.tensor([2., -3.], dtype=torch.float64)
-    op = HomConv(2, 2, 2, stride=(2, 1), padding=(1, 0), groups=2, bias=True, dilation=2)
+    op = HomConv(2, 2, 3, stride=(2, 1), padding=1, groups=2, bias=True,
+                 dilation=2, image_hw=(6, 8))
     op.set_data(weight, bias)
-    expected = torch.nn.functional.conv2d(image, weight, bias, stride=(2, 1),
-                                          padding=(1, 0), dilation=2, groups=2)
-    torch.testing.assert_close(op(image), expected)
-    with pytest.raises(RuntimeError):
-        op(image.flatten(1))
+    dense = torch.nn.functional.conv2d(image, weight, bias, padding=2,
+                                       dilation=2, groups=2)
+    expected = torch.zeros_like(dense)
+    expected[:, ::4, ::2] = dense[:, ::4, ::2]
+    torch.testing.assert_close(op(image.flatten(1)), expected.flatten(1))
 
 
 def test_polynomial_clear_prepends_coefficient_batch_dimensions():

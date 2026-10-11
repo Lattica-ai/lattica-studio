@@ -2,8 +2,9 @@
 
 The graph contains JSON metadata only. A resolver supplies leaf data for the
 current call; neither the graph nor the operator registry retains weight tensors.
-Operators receive logical plaintext tensors. This executor does not reconstruct
-ciphertext layouts from tracing metadata; the graph must preserve logical shapes.
+Each build operator owns its plaintext computation, including any flattened
+layouts required by the homomorphic graph. This executor only dispatches leaves
+and resolves their borrowed weights.
 """
 
 from collections import Counter
