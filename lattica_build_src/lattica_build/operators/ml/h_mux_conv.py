@@ -97,13 +97,8 @@ class HomMuxConvBn(HomOp):
         self.conv = HomMuxConv(
             kernel_shape=(out_channels, in_channels, *_normalize_tuple(kernel_size, 2, 'kernel_size')),
             image_hw=image_hw, t_in=t_in, stride=stride, padding=padding, dilation=dilation, t_out=t_out)
-        if t_out is None:
-            out_hw = self.conv.image_hw
-            out_t = mux_output_gap(t_in, out_channels)
-        else:
-            out_hw = self.conv.output_hw()
-            out_t = t_out
-        self.bias_add = HomMuxBiasAdd(channels=out_channels, image_hw=out_hw, t=out_t)
+        out_t = mux_output_gap(t_in, out_channels) if t_out is None else t_out
+        self.bias_add = HomMuxBiasAdd(channels=out_channels, image_hw=self.conv.output_hw(), t=out_t)
 
     def forward(self, x: HomValue) -> HomValue:
         return self.bias_add(self.conv(x))
