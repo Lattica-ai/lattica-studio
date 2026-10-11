@@ -54,7 +54,20 @@ def conv_output_hw(image_hw, kernel_size, stride, padding, dilation):
             (w + 2 * pw - dw * (kw - 1) - 1) // sw + 1)
 
 
-class HomConv(HomOp):
+class HomConvBase(HomOp):
+    """The geometry every convolution operator normalizes the same way."""
+
+    def _set_geometry(self, kernel_size, stride, padding, dilation, image_hw=None):
+        """Store kernel_size, stride, padding, dilation and image_hw as 2-tuples of ints (each
+        given as an int or a pair). padding None is the full kernel; image_hw may stay None."""
+        self.kernel_size = _normalize_tuple(kernel_size, 2, "kernel_size")
+        self.stride = _normalize_tuple(stride, 2, "stride")
+        self.padding = self.kernel_size if padding is None else _normalize_tuple(padding, 2, "padding")
+        self.dilation = _normalize_tuple(dilation, 2, "dilation")
+        self.image_hw = None if image_hw is None else _normalize_tuple(image_hw, 2, "image_hw")
+
+
+class HomConv(HomConvBase):
     """Base homomorphic 2D convolution operator.
 
     This is a backend base op (`OP_TYPE = HomOpType.Conv`) with explicit
@@ -90,20 +103,11 @@ class HomConv(HomOp):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.kernel_size = _normalize_tuple(kernel_size, 2, "kernel_size")
-        if padding is None:
-            self.padding = (self.kernel_size[0], self.kernel_size[1])
-        else:
-            self.padding = _normalize_tuple(padding, 2, "padding")
-        self.stride = _normalize_tuple(stride, 2, "stride")
+        self._set_geometry(kernel_size, stride, padding, dilation, image_hw)
         self.groups = groups
         self.bias = bias
-        self.dilation = _normalize_tuple(dilation, 2, "dilation")
         self.strided = self.stride != (1, 1)
         self.stride_pitch = tuple(s * d for s, d in zip(self.stride, self.dilation))
-        self.image_hw = (
-            _normalize_tuple(image_hw, 2, "image_hw") if image_hw is not None else None
-        )
 
         if groups <= 0:
             raise ValueError(f"groups must be positive, got {groups}")
