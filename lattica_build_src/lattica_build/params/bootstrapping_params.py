@@ -10,13 +10,15 @@ class BootstrappingVariant(enum.Enum):
 
 BOOT_CONFIGURATION = {
     # Prime sizes (bits) and level counts of the CtS, EvalMod and StC sections.
+    # 4 DFT levels rather than 3: about half the diagonals per factor (16-31 vs
+    # 32-63 at 2**15 slots), for one more prime each.
     'cts_scale' : 48,
-    'n_cts_levels' : 3,
+    'n_cts_levels' : 4,
     # Also the size of q0: EvalMod running at scale q0 makes the division by
     # delta a free scale relabel.
     'eval_mod_scale' : 50,
     'stc_scale' : 30,
-    'n_stc_levels' : 3,
+    'n_stc_levels' : 4,
 
     'n_cosine_levels' : 5,
     'n_double_angle' : 3,
@@ -32,10 +34,12 @@ BOOT_CONFIGURATION = {
 
     # Headroom q0/|m| for messages bounded by 1:
     # the slots for SLIM, the polynomial coefficients for REAL/COMPLEX. Costs
-    # precision 1:1 but suppresses the sine's uncorrected cubic term. SLIM
-    # peaks at 12; REAL's coefficients are ~sqrt(2n) below its n slots, so 6
-    # suffices unless the plaintext has few slots or is near-constant.
-    'log_delta' : 6,
+    # precision 1:1 but suppresses the sine's uncorrected cubic term, an error
+    # of ~6.6 * m**3 / 2**(2 * log_delta). SLIM peaks at 12. REAL's coefficients
+    # are ~sqrt(2n) below its n slots, except the constant one, which carries
+    # the slots' mean: a mean of 0.5 costs 2e-4 at 6, 1.3e-5 at 8. Above 8,
+    # EvalMod's own error, summed over the coefficients by StC, takes over.
+    'log_delta' : 8,
     'log_delta_slim' : 12,
 
     # SubSum stage size cap and the DFTs' baby-step/giant-step ratio.
