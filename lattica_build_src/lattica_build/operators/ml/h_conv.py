@@ -1,6 +1,5 @@
 """See `operators/ml/README.md` for usage details."""
 
-import math
 from typing import Optional, Sequence, Tuple
 
 import torch
@@ -54,6 +53,10 @@ class HomConv(HomOp):
         bias: Whether this op expects a bias tensor in `set_data`.
         dilation: Spatial dilation `(dh, dw)` or scalar.
         image_hw: Optional input image spatial size hint `(h, w)`.
+
+    ``forward_clear`` accepts ordinary CHW or NCHW images and returns the compact
+    convolution output. ``image_hw`` and packed output grids belong to homomorphic
+    execution; they do not alter the plaintext computation.
     """
 
     OP_TYPE = HomOpType.Conv
@@ -150,77 +153,13 @@ class HomConv(HomOp):
             )
             super().set_data(weight)
 
-    def _resolve_image_hw(self, input):
-        if input.ndim != 2:
-            raise ValueError(
-                "HomConv clear execution expects an unbatched packed tensor "
-                "with shape (channels, packed spatial slots)"
-            )
-
-        channels, n_pixels = input.shape
-        if channels != self.in_channels:
-            raise ValueError(
-                "Flattened clear convolution input has an incompatible number "
-                f"of channels: got {channels}, expected {self.in_channels}"
-            )
-
-        if self.image_hw is not None:
-            height, width = self.image_hw
-        else:
-            height = width = math.isqrt(n_pixels)
-            if height * width != n_pixels:
-                raise ValueError(
-                    "Cannot infer square image dimensions from the packed input; "
-                    "provide image_hw explicitly"
-                )
-
-        if n_pixels % (height * width):
-            raise ValueError(
-                "Flattened clear convolution input has an incompatible packed "
-                "spatial size for image_hw"
-            )
-        return height, width
-
-
     def forward_clear(self, input):
         data = self._require_clear_data()
         weight = data[0] if isinstance(data, tuple) else data
         weight = weight.to(dtype=input.dtype, device=input.device)
         bias = data[1].to(dtype=input.dtype, device=input.device)\
             if isinstance(data, tuple) and len(data) > 1 else None
-
-        height, width = self._resolve_image_hw(input)
-        channels, n_pixels = input.shape
-        image_size = height * width
-        n_tiles = n_pixels // image_size
-
-        # Present packed tiles as the batch dimension expected by conv2d.
-        conv_input = input.reshape(channels, n_tiles, height, width).permute(1, 0, 2, 3)
-        # Homomorphic convolution retains one output slot per input pixel,
-        # including partial windows at the bottom and right image boundaries.
-        top, left = (p * d for p, d in zip(self.padding, self.dilation))
-        bottom = max(0, (self.kernel_size[0] - 1) * self.dilation[0] - top)
-        right = max(0, (self.kernel_size[1] - 1) * self.dilation[1] - left)
-        conv_input = functional.pad(conv_input, (left, right, top, bottom))
-        raw_result = functional.conv2d(
-            conv_input,
-            weight,
-            bias=bias,
-            # Compute the dense full-resolution result first. The strided layout is applied afterward.
-            stride=1,
-            padding=0,
-            dilation=self.dilation,
-            groups=self.groups,
+        return functional.conv2d(
+            input, weight, bias=bias, stride=self.stride, padding=self.padding,
+            dilation=self.dilation, groups=self.groups,
         )
-
-        raw_result = raw_result[..., :height, :width]
-        result = raw_result
-        if self.strided:
-            # Keep only positions used by the backend's strided output grid.
-            rows = slice(None, None, self.stride_pitch[0])
-            cols = slice(None, None, self.stride_pitch[1])
-            result = torch.zeros_like(raw_result)
-            result[..., rows, cols] = raw_result[..., rows, cols]
-
-        # Restore the homomorphic packed layout: channels first, then tiles.
-        return result.permute(1, 0, 2, 3).reshape(self.out_channels, -1)

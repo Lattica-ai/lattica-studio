@@ -1,9 +1,11 @@
 import pickle
+import json
 import random
 from pathlib import Path
 from unittest import SkipTest
 
 import torch
+import pytest
 
 from lattica_build.base_classes.hom_op_tracer import Tracer
 from lattica_build.base_classes.hom_value import HomValue
@@ -16,6 +18,9 @@ from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.fhe.h_mod_switch import HomModSwitch
 from lattica_build.operators.fhe.h_ring_switch import HomRingSwitch
+from lattica_build.operators.ml.h_conv import HomConv
+from lattica_build.operators.ml.h_avg_pool import HomAvgPool
+from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
 from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
@@ -25,6 +30,8 @@ from lattica_build.operators.slots.h_expand import HomExpand
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
+from lattica_build.params.params import HomParams
+from lattica_build.serialization.clear_execution import run_clear_section
 
 
 def test_leaf_clear_execution_and_data():
@@ -48,7 +55,7 @@ def test_leaf_clear_execution_and_data():
 
 def test_slot_client_and_fhe_clear_execution():
     x = torch.arange(8, dtype=torch.float32)
-    assert torch.equal(HomExpand()(x), x.unsqueeze(0).expand(8, 8))
+    assert torch.equal(HomExpand()(x), x.unsqueeze(1).expand(8, 8))
     z = torch.complex(x, -x)
     assert torch.equal(HomConj()(z), z.conj())
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
@@ -62,6 +69,86 @@ def test_slot_client_and_fhe_clear_execution():
     probabilities = Softmax(-1)(x)
     assert torch.allclose(probabilities.sum(), torch.tensor(1.0))
     assert torch.equal(Clamp(2, 5)(x), x.clamp(2, 5))
+
+
+@pytest.mark.parametrize('axis', [0, 1, -1, -2])
+def test_expand_clear_accepts_every_vector_insertion_axis(axis):
+    x = torch.tensor([2., 3., 5.])
+    expected = torch.tensor([[2., 3., 5.]]).repeat(3, 1)
+    if axis in (0, -2):
+        expected = expected.T
+    torch.testing.assert_close(HomExpand(expand_axis=axis)(x), expected)
+
+
+def test_expand_clear_preserves_batch_dimensions():
+    x = torch.arange(6.).reshape(2, 3)
+    result = HomExpand(expand_axis=1)(x)
+    assert result.shape == (2, 3, 3)
+    for index in range(3):
+        torch.testing.assert_close(result[:, :, index], x)
+    with pytest.raises(IndexError):
+        HomExpand(expand_axis=3)(x)
+
+
+def test_serialized_clear_execution_does_not_expand_to_ring_size():
+    pipeline = HomomorphicPipeline(hom=HomExpand(expand_axis=1), input_shape=(8,))
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=8)
+    graph, _ = pipeline.serialize(params)
+    section = json.loads(graph)['pipeline_sections']['hom']
+    x = torch.arange(8.)
+    result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
+    torch.testing.assert_close(result, x[None, :].repeat(8, 1))
+
+
+def test_running_sum_clear_uses_only_the_logical_axis():
+    x = torch.tensor([[1., 2., 3.], [4., 5., 6.]])
+    op = HomRunningSum(cumsum_axis=0, k=64, stage_sizes=[8, 8])
+    torch.testing.assert_close(op(x), torch.tensor([[1., 2., 3.], [5., 7., 9.]]))
+
+
+@pytest.mark.parametrize('include_identity', [False, True])
+@pytest.mark.parametrize('perform_sum', [False, True])
+def test_rotate_sum_clear_counts_each_requested_view_once(include_identity, perform_sum):
+    x = torch.tensor([1., 2., 4.])
+    views = [torch.tensor([2., 4., 1.])]
+    if perform_sum or include_identity:
+        views.insert(0, x)
+    expected = sum(views) if perform_sum else torch.stack(views)
+    torch.testing.assert_close(HomRotateSum([1], perform_sum, include_identity)(x), expected)
+
+
+@pytest.mark.parametrize('batched', [False, True])
+def test_convolution_clear_returns_compact_strided_images(batched):
+    image = torch.arange(25., dtype=torch.float64).reshape(1, 5, 5)
+    op = HomConv(1, 1, kernel_size=2, stride=2, padding=0)
+    op.set_data(torch.ones((1, 1, 2, 2), dtype=torch.float64))
+    expected = torch.tensor([[[12., 20.], [52., 60.]]], dtype=torch.float64)
+    if batched:
+        image = torch.stack((image, image + 1))
+        expected = torch.stack((expected, expected + 4))
+    torch.testing.assert_close(op(image), expected)
+    torch.testing.assert_close(HomAvgPool(1, kernel_size=2, stride=2)(image), expected / 4)
+
+
+def test_convolution_clear_groups_dilation_and_bias():
+    image = torch.arange(2 * 6 * 8., dtype=torch.float64).reshape(2, 6, 8)
+    weight = torch.arange(8., dtype=torch.float64).reshape(2, 1, 2, 2)
+    bias = torch.tensor([2., -3.], dtype=torch.float64)
+    op = HomConv(2, 2, 2, stride=(2, 1), padding=(1, 0), groups=2, bias=True, dilation=2)
+    op.set_data(weight, bias)
+    expected = torch.nn.functional.conv2d(image, weight, bias, stride=(2, 1),
+                                          padding=(1, 0), dilation=2, groups=2)
+    torch.testing.assert_close(op(image), expected)
+    with pytest.raises(RuntimeError):
+        op(image.flatten(1))
+
+
+def test_polynomial_clear_prepends_coefficient_batch_dimensions():
+    x = torch.tensor([[0., .25], [.5, 1.]], dtype=torch.float64)
+    # Descending Chebyshev coefficients for x and 2*x**2 - 1.
+    op = HomPolyEvalBase([[0., 1., 0.], [1., 0., 0.]])
+    torch.testing.assert_close(op(x), torch.stack((x, 2 * x.square() - 1)))
 
 
 def test_composites_and_pipeline_clear_execution():

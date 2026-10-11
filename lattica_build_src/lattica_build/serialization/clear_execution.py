@@ -2,6 +2,8 @@
 
 The graph contains JSON metadata only. A resolver supplies leaf data for the
 current call; neither the graph nor the operator registry retains weight tensors.
+Operators receive logical plaintext tensors. This executor does not reconstruct
+ciphertext layouts from tracing metadata; the graph must preserve logical shapes.
 """
 
 from collections import Counter
@@ -30,6 +32,7 @@ from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
 from lattica_build.operators.slots.h_expand import HomExpand
+from lattica_build.operators.slots.h_conj import HomConj
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
@@ -38,7 +41,7 @@ _BUILD_LEAVES = {cls.OP_TYPE: cls for cls in (
     HomAdd, HomAxisSum, HomConstAdd, HomConstMul, HomMul, Clamp, Softmax,
     Bootstrap, HomModSwitch, HomRingSwitch, HomConv, HomMatMul, HomPolyEvalBase,
     HomReshape, HomSlice, HomSqueeze, HomUnsqueeze, HomExpand, HomRotateSum,
-    HomRunningSum, HomSumSlots,
+    HomRunningSum, HomSumSlots, HomConj,
 )}
 
 

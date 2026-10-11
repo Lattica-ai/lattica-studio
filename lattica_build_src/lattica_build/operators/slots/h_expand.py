@@ -76,6 +76,7 @@ class HomExpand(HomOp):
         )
 
     def forward_clear(self, input):
-        n_slots = input.shape[self.expand_axis]
-        axis = self.expand_axis if self.expand_axis >= 0 else input.ndim + self.expand_axis + 1
-        return input.unsqueeze(axis).expand(*input.shape[:axis], n_slots, *input.shape[axis:]).clone()
+        # Extract each value on the last axis, broadcasting it across that axis.
+        # The extracted-value axis is placed at expand_axis.
+        expanded = input.unsqueeze(-1).expand(*input.shape, input.shape[-1])
+        return expanded.movedim(-2, self.expand_axis).clone()

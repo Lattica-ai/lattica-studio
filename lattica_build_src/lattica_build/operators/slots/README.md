@@ -14,6 +14,26 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 
 ## What `k` means
 
+### Plaintext execution
+
+`forward_clear` operates on logical tensor dimensions without ciphertext packing:
+
+- `HomExpand` extracts values from the last input dimension onto `expand_axis`,
+  broadcasting each value across the original dimension. Its logical output
+  uses the input dimension length, without repetition to fill a ciphertext.
+- `HomRunningSum` computes a cumulative sum along `cumsum_axis` (last axis by
+  default). Encryption stage schedules do not change that plaintext operation.
+- `HomSumSlots` sums the first `k` elements of the last axis and broadcasts the
+  result along that axis; omitted `k` means the full axis.
+- `HomRotateSum` rotates along the last axis and sums or stacks the requested
+  views. Sum mode always includes the original input once; stack mode includes
+  it only when `add_identity_rotation` is set.
+
+The serialized clear graph must retain these logical shapes. Packed homomorphic
+layouts are not a substitute for the logical graph.
+
+### Homomorphic execution
+
 `k` is the workload span in slots:
 
 - In `HomExpand`, `k` is how many expanded outputs are produced per input slot
@@ -73,4 +93,3 @@ If `stages_per_level = 3`, this setup is invalid because `3` does not divide
 
 If `stages_per_level` is not set, the same setup consumes exactly `4` levels
 (one level per stage).
-

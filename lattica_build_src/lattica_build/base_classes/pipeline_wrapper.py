@@ -48,6 +48,14 @@ class PipelineWrapper(ABC):
         self._set_custom_data()
         return self.custom_data
 
+    def get_example_expected(self, example_pt: torch.Tensor) -> torch.Tensor | None:
+        """Return an explicit reference for this query, or use worker clear evaluation.
+
+        Override only when the example supplies its own simulation reference.
+        Compilation verification data belongs to its recorded input, not this query.
+        """
+        return None
+
     def compute_expected(self, example_pt: torch.Tensor) -> torch.Tensor:
         """Compute the true expected result for an example input.
 
