@@ -1,16 +1,7 @@
-"""Build-side operators for the multiplexed ("gap") packing convolution. Each is a
-leaf HomOp whose serialized attributes match the corresponding backend op's
-constructor (see ``latticabe.homomorphic_operations.conv_mux``):
+"""Convolution operators on the multiplexed ("gap") packing of Lee et al. 2022.
 
-    HomMuxConv     -> BackendHomMuxConv     (weight-only leaf)
-    HomMuxBiasAdd  -> BackendHomMuxBiasAdd  (per-channel bias leaf)
-
-LAYOUT CONTRACT: input and output are ONE ciphertext in the mux gap layout, with
-external_shape == (n_slots,). The output is packed at its own layout's period, so a
-conv that adds channels widens the ciphertext and a strided conv narrows it; the
-bias add keeps it. Each conv spends one mult level on the mask multiply.
-
-See `operators/ml/README.md` for usage details.
+A (C, H, W) feature map is one ciphertext with ``t`` channels interleaved per
+pixel. Each conv spends one level; the bias add spends none.
 """
 
 import math
@@ -20,35 +11,42 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.operators.ml.conv_bn_fused import fold_batch_norm
 from lattica_build.operators.ml.h_conv import HomConvBase, _normalize_tuple, conv_output_hw
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 
 def _mux_slots(channels, image_hw):
-    """Slots a (channels, H, W) mux layout occupies in one ciphertext, rounded up to
-    a power of two: the padded spatial grid times the channel count, whatever the gap."""
+    """Slots a (channels, H, W) mux layout takes, rounded up to a power of two."""
     h, w = image_hw
     used = (1 << (h - 1).bit_length()) * (1 << (w - 1).bit_length()) * channels
     return 1 << (used - 1).bit_length()
 
 
+def mux_output_gap(t_in: int, out_channels: int) -> int:
+    """Channels per pixel a mux conv leaves when it does not set t_out: the input's
+    when they divide out_channels, else their gcd."""
+    return t_in if out_channels % t_in == 0 else math.gcd(t_in, out_channels)
+
+
 def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n) -> HomValue:
-    """The backend op leaves one ciphertext packed at the output layout's period."""
+    """The output ciphertext, packed at the output layout's slot count."""
     if internal_n is None:
         return input
     if max(in_slots, out_slots) > internal_n:
         raise NotImplementedError(
-            "build-side shape inference covers mux layouts that fit one ciphertext; "
+            "mux layouts must fit one ciphertext; "
             f"this one needs {max(in_slots, out_slots)} of {internal_n} slots")
     return input.make_copy(tensor_shape=(out_slots,), n_slots=out_slots)
 
 
 class HomMuxConv(HomConvBase):
-    """Aligned convolution on the mux layout (weight only; fold BN bias separately).
+    """Convolution on the mux layout, without bias (see HomMuxConvBn).
 
-    kernel_shape : (C_out, C_in, kh, kw).  image_hw : (H, W) of the INPUT map.
-    t_in : input gap (channels per pixel); the aligned case is t_in == C_in.
+    kernel_shape: (C_out, C_in, kh, kw). image_hw: (H, W) of the input.
+    t_in: channels per pixel in the input. t_out: channels per pixel in the
+    output of a strided conv; by default the conv keeps the input's.
     """
 
     OP_TYPE = HomOpType.MuxConv
@@ -87,18 +85,9 @@ class HomMuxConv(HomConvBase):
 
 
 class HomMuxConvBn(HomOp):
-    """Fused conv + batch-norm on the mux layout, as a composite of a weight-only
-    HomMuxConv followed by a HomMuxBiasAdd (the single-tensor leaf serialization
-    can't carry weight+bias together). BN is folded into the conv weight/bias
-    offline exactly as HomConvBnFused does:
-
-        W_fused = delta * gamma * W / sqrt(var + eps)
-        B_fused = delta * (beta + gamma * (bias - mean) / sqrt(var + eps))
-
-    Aligned (stride 1, t_out=None): output keeps the input H/W and gap. Single-shot
-    fused transition (stride 2, t_out=stride*t_in): the conv also decimates and
-    re-interleaves, so the output is (out_channels, H//s, W//s, t_out) and no
-    separate repack level is spent -- the bias op is placed on that output layout.
+    """Conv + batch norm on the mux layout: a HomMuxConv followed by a HomMuxBiasAdd,
+    with the batch norm folded into them as in HomConvBnFused. A strided conv with
+    t_out (e.g. stride 2, t_out = 2 * t_in) downsamples in the same level.
     """
 
     def __init__(self, in_channels, out_channels, kernel_size, t_in, image_hw,
@@ -110,7 +99,7 @@ class HomMuxConvBn(HomOp):
             image_hw=image_hw, t_in=t_in, stride=stride, padding=padding, dilation=dilation, t_out=t_out)
         if t_out is None:
             out_hw = self.conv.image_hw
-            out_t = t_in if out_channels % t_in == 0 else math.gcd(t_in, out_channels)
+            out_t = mux_output_gap(t_in, out_channels)
         else:
             out_hw = self.conv.output_hw()
             out_t = t_out
@@ -121,26 +110,14 @@ class HomMuxConvBn(HomOp):
 
     def set_data(self, weight, bias, mean, var, gamma, beta,
                  eps: float = 1e-5, delta: float = 1.0, **kwargs) -> None:
-        if bias is None:
-            bias = torch.zeros(mean.shape)
-        if gamma is None:
-            gamma = torch.ones(mean.shape)
-        if beta is None:
-            beta = torch.zeros(mean.shape)
-        scale = gamma / (var + eps) ** 0.5
-        w_fused = delta * (weight * scale.view(-1, 1, 1, 1))
-        b_fused = delta * (beta + (bias - mean) * scale)
+        w_fused, b_fused = fold_batch_norm(weight, bias, mean, var, gamma, beta, eps, delta)
         self.conv.set_data(w_fused)
         self.bias_add.set_data(b_fused)
 
 
 class HomMuxBiasAdd(HomOp):
-    """Folded-BN bias on the mux layout: bias[co] at every valid output slot.
-    Carries the raw per-channel bias (one tensor); the backend expands it to a
-    per-slot vector using the output layout. No level cost (packing add).
-
-    channels/image_hw/t are the conv OUTPUT layout (aligned conv: C_out, input
-    H/W, t_out)."""
+    """Adds a per-channel bias on the mux layout. channels, image_hw and t describe
+    the layout it is added on (the conv's output)."""
 
     OP_TYPE = HomOpType.MuxBiasAdd
 

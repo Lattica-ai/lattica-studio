@@ -7,6 +7,21 @@ import torch
 from lattica_build.operators.ml.h_conv import HomConv
 
 
+def fold_batch_norm(weight, bias, mean, var, gamma, beta, eps=1e-5, delta=1.0):
+    """Fold a BatchNorm into the preceding conv: (W_fused, B_fused), with
+    W_fused = delta * gamma * W / sqrt(var + eps) and
+    B_fused = delta * (beta + gamma * (bias - mean) / sqrt(var + eps)).
+    bias, gamma and beta may be None (0, 1 and 0)."""
+    if bias is None:
+        bias = torch.zeros(mean.shape)
+    if gamma is None:
+        gamma = torch.ones(mean.shape)
+    if beta is None:
+        beta = torch.zeros(mean.shape)
+    scale = gamma / (var + eps) ** 0.5
+    return delta * (weight * scale.view(-1, 1, 1, 1)), delta * (beta + (bias - mean) * scale)
+
+
 class HomConvBnFused(HomConv):
     """Convolution with BatchNorm fused into weight and bias tensors.
 
@@ -84,19 +99,4 @@ class HomConvBnFused(HomConv):
             eps: BatchNorm epsilon for numerical stability.
             delta: Extra multiplicative factor applied after fusion.
         """
-        if bias is None:
-            bias = torch.zeros(mean.shape)
-
-        if gamma is None:
-            gamma = torch.ones(mean.shape)
-
-        if beta is None:
-            beta = torch.zeros(mean.shape)
-
-        scale = gamma / (var + eps) ** 0.5
-        W_fused = delta * (weight * scale.view(-1, 1, 1, 1))
-
-        # Compute the fused bias
-        B_fused = delta * (beta + (bias - mean) * scale)
-
-        super().set_data(W_fused, B_fused)
+        super().set_data(*fold_batch_norm(weight, bias, mean, var, gamma, beta, eps, delta))
