@@ -1,16 +1,5 @@
 """See `params/README.md` for usage details."""
 
-# The variant values params dicts carried before real_boot / slim_boot: SLIM, COMPLEX, REAL.
-_LEGACY_VARIANT_FLAGS = {0: (True, True), 1: (False, False), 2: (True, False)}
-
-
-def boot_flags_from_legacy_variant(value: int) -> tuple[bool, bool]:
-    """(real_boot, slim_boot) for a params dict's old bootstrapping_variant value."""
-    try:
-        return _LEGACY_VARIANT_FLAGS[int(value)]
-    except (KeyError, TypeError, ValueError) as e:
-        raise ValueError(f"Invalid bootstrapping_variant value: {value!r}") from e
-
 
 BOOT_CONFIGURATION = {
     # Prime sizes (bits) and level counts of the CtS, EvalMod and StC sections.
