@@ -1,11 +1,15 @@
 """See `params/README.md` for usage details."""
 
-import enum
+# The variant values params dicts carried before real_boot / slim_boot: SLIM, COMPLEX, REAL.
+_LEGACY_VARIANT_FLAGS = {0: (True, True), 1: (False, False), 2: (True, False)}
 
-class BootstrappingVariant(enum.Enum):
-    SLIM = 0
-    COMPLEX = 1
-    REAL = 2
+
+def boot_flags_from_legacy_variant(value: int) -> tuple[bool, bool]:
+    """(real_boot, slim_boot) for a params dict's old bootstrapping_variant value."""
+    try:
+        return _LEGACY_VARIANT_FLAGS[int(value)]
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(f"Invalid bootstrapping_variant value: {value!r}") from e
 
 
 BOOT_CONFIGURATION = {
@@ -32,11 +36,11 @@ BOOT_CONFIGURATION = {
     # (degree 27) allows K <= 14. At H=32, |I| >= 14 has probability 2**-38.8.
     'k' : 14,
 
-    # Headroom q0/|m| for messages bounded by 1:
-    # the slots for SLIM, the polynomial coefficients for REAL/COMPLEX. Costs
-    # precision 1:1 but suppresses the sine's uncorrected cubic term, an error
-    # of ~6.6 * m**3 / 2**(2 * log_delta). SLIM peaks at 12. REAL's coefficients
-    # are ~sqrt(2n) below its n slots, except the constant one, which carries
+    # Headroom q0/|m| for messages bounded by 1, set by what EvalMod sees: the
+    # slots with slim_boot (StC first), the polynomial coefficients otherwise.
+    # Costs precision 1:1 but suppresses the sine's uncorrected cubic term, an
+    # error of ~6.6 * m**3 / 2**(2 * log_delta). Slots peak at 12. Coefficients
+    # are ~sqrt(2n) below the n slots, except the constant one, which carries
     # the slots' mean: a mean of 0.5 costs 2e-4 at 6, 1.3e-5 at 8. Above 8,
     # EvalMod's own error, summed over the coefficients by StC, takes over.
     'log_delta' : 8,
@@ -76,9 +80,12 @@ class BootstrappingParams:
         """Size of q0, the ModRaise base modulus: the EvalMod prime size."""
         return BOOT_CONFIGURATION['eval_mod_scale']
     
-    def __init__(self, bootstrapping_variant: BootstrappingVariant = BootstrappingVariant.REAL) -> None:
-
-        self.variant = BootstrappingVariant(bootstrapping_variant)
+    def __init__(self, real_boot: bool = True, slim_boot: bool = False) -> None:
+        """real_boot: the slots hold real values, so one EvalMod over the real part does
+        (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
+        at the bottom of the chain, then ModRaise, CtS and EvalMod."""
+        self.real_boot = bool(real_boot)
+        self.slim_boot = bool(slim_boot)
         self.stc_scale = BOOT_CONFIGURATION['stc_scale']
         self.eval_mod_scale = BOOT_CONFIGURATION['eval_mod_scale']
         self.cts_scale = BOOT_CONFIGURATION['cts_scale']
@@ -93,10 +100,10 @@ class BootstrappingParams:
         self.n_cts_levels = BOOT_CONFIGURATION['n_cts_levels']
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.n_stc_levels)
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.n_cts_levels)
-        if self.variant != BootstrappingVariant.SLIM:
-            self.log_delta = BOOT_CONFIGURATION['log_delta']
-        else:
+        if self.slim_boot:
             self.log_delta = BOOT_CONFIGURATION['log_delta_slim']
+        else:
+            self.log_delta = BOOT_CONFIGURATION['log_delta']
         self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']

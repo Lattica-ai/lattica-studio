@@ -34,7 +34,8 @@ Main fields you will tune:
 | `err_std` | Encryption noise standard deviation. |
 | `sk_hw` | Secret-key hamming weight (also used when bootstrapping params are created). |
 | `num_init_rows` | Bootstrap-oriented starting-budget cap for the primary input: initialize fewer active rows up front when the input is expected to be bootstrapped later. |
-| `bootstrapping_variant` | Bootstrapping flavor used when bootstrap is present. |
+| `real_boot` | Bootstrap real slots: one EvalMod over the real part (complex slots take two). Default `True`. |
+| `slim_boot` | Bootstrap StC first, at the bottom of the chain, then ModRaise, CtS and EvalMod. Default `False`. |
 
 Fields populated during serialization:
 - `boot_params`,

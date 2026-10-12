@@ -287,7 +287,7 @@ class HomomorphicPipeline:
 
         needs_boot = ring_switch_input or any(op.OP_TYPE == HomOpType.Bootstrap for op in leaves)
         hom_params.boot_params = (
-            BootstrappingParams(hom_params.bootstrapping_variant)
+            BootstrappingParams(hom_params.real_boot, hom_params.slim_boot)
             if needs_boot else None
         )
         hom_params.mod_chain = ModulusChain(hom_params)
