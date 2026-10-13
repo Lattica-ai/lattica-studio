@@ -80,10 +80,8 @@ class HomPolyEvalBase(HomOp):
             )
 
         degree = self.coefs.shape[-1] - 1
-        if degree > 4:  # depth-optimal tree (the backend's BackendHomPolyEvalTree)
-            num_levels = math.ceil(math.log2(degree + 1))
-        else:  # direct
-            num_levels = degree - 1
+        # the backend's depth-optimal tree, at every degree
+        num_levels = math.ceil(math.log2(degree + 1))
         input = infer_modswitch_by_num_levels(
             hom_params,
             input,
