@@ -81,6 +81,21 @@ def test_composites_and_pipeline_clear_execution():
     assert torch.equal(pipeline.forward_clear(x), expected)
 
 
+def test_mux_ops_refuse_clear_execution():
+    """The mux conv and bias have no clear path; they must not pass their input through."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxBiasAdd, HomMuxConv, HomMuxConvBn
+
+    x = torch.arange(16, dtype=torch.float64)
+    conv_bn = HomMuxConvBn(4, 4, 1, 4, (2, 2))
+    conv_bn.set_data(torch.ones(4, 4, 1, 1), None, torch.zeros(4), torch.ones(4), None, torch.ones(4), eps=0)
+    for op in (HomMuxConv((4, 4, 1, 1), (2, 2), 4), HomMuxBiasAdd(4, (2, 2), 4), conv_bn):
+        try:
+            op.forward_clear(x)
+        except NotImplementedError:
+            continue
+        raise AssertionError(f"{type(op).__name__}.forward_clear did not raise")
+
+
 def test_clear_execution_does_not_trace():
     tensors = {}
     with Tracer(tensors) as tracer:

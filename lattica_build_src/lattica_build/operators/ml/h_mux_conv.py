@@ -30,6 +30,11 @@ def mux_output_gap(t_in: int, out_channels: int) -> int:
     return t_in if out_channels % t_in == 0 else math.gcd(t_in, out_channels)
 
 
+def _check_gap(channels, t, what):
+    if t <= 0 or channels % t:
+        raise ValueError(f"{what}: the gap t={t} must be positive and divide the {channels} channels")
+
+
 def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n) -> HomValue:
     """The output ciphertext, packed at the output layout's slot count."""
     if internal_n is None:
@@ -60,6 +65,9 @@ class HomMuxConv(HomConvBase):
         super().__init__()
         self.kernel_shape = tuple(kernel_shape)
         self._set_geometry(self.kernel_shape[2:], stride, padding, dilation, image_hw)
+        _check_gap(self.kernel_shape[1], t_in, "HomMuxConv input")
+        if t_out is not None:
+            _check_gap(self.kernel_shape[0], t_out, "HomMuxConv output")
         self.t_in = t_in
         self.with_modswitch = with_modswitch
         if t_out is not None:
@@ -82,6 +90,10 @@ class HomMuxConv(HomConvBase):
         assert tuple(weight.shape) == self.kernel_shape, (
             f"mux conv weight should be {self.kernel_shape}, got {tuple(weight.shape)}")
         super().set_data(weight)
+
+    def forward_clear(self, *inputs, **kwargs):
+        # without this, the leaf default would return the input unchanged
+        raise NotImplementedError("HomMuxConv has no clear execution; the backend's apply_clear has one")
 
 
 class HomMuxConvBn(HomOp):
@@ -118,6 +130,7 @@ class HomMuxBiasAdd(HomOp):
 
     def __init__(self, channels, image_hw, t) -> None:
         super().__init__()
+        _check_gap(channels, t, "HomMuxBiasAdd")
         self.channels = channels
         self.image_hw = _normalize_tuple(image_hw, 2, 'image_hw')
         self.t = t
@@ -126,3 +139,7 @@ class HomMuxBiasAdd(HomOp):
         assert bias.ndim == 1 and len(bias) == self.channels, (
             f"mux bias should be 1D of length {self.channels}, got {tuple(bias.shape)}")
         super().set_data(bias)
+
+    def forward_clear(self, *inputs, **kwargs):
+        # without this, the leaf default would return the input unchanged
+        raise NotImplementedError("HomMuxBiasAdd has no clear execution; the backend's apply_clear has one")
