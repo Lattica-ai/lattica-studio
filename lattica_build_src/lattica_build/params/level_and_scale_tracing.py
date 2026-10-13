@@ -24,6 +24,13 @@ class ModulusChain():
         )
         boot_params = hom_params.boot_params
         if boot_params is not None:
+            n_slots = getattr(hom_params, "n_slots", None)
+            n_levels = max(boot_params.n_cts_levels, boot_params.n_stc_levels)
+            if n_slots is not None and n_slots.bit_length() - 1 < n_levels:
+                # the DFTs split log2(n_slots) FFT stages: fewer than the levels would leave primes unused
+                raise ValueError(
+                    f"bootstrapping {n_slots} slots needs log2(n_slots) >= {n_levels}, the DFT levels "
+                    f"(n_cts_levels, n_stc_levels); use more slots or fewer levels")
             self.mod_chain_sections.extend([
                 ["boot_cts",  boot_params.cts_q_list_precision],
                 ["boot_eval", boot_params.eval_mod_q_list_precision],

@@ -73,8 +73,11 @@ class BootstrappingParams:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod."""
-        self.real_boot = bool(real_boot)
-        self.slim_boot = bool(slim_boot)
+        for name, value in (("real_boot", real_boot), ("slim_boot", slim_boot)):
+            if not isinstance(value, bool):
+                raise ValueError(f"{name} must be a bool; got {value!r}.")
+        self.real_boot = real_boot
+        self.slim_boot = slim_boot
         self.stc_scale = BOOT_CONFIGURATION['stc_scale']
         self.eval_mod_scale = BOOT_CONFIGURATION['eval_mod_scale']
         self.cts_scale = BOOT_CONFIGURATION['cts_scale']
