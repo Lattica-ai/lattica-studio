@@ -17,7 +17,7 @@ class HomRotateSum(HomOp):
         rotations: Rotation offsets to apply.
         perform_sum: When `True`, sums all rotated ciphertexts into one output.
         add_identity_rotation: Whether to include the unrotated input in the
-            output set/sum.
+            output set. Sum mode always includes the unrotated input once.
     """
 
     OP_TYPE = HomOpType.RotateSum
@@ -43,7 +43,7 @@ class HomRotateSum(HomOp):
 
     def forward_clear(self, input):
         values = [torch.roll(input, -rotation, dims=-1) for rotation in self.rotations]
-        if self.add_identity_rotation:
+        if self.perform_sum or self.add_identity_rotation:
             values.insert(0, input)
         if self.perform_sum:
             return sum(values, torch.zeros_like(input))
