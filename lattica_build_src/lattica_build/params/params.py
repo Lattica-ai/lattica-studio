@@ -133,6 +133,9 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
+            "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
+            "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
         }
 
     @classmethod
@@ -141,6 +144,8 @@ class HomParams:
 
         ring_switch_params = d.pop("ring_switch_params", None)
         bootstrapping = d.pop("bootstrapping", False)
+        boot_dft_levels = d.pop("boot_dft_levels", None)
+        boot_cts_scale = d.pop("boot_cts_scale", None)
 
         if "g_base_bits" in d:
             if d["decomposition_type"]==DecompositionType.BV:
@@ -156,7 +161,8 @@ class HomParams:
 
         params = cls(**d)
         if bootstrapping:
-            params.boot_params = BootstrappingParams(params.real_boot, params.slim_boot)
+            params.boot_params = BootstrappingParams(
+                params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         return params

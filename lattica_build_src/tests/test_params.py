@@ -1,12 +1,12 @@
 import pytest
 
-from lattica_build.params.bootstrapping_params import BOOT_CONFIGURATION, BootstrappingParams
+from lattica_build.params.bootstrapping_params import DFT_TABLE, BootstrappingParams
 from lattica_build.params.level_and_scale_tracing import ModulusChain
 from lattica_build.params.params import HomParams
 
 
-def _boot_params_dict(**extra):
-    return dict(n=1024, full_q_list_precision=((60,),), pt_scale=2 ** 30, num_special_primes=7,
+def _boot_params_dict(n=1024, **extra):
+    return dict(n=n, full_q_list_precision=((60,),), pt_scale=2 ** 30, num_special_primes=7,
                 bootstrapping=True, **extra)
 
 
@@ -25,13 +25,28 @@ def test_boot_flags_must_be_bools(flags):
         BootstrappingParams(*flags)
 
 
-def test_too_few_slots_for_the_dft_levels():
-    """log2(n_slots) FFT stages can't fill more DFT levels: the chain is refused, not left with unused primes."""
-    n_levels = max(BOOT_CONFIGURATION["n_cts_levels"], BOOT_CONFIGURATION["n_stc_levels"])
-    for n_slots, ok in ((2 ** n_levels, True), (2 ** (n_levels - 1), False)):
-        params = HomParams.from_dict(_boot_params_dict(n_slots=n_slots))
-        if ok:
-            ModulusChain(params)
-        else:
-            with pytest.raises(ValueError, match="DFT levels"):
-                ModulusChain(params)
+def test_dft_table_splits_cover_the_fft_stages():
+    """Every entry splits its log2(n_slots) = log2(subring) - 1 stages into at most 4 levels."""
+    for log_n_subring, (split, cts_bits) in DFT_TABLE.items():
+        assert sum(split) == log_n_subring - 1 and 1 <= len(split) <= 4
+        BootstrappingParams.get_q_list_precision(cts_bits, len(split))   # a valid prime size
+
+
+@pytest.mark.parametrize("slot_counts, levels, cts_scale", [
+    ({2 ** 15}, 4, 47),
+    ({2 ** 15, 2 ** 5}, 4, 55),     # the 32-slot bootstrap's one level needs a wider prime
+    ({2 ** 9, 2 ** 4}, 2, 54),
+])
+def test_chain_serves_every_slot_count(slot_counts, levels, cts_scale):
+    """for_slot_counts: the deepest split's levels, the widest CtS prime; the chain round-trips."""
+    boot = BootstrappingParams.for_slot_counts(True, False, slot_counts)
+    assert (boot.n_cts_levels, boot.n_stc_levels, boot.cts_scale) == (levels, levels, cts_scale)
+    params = HomParams.from_dict(_boot_params_dict(n=2 ** 16, n_slots=max(slot_counts)))
+    params.boot_params = boot
+    loaded = HomParams.from_dict(params.to_dict())
+    assert ModulusChain(loaded).full_q_list == ModulusChain(params).full_q_list
+
+
+def test_slot_count_without_a_split_is_refused():
+    with pytest.raises(ValueError, match="no DFT split"):
+        BootstrappingParams.for_slot_counts(True, False, {2 ** 20})

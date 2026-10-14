@@ -35,9 +35,35 @@ BOOT_CONFIGURATION = {
     'log_delta' : 8,
     'log_delta_slim' : 12,
 
-    # SubSum stage size cap and the DFTs' baby-step/giant-step ratio.
+    # SubSum stage size cap and the DFTs' baby-step/giant-step ratio. 4 puts the 15-16
+    # diagonal factors on 8x2 grids (one giant step) rather than 4x4 (three).
     'subsum_max_stage_size' : 8,
-    'baby_giant_ratio' : 2,
+    'baby_giant_ratio' : 4,
+}
+
+# Per subring dimension log2(2 * n_slots): the StC split of the log2(n_slots) FFT stages
+# (component sizes, stage 0 first; CtS uses the same components in reverse order, so both
+# share their rotation keys) and the smallest CtS prime, in bits, that keeps the bootstrap
+# at its error floor with that split. A component of k stages has 2**(k+1) - 1 diagonals,
+# 2**k if it holds the top stage, and costs about its giant steps; the splits are the
+# fastest measured (RTX 5090, logN 16, REAL, ratio 4). One level needs a wider CtS prime:
+# its single factor takes the whole CtS normalization.
+DFT_TABLE = {
+    2:  ((1,), 48),
+    3:  ((2,), 49),
+    4:  ((3,), 50),
+    5:  ((4,), 54),
+    6:  ((5,), 55),
+    7:  ((3, 3), 44),
+    8:  ((3, 4), 45),
+    9:  ((3, 5), 46),
+    10: ((4, 5), 47),
+    11: ((3, 3, 4), 45),
+    12: ((3, 3, 5), 46),
+    13: ((3, 3, 3, 3), 45),
+    14: ((3, 3, 3, 4), 46),
+    15: ((3, 3, 3, 5), 47),
+    16: ((3, 3, 4, 5), 47),
 }
 
 
@@ -69,27 +95,50 @@ class BootstrappingParams:
         """Size of q0, the ModRaise base modulus: the EvalMod prime size."""
         return BOOT_CONFIGURATION['eval_mod_scale']
     
-    def __init__(self, real_boot: bool = True, slim_boot: bool = False) -> None:
+    @classmethod
+    def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts) -> "BootstrappingParams":
+        """The chain for bootstraps of these slot counts (one per DFT_TABLE entry): as many
+        CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
+        A bootstrap with a shallower split skips the levels it does not use."""
+        entries = []
+        for n_slots in slot_counts:
+            log_n_subring = (2 * n_slots).bit_length() - 1
+            if log_n_subring not in DFT_TABLE:
+                raise ValueError(f"no DFT split for {n_slots} slots (subring 2**{log_n_subring})")
+            entries.append(DFT_TABLE[log_n_subring])
+        if not entries:
+            raise ValueError("slot_counts must not be empty")
+        return cls(real_boot, slim_boot,
+                   dft_levels=max(len(split) for split, _ in entries),
+                   cts_scale=max(bits for _, bits in entries))
+
+    def __init__(self, real_boot: bool = True, slim_boot: bool = False,
+                 dft_levels: int | None = None, cts_scale: int | None = None) -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
-        at the bottom of the chain, then ModRaise, CtS and EvalMod."""
+        at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
+        the CtS and StC level count and the CtS prime size (for_slot_counts picks them);
+        BOOT_CONFIGURATION's when None."""
         for name, value in (("real_boot", real_boot), ("slim_boot", slim_boot)):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be a bool; got {value!r}.")
+        if dft_levels is not None and (not isinstance(dft_levels, int) or dft_levels < 1):
+            raise ValueError(f"dft_levels must be an int >= 1; got {dft_levels!r}.")
         self.real_boot = real_boot
         self.slim_boot = slim_boot
         self.stc_scale = BOOT_CONFIGURATION['stc_scale']
         self.eval_mod_scale = BOOT_CONFIGURATION['eval_mod_scale']
-        self.cts_scale = BOOT_CONFIGURATION['cts_scale']
+        self.cts_scale = BOOT_CONFIGURATION['cts_scale'] if cts_scale is None else cts_scale
         self.n_double_angle = BOOT_CONFIGURATION['n_double_angle']
         self.subsum_max_stage_size = BOOT_CONFIGURATION['subsum_max_stage_size']
         self.baby_giant_ratio = BOOT_CONFIGURATION['baby_giant_ratio']
         self.arcsine_correction = BOOT_CONFIGURATION['n_arcsine_levels'] > 0
 
-        self.n_stc_levels = BOOT_CONFIGURATION['n_stc_levels']
+        self.dft_levels = dft_levels
+        self.n_stc_levels = BOOT_CONFIGURATION['n_stc_levels'] if dft_levels is None else dft_levels
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
-        self.n_cts_levels = BOOT_CONFIGURATION['n_cts_levels']
+        self.n_cts_levels = BOOT_CONFIGURATION['n_cts_levels'] if dft_levels is None else dft_levels
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.n_stc_levels)
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.n_cts_levels)
         if self.slim_boot:
