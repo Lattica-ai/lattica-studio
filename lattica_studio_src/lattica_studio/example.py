@@ -43,7 +43,7 @@ def main() -> None:
     license_key = os.getenv("LATTICA_LICENSE_KEY", "")
     if not license_key:
         raise ValueError("Set LATTICA_LICENSE_KEY to run this example")
-    instance_type = InstanceType(os.getenv("LATTICA_INSTANCE_TYPE", InstanceType.G4DN_XLARGE))
+    instance_type = InstanceType(os.getenv("LATTICA_INSTANCE_TYPE", InstanceType.G7E_2XLARGE))
 
     x, y = load_mnist_test_data()
 
