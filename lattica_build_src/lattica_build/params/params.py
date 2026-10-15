@@ -5,7 +5,7 @@ from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
 
-from lattica_build.params.bootstrapping_params import BootstrappingVariant, BootstrappingParams
+from lattica_build.params.bootstrapping_params import BootstrappingParams
 
 QListNorm = Tuple[Tuple[int, ...], ...]
 QListInput = Sequence[Sequence[int]]
@@ -30,7 +30,9 @@ class HomParams:
     num_special_primes: int = 0
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
     num_init_rows: int | None = None
-    bootstrapping_variant: BootstrappingVariant = BootstrappingVariant.REAL
+    # Bootstrapping: real slots (one EvalMod) or complex; StC first (slim) or last.
+    real_boot: bool = True
+    slim_boot: bool = False
     n_slots: int | None = None
 
     @property
@@ -105,13 +107,9 @@ class HomParams:
 
         if not ((isinstance(self.num_init_rows, int) and self.num_init_rows >= 0) or self.num_init_rows is None):
             raise ValueError(f"num_init_rows must be None or an int >= 0; got {self.num_init_rows!r}.")
-        if isinstance(self.bootstrapping_variant, int):
-            try:
-                self.bootstrapping_variant = BootstrappingVariant(self.bootstrapping_variant)
-            except ValueError as e:
-                raise ValueError(f"Invalid bootstrapping_variant value: {self.bootstrapping_variant}") from e
-        elif not isinstance(self.bootstrapping_variant, BootstrappingVariant):
-            raise ValueError(f"bootstrapping_variant must be a BootstrappingVariant; got {self.bootstrapping_variant!r}.")
+        for name in ("real_boot", "slim_boot"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")
 
 
     def to_dict(self) -> dict[str, Any]:
@@ -130,8 +128,12 @@ class HomParams:
             "pt_scale": self.pt_scale,
             "bootstrapping": self.bootstrapping,
             "num_init_rows": self.num_init_rows,
-            "bootstrapping_variant": self.bootstrapping_variant.value,
+            "real_boot": self.real_boot,
+            "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
+            "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
+            "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
         }
 
     @classmethod
@@ -140,6 +142,8 @@ class HomParams:
 
         ring_switch_params = d.pop("ring_switch_params", None)
         bootstrapping = d.pop("bootstrapping", False)
+        boot_dft_levels = d.pop("boot_dft_levels", None)
+        boot_cts_scale = d.pop("boot_cts_scale", None)
 
         if "g_base_bits" in d:
             if d["decomposition_type"]==DecompositionType.BV:
@@ -149,8 +153,11 @@ class HomParams:
         d.pop("ghs_keyswtich_scale_precision", None)
 
         params = cls(**d)
-        if bootstrapping:
-            params.boot_params = BootstrappingParams(params.bootstrapping_variant)
+        if bootstrapping and boot_dft_levels is not None and boot_cts_scale is not None:
+            params.boot_params = BootstrappingParams(
+                params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
+        elif bootstrapping:   # saved before the chain was: the one BOOT_PARAMS_PER_SUBRING gives its slots
+            params.boot_params = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {params.n_slots})
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         return params

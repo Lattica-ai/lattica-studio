@@ -283,8 +283,10 @@ class HomomorphicPipeline:
             hom_params.ring_switch_params = None
 
         needs_boot = ring_switch_input or any(op.OP_TYPE == HomOpType.Bootstrap for op in leaves)
+        # the chain serves every slot count a bootstrap may see: the primary input's and the others'
+        slot_counts = {hom_params.n_slots, *self.custom_n_slots.values()}
         hom_params.boot_params = (
-            BootstrappingParams(hom_params.bootstrapping_variant)
+            BootstrappingParams.for_slot_counts(hom_params.real_boot, hom_params.slim_boot, slot_counts)
             if needs_boot else None
         )
         hom_params.mod_chain = ModulusChain(hom_params)
