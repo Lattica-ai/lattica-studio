@@ -167,12 +167,12 @@ def test_composites_and_pipeline_clear_execution():
 
 def test_mux_ops_refuse_clear_execution():
     """The mux conv and bias have no clear path; they must not pass their input through."""
-    from lattica_build.operators.ml.h_mux_conv import HomMuxBiasAdd, HomMuxConv, HomMuxConvBn
+    from lattica_build.operators.ml.h_mux_conv import HomMuxBiasAdd, HomMuxConv, HomMuxConvBias
 
     x = torch.arange(16, dtype=torch.float64)
-    conv_bn = HomMuxConvBn(4, 4, 1, 4, (2, 2))
-    conv_bn.set_data(torch.ones(4, 4, 1, 1), None, torch.zeros(4), torch.ones(4), None, torch.ones(4), eps=0)
-    for op in (HomMuxConv((4, 4, 1, 1), (2, 2), 4), HomMuxBiasAdd(4, (2, 2), 4), conv_bn):
+    conv_bias = HomMuxConvBias(4, 4, 1, (2, 2))
+    conv_bias.set_data(torch.ones(4, 4, 1, 1), torch.ones(4))
+    for op in (HomMuxConv((4, 4, 1, 1), (2, 2)), HomMuxBiasAdd(4, (2, 2)), conv_bias):
         try:
             op.forward_clear(x)
         except NotImplementedError:
@@ -227,7 +227,7 @@ def test_bitonic_sort_composite_example_sorts_input():
 
 def test_resnet_example_builds_the_mux_resnet():
     """A bootstrap before every ReLU, none in the head; each stage's first block downsamples
-    with stride-2 convs that re-interleave to the stage's gap."""
+    with stride-2 convs that re-interleave to the stage's channel count."""
     from lattica_build.examples.advanced import resnet20
 
     example = resnet20.Pipeline()
@@ -236,20 +236,19 @@ def test_resnet_example_builds_the_mux_resnet():
     assert not hom.layer1.block1.is_transition
     for layer in (2, 3):
         block = getattr(hom, f"layer{layer}").block1
-        t = resnet20.LAYER_OUT[layer][3]
+        channels = resnet20.LAYER_OUT[layer][0]
         for conv in (block.convBN1.conv, block.downsample.conv):
-            assert conv.stride == (2, 2) and conv.t_out == t
+            assert conv.stride == (2, 2) and conv.kernel_shape[0] == channels
     assert example.build_params().n == resnet20.N
 
 
 def test_mux_pack_places_each_channel_at_its_slot():
-    """Two channel groups and sides that are not powers of 2."""
+    """Sides that are not powers of 2: the width pads to 8."""
     from lattica_build.operators.ml.h_mux_conv import mux_pack
 
     x = torch.arange(1, 4 * 3 * 5 + 1, dtype=torch.float64).reshape(4, 3, 5)
-    vec = mux_pack(x, 2, 128)
+    vec = mux_pack(x, 128)
     for c, i, j in itertools.product(range(4), range(3), range(5)):
-        g, cc = divmod(c, 2)
-        assert vec[((g * 4 + i) * 8 + j) * 2 + cc] == x[c, i, j]
+        assert vec[(i * 8 + j) * 4 + c] == x[c, i, j]
     assert int((vec != 0).sum()) == x.numel()
 

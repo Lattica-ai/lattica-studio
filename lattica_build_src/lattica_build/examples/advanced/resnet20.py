@@ -16,7 +16,8 @@ from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
-from lattica_build.operators.ml.h_mux_conv import HomMuxConvBn, mux_pack
+from lattica_build.operators.ml.conv_bn_fused import fold_batch_norm
+from lattica_build.operators.ml.h_mux_conv import HomMuxConvBias, mux_pack
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
@@ -27,12 +28,12 @@ PT_SCALE = 2 ** 30
 Q_LIST_PRECISION = ((60, 30),) * 4
 N_SPECIAL_PRIMES = 9
 RELU_DEG = 119                               # 7 levels with Paterson-Stockmeyer; relu(7) + conv(1) = 8 exactly
-T_STEM = 16                                  # lane-pad RGB (3) up to 16 lanes
+STEM_CHANNELS = 16                            # RGB (3) zero-padded up to 16 channels
 
-# Per-stage layout (C, H, W, t) after the stage's downsampling.
-STEM_LAYOUT = (16, 32, 32, 16)
-LAYER_OUT = {1: (16, 32, 32, 16), 2: (32, 16, 16, 32), 3: (64, 8, 8, 64)}
-LAYER_IN = {1: (16, 32, 32, 16), 2: (16, 32, 32, 16), 3: (32, 16, 16, 32)}
+# Per-stage map (C, H, W) after the stage's downsampling.
+STEM_LAYOUT = (16, 32, 32)
+LAYER_OUT = {1: (16, 32, 32), 2: (32, 16, 16), 3: (64, 8, 8)}
+LAYER_IN = {1: (16, 32, 32), 2: (16, 32, 32), 3: (32, 16, 16)}
 
 SUBRING_SLOTS = (2 ** (LOG_SUBRING-1))
 
@@ -58,32 +59,31 @@ def make_relu(delta: float) -> HomPolyEval:
     return HomPolyEval(func=lambda x: np.maximum(0, x / delta), degree=RELU_DEG)
 
 
-def _conv_bn(conv, bn, layout, delta, *, t_out=None, weight=None):
-    """Build a mux convolution and load its model weights and batch norm together."""
-    _, height, width, channels_per_pixel = layout
+def _conv_bn(conv, bn, layout, delta, *, weight=None):
+    """A mux convolution with its batch norm and the next ReLU's 1/delta folded in."""
+    _, height, width = layout
     weight = conv.weight if weight is None else weight
-    op = HomMuxConvBn(
+    op = HomMuxConvBias(
         in_channels=weight.shape[1], out_channels=weight.shape[0],
-        kernel_size=conv.kernel_size, image_hw=(height, width), t_in=channels_per_pixel,
+        kernel_size=conv.kernel_size, image_hw=(height, width),
         stride=conv.stride, padding=conv.padding, dilation=conv.dilation,
-        t_out=t_out,
     )
-    op.set_data(
-        weight=weight.detach().to(torch.float64), bias=None,
-        mean=bn.running_mean.detach().to(torch.float64),
-        var=bn.running_var.detach().to(torch.float64),
-        gamma=bn.weight.detach().to(torch.float64),
-        beta=bn.bias.detach().to(torch.float64), eps=float(bn.eps), delta=delta)
+    op.set_data(*fold_batch_norm(
+        weight.detach().to(torch.float64), None,
+        bn.running_mean.detach().to(torch.float64),
+        bn.running_var.detach().to(torch.float64),
+        bn.weight.detach().to(torch.float64),
+        bn.bias.detach().to(torch.float64), float(bn.eps), delta))
     return op
 
 
-def lane_pad(x: torch.Tensor, t: int) -> torch.Tensor:
-    """Zero-pad a (C, H, W) tensor's channel axis up to ``t`` lanes (client-side,
-    free before encryption). Used for the initial 3->16 conv: packing the RGB input
-    at t=16 keeps the conv aligned (|R| small) with 13 zero lanes."""
+def pad_channels(x: torch.Tensor, channels: int) -> torch.Tensor:
+    """Zero-pad a (C, H, W) tensor's channel axis up to ``channels`` (client-side,
+    free before encryption). Used for the initial 3->16 conv: with the RGB input as
+    16 channels, the stem has the layout of layer 1 (|R| small)."""
     c = x.shape[0]
-    assert c <= t, f"cannot lane-pad {c} channels down to t={t}"
-    return torch.nn.functional.pad(x, (0, 0, 0, 0, 0, t - c))
+    assert c <= channels, f"cannot pad {c} channels down to {channels}"
+    return torch.nn.functional.pad(x, (0, 0, 0, 0, 0, channels - c))
 
 
 # A bootstrap sits right before each ReLU: the ReLU takes 7 of its 8 levels and the
@@ -92,7 +92,7 @@ def lane_pad(x: torch.Tensor, t: int) -> torch.Tensor:
 class _MuxStem(HomOp):
     def __init__(self, model):
         super().__init__()
-        weight = torch.zeros(STEM_LAYOUT[0], T_STEM, 3, 3, dtype=torch.float64)
+        weight = torch.zeros(STEM_LAYOUT[0], STEM_CHANNELS, 3, 3, dtype=torch.float64)
         weight[:, :3] = model.conv1.weight.detach().to(torch.float64)
         self.convBN = _conv_bn(model.conv1, model.bn1, STEM_LAYOUT,
                               DELTA_INITIAL, weight=weight)
@@ -112,16 +112,13 @@ class _MuxBlock(HomOp):
         output_layout = LAYER_OUT[layer]
         first_relu_scale, second_relu_scale = DELTAS[layer - 1][block - 1]
         self.is_transition = model.downsample is not None
-        t_out = output_layout[3] if self.is_transition else None
-        self.convBN1 = _conv_bn(
-            model.conv1, model.bn1, input_layout, first_relu_scale, t_out=t_out)
+        self.convBN1 = _conv_bn(model.conv1, model.bn1, input_layout, first_relu_scale)
         self.bootstrap1 = Bootstrap()
         self.relu1 = make_relu(first_relu_scale)
         self.convBN2 = _conv_bn(model.conv2, model.bn2, output_layout, second_relu_scale)
         if self.is_transition:
             skip_conv, skip_bn = model.downsample
-            self.downsample = _conv_bn(
-                skip_conv, skip_bn, input_layout, second_relu_scale, t_out=t_out)
+            self.downsample = _conv_bn(skip_conv, skip_bn, input_layout, second_relu_scale)
         else:
             self.skip_delta = second_relu_scale
         self.bootstrap2 = Bootstrap()
@@ -160,19 +157,16 @@ class _MuxLayer(HomOp):
 class _MuxHead(HomOp):
     def __init__(self, model):
         super().__init__()
-        channels, height, width, _ = LAYER_OUT[3]
+        channels, height, width = LAYER_OUT[3]
         spatial_positions = height * width
         # the last ReLU leaves one level, for the FC
         self.avgpool = HomSumSlots(k=spatial_positions)
-        self.fc = HomMuxConvBn(in_channels=channels, out_channels=10, kernel_size=(1, 1),
-                               t_in=channels, image_hw=(1, 1), padding=(0, 0))
+        self.fc = HomMuxConvBias(in_channels=channels, out_channels=10, kernel_size=(1, 1),
+                                 image_hw=(1, 1), padding=(0, 0))
         # SumSlots supplies a sum; fold the averaging factor into the FC weights.
         fc_weights = model.fc.weight.detach().to(torch.float64).reshape(10, channels, 1, 1)
-        self.fc.set_data(
-            weight=fc_weights / spatial_positions,
-            bias=None, mean=torch.zeros(10, dtype=torch.float64),
-            var=torch.ones(10, dtype=torch.float64), gamma=None,
-            beta=model.fc.bias.detach().to(torch.float64), eps=0.0, delta=1.0)
+        self.fc.set_data(weight=fc_weights / spatial_positions,
+                         bias=model.fc.bias.detach().to(torch.float64))
 
     def forward(self, x: HomValue) -> HomValue:
         return self.fc(self.avgpool(x))
@@ -230,7 +224,7 @@ class Pipeline(PipelineWrapper):
 
     def _set_example_pt(self):
         self._img, self._category = self.load_cifar_sample()
-        return mux_pack(lane_pad(self._img, T_STEM), STEM_LAYOUT[3], SUBRING_SLOTS)
+        return mux_pack(pad_channels(self._img, STEM_CHANNELS), SUBRING_SLOTS)
 
     def verify_results(self, actual, expected):
         # FHE must track the clear run of the same pipeline.
