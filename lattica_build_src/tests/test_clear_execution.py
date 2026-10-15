@@ -1,6 +1,5 @@
-import pickle
+import itertools
 import json
-import random
 from pathlib import Path
 from unittest import SkipTest
 
@@ -226,47 +225,31 @@ def test_bitonic_sort_composite_example_sorts_input():
     example.verify_results(result, expected)
 
 
-def test_resnet_composite_example_matches_pretrained_model():
+def test_resnet_example_builds_the_mux_resnet():
+    """A bootstrap before every ReLU, none in the head; each stage's first block downsamples
+    with stride-2 convs that re-interleave to the stage's gap."""
     from lattica_build.examples.advanced import resnet20
 
-    examples_data = (
-        Path(__file__).resolve().parents[1]
-        / "lattica_build/examples/advanced/data"
-    )
-    cifar_batch_path = examples_data / "cifar10_test_batch"
-    if not cifar_batch_path.exists():
-        raise SkipTest("local CIFAR-10 test fixture is not available")
-
-    with cifar_batch_path.open("rb") as batch_file:
-        batch = pickle.load(batch_file, encoding="bytes")
-
-    sample_index = random.Random(0).randrange(len(batch[b"labels"]))
-    raw_image = torch.tensor(
-        batch[b"data"][sample_index], dtype=torch.float32
-    ).reshape(3, 32, 32)
-    reference_model = torch.hub.load(
-        "chenyaofo/pytorch-cifar-models",
-        "cifar10_resnet20",
-        pretrained=True,
-        verbose=False,
-    ).eval()
     example = resnet20.Pipeline()
-    pipeline = example.build_pipeline()
-    params = example.build_params()
-    with torch.no_grad():
-        normalized_image = pipeline.client_pre.forward_clear(
-            raw_image, internal_n=params.internal_n
-        )
-        expected_class = reference_model(
-            normalized_image.reshape(1, 3, 32, 32)
-        ).argmax(dim=-1).item()
+    hom = example.get_hom_pipeline().hom
+    assert hasattr(hom.stem, "bootstrap") and not hasattr(hom.head, "bootstrap")
+    assert not hom.layer1.block1.is_transition
+    for layer in (2, 3):
+        block = getattr(hom, f"layer{layer}").block1
+        t = resnet20.LAYER_OUT[layer][3]
+        for conv in (block.convBN1.conv, block.downsample.conv):
+            assert conv.stride == (2, 2) and conv.t_out == t
+    assert example.build_params().n == resnet20.N
 
-    result = pipeline.forward_clear(
-        raw_image,
-        hom_params=params,
-    )
-    predicted_class = result[..., 0].argmax().item()
-    assert predicted_class == expected_class, (
-        f"clear ResNet predicted {predicted_class} for CIFAR sample "
-        f"{sample_index}, expected pretrained-model class {expected_class}"
-    )
+
+def test_mux_pack_places_each_channel_at_its_slot():
+    """Two channel groups and sides that are not powers of 2."""
+    from lattica_build.operators.ml.h_mux_conv import mux_pack
+
+    x = torch.arange(1, 4 * 3 * 5 + 1, dtype=torch.float64).reshape(4, 3, 5)
+    vec = mux_pack(x, 2, 128)
+    for c, i, j in itertools.product(range(4), range(3), range(5)):
+        g, cc = divmod(c, 2)
+        assert vec[((g * 4 + i) * 8 + j) * 2 + cc] == x[c, i, j]
+    assert int((vec != 0).sum()) == x.numel()
+

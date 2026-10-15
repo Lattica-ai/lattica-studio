@@ -35,6 +35,22 @@ def _check_gap(channels, t, what):
         raise ValueError(f"{what}: the gap t={t} must be positive and divide the {channels} channels")
 
 
+def mux_pack(x, t: int, n_slots: int) -> torch.Tensor:
+    """A (C, H, W) map as the slot vector a client encrypts for a mux conv: channel c of
+    pixel (i, j) at slot ((g * Ht + i) * Wt + j) * t + cc, with g, cc = divmod(c, t) and
+    Ht, Wt the sides rounded up to powers of 2."""
+    x = torch.as_tensor(x, dtype=torch.float64)
+    channels, h, w = x.shape
+    _check_gap(channels, t, "mux_pack")
+    ht, wt = 1 << (h - 1).bit_length(), 1 << (w - 1).bit_length()
+    if channels * ht * wt > n_slots:
+        raise ValueError(f"a {channels}x{h}x{w} map needs {channels * ht * wt} slots, got {n_slots}")
+    c, i, j = torch.meshgrid(torch.arange(channels), torch.arange(h), torch.arange(w), indexing="ij")
+    vec = torch.zeros(n_slots, dtype=torch.float64)
+    vec[((c // t * ht + i) * wt + j) * t + c % t] = x
+    return vec
+
+
 def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n) -> HomValue:
     """The output ciphertext, packed at the output layout's slot count."""
     if internal_n is None:
