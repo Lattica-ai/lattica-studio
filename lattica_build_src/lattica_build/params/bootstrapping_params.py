@@ -1,17 +1,13 @@
 """See `params/README.md` for usage details."""
 
 BOOT_CONFIGURATION = {
-    # Prime sizes (bits) and level counts of the CtS, EvalMod and StC sections.
-    # 4 DFT levels rather than 3: about half the diagonals per factor (16-31 vs
-    # 32-63 at 2**15 slots), for one more prime each.
-    'cts_scale' : 48,
-    'n_cts_levels' : 4,
+    # EvalMod and StC prime sizes (bits); the CtS ones and the DFT level counts come
+    # per subring from BOOT_PARAMS_PER_SUBRING.
     # Also the size of q0: EvalMod running at scale q0 makes the division by
     # delta a free scale relabel. 53 is the smallest without losing accuracy
     # (at 2^12 slots, log_delta 9: 52 errs ~5% more, 50 ~1.7x; same time).
     'eval_mod_scale' : 53,
     'stc_scale' : 30,
-    'n_stc_levels' : 4,
 
     'n_cosine_levels' : 5,
     'n_double_angle' : 3,
@@ -25,11 +21,8 @@ BOOT_CONFIGURATION = {
     # (degree 27) allows K <= 14. At H=32, |I| >= 14 has probability 2**-38.8.
     'k' : 14,
 
-    # Headroom q0/|m| for messages bounded by 1. Each bit divides the sine's cubic
-    # error (~6.6 m**3 / 4**log_delta, m: for REAL the slots' mean) by 4 but
-    # doubles EvalMod's noise. The default; BOOT_PARAMS_PER_SUBRING gives each subring its own.
-    # An input with only q0 left must be at most 2 * q0 / 2**log_delta.
-    'log_delta' : 8,
+    # SLIM's headroom q0/|m| (its EvalMod sees the slots); the others take theirs from
+    # BOOT_PARAMS_PER_SUBRING.
     'log_delta_slim' : 12,
 
     # SubSum stage size cap and the DFTs' baby-step/giant-step ratio. 4 puts the 15-16
@@ -44,9 +37,11 @@ BOOT_CONFIGURATION = {
 # at its error floor with that split. A component of k stages has 2**(k+1) - 1 diagonals,
 # 2**k if it holds the top stage, and costs about its giant steps; the splits are the
 # fastest measured (RTX 5090, logN 16, REAL, ratio 4). One level needs a wider CtS prime:
-# its single factor takes the whole CtS normalization. Last, the bootstrap's log_delta: fewer
-# slots leave StC less noise to sum, so they afford more headroom (measured at 2**15, 2**14,
-# 2**12, 2**10, 2**8, 2**6 and 2**4 slots, the others in between).
+# its single factor takes the whole CtS normalization. Last, log_delta, the headroom q0/|m|:
+# each bit divides the sine's cubic error (~6.6 m**3 / 4**log_delta, m: for REAL the slots'
+# mean) by 4 but doubles EvalMod's noise, and fewer slots leave StC less noise to sum, so they
+# afford more (measured at 2**15, 2**14, 2**13, 2**12, 2**10, 2**8, 2**6 and 2**4 slots, the
+# others in between). An input with only q0 left must be at most 2 * q0 / 2**log_delta.
 BOOT_PARAMS_PER_SUBRING = {
     2:  ((1,), 48, 10),
     3:  ((2,), 49, 10),
@@ -111,39 +106,35 @@ class BootstrappingParams:
                    dft_levels=max(len(split) for split, _, _ in entries),
                    cts_scale=max(bits for _, bits, _ in entries))
 
-    def __init__(self, real_boot: bool = True, slim_boot: bool = False,
-                 dft_levels: int | None = None, cts_scale: int | None = None) -> None:
+    def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int) -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
-        the CtS and StC level count and the CtS prime size (for_slot_counts picks them);
-        BOOT_CONFIGURATION's when None."""
+        the CtS and StC level count and the CtS prime size; for_slot_counts picks them."""
         for name, value in (("real_boot", real_boot), ("slim_boot", slim_boot)):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be a bool; got {value!r}.")
-        if dft_levels is not None and (not isinstance(dft_levels, int) or dft_levels < 1):
+        if not isinstance(dft_levels, int) or dft_levels < 1:
             raise ValueError(f"dft_levels must be an int >= 1; got {dft_levels!r}.")
         self.real_boot = real_boot
         self.slim_boot = slim_boot
         self.stc_scale = BOOT_CONFIGURATION['stc_scale']
         self.eval_mod_scale = BOOT_CONFIGURATION['eval_mod_scale']
-        self.cts_scale = BOOT_CONFIGURATION['cts_scale'] if cts_scale is None else cts_scale
+        self.cts_scale = cts_scale
         self.n_double_angle = BOOT_CONFIGURATION['n_double_angle']
         self.subsum_max_stage_size = BOOT_CONFIGURATION['subsum_max_stage_size']
         self.baby_giant_ratio = BOOT_CONFIGURATION['baby_giant_ratio']
         self.arcsine_correction = BOOT_CONFIGURATION['n_arcsine_levels'] > 0
 
         self.dft_levels = dft_levels
-        self.n_stc_levels = BOOT_CONFIGURATION['n_stc_levels'] if dft_levels is None else dft_levels
+        self.n_stc_levels = dft_levels
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
-        self.n_cts_levels = BOOT_CONFIGURATION['n_cts_levels'] if dft_levels is None else dft_levels
+        self.n_cts_levels = dft_levels
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.n_stc_levels)
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.n_cts_levels)
-        if self.slim_boot:
-            self.log_delta = BOOT_CONFIGURATION['log_delta_slim']
-        else:
-            self.log_delta = BOOT_CONFIGURATION['log_delta']
+        # SLIM's headroom; the other variants' comes per subring from BOOT_PARAMS_PER_SUBRING
+        self.log_delta = BOOT_CONFIGURATION['log_delta_slim'] if self.slim_boot else None
         self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']

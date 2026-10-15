@@ -161,9 +161,11 @@ class HomParams:
             d["real_boot"], d["slim_boot"] = _LEGACY_BOOT_VARIANTS[variant]
 
         params = cls(**d)
-        if bootstrapping:
+        if bootstrapping and boot_dft_levels is not None and boot_cts_scale is not None:
             params.boot_params = BootstrappingParams(
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
+        elif bootstrapping:   # saved before the chain was: the one BOOT_PARAMS_PER_SUBRING gives its slots
+            params.boot_params = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {params.n_slots})
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         return params

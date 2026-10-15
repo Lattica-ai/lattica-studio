@@ -22,7 +22,7 @@ def test_legacy_boot_variant_maps_to_the_flags(variant, flags):
 @pytest.mark.parametrize("flags", [("false", False), (True, 0), (None, False)])
 def test_boot_flags_must_be_bools(flags):
     with pytest.raises(ValueError):
-        BootstrappingParams(*flags)
+        BootstrappingParams(*flags, dft_levels=4, cts_scale=47)
 
 
 def test_dft_table_splits_cover_the_fft_stages():
