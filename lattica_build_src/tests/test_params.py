@@ -1,6 +1,6 @@
 import pytest
 
-from lattica_build.params.bootstrapping_params import DFT_TABLE, BootstrappingParams
+from lattica_build.params.bootstrapping_params import BOOT_CONFIGURATION, BOOT_PARAMS_PER_SUBRING, BootstrappingParams
 from lattica_build.params.level_and_scale_tracing import ModulusChain
 from lattica_build.params.params import HomParams
 
@@ -27,9 +27,10 @@ def test_boot_flags_must_be_bools(flags):
 
 def test_dft_table_splits_cover_the_fft_stages():
     """Every entry splits its log2(n_slots) = log2(subring) - 1 stages into at most 4 levels."""
-    for log_n_subring, (split, cts_bits) in DFT_TABLE.items():
+    for log_n_subring, (split, cts_bits, log_delta) in BOOT_PARAMS_PER_SUBRING.items():
         assert sum(split) == log_n_subring - 1 and 1 <= len(split) <= 4
         BootstrappingParams.get_q_list_precision(cts_bits, len(split))   # a valid prime size
+        assert 1 <= log_delta < BOOT_CONFIGURATION['eval_mod_scale']
 
 
 @pytest.mark.parametrize("slot_counts, levels, cts_scale", [
@@ -47,6 +48,6 @@ def test_chain_serves_every_slot_count(slot_counts, levels, cts_scale):
     assert ModulusChain(loaded).full_q_list == ModulusChain(params).full_q_list
 
 
-def test_slot_count_without_a_split_is_refused():
-    with pytest.raises(ValueError, match="no DFT split"):
+def test_slot_count_without_bootstrap_parameters_is_refused():
+    with pytest.raises(ValueError, match="no bootstrap parameters"):
         BootstrappingParams.for_slot_counts(True, False, {2 ** 20})

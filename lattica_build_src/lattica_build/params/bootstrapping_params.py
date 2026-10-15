@@ -7,9 +7,9 @@ BOOT_CONFIGURATION = {
     'cts_scale' : 48,
     'n_cts_levels' : 4,
     # Also the size of q0: EvalMod running at scale q0 makes the division by
-    # delta a free scale relabel. 54 is where EvalMod's error stops improving
-    # (vs 50: ~30% lower max error, same time; 58 gains nothing).
-    'eval_mod_scale' : 54,
+    # delta a free scale relabel. 53 is the smallest without losing accuracy
+    # (at 2^12 slots, log_delta 9: 52 errs ~5% more, 50 ~1.7x; same time).
+    'eval_mod_scale' : 53,
     'stc_scale' : 30,
     'n_stc_levels' : 4,
 
@@ -27,7 +27,7 @@ BOOT_CONFIGURATION = {
 
     # Headroom q0/|m| for messages bounded by 1. Each bit divides the sine's cubic
     # error (~6.6 m**3 / 4**log_delta, m: for REAL the slots' mean) by 4 but
-    # doubles EvalMod's noise; 8 gives the lowest max error (9: lower mean, higher max).
+    # doubles EvalMod's noise. The default; BOOT_PARAMS_PER_SUBRING gives each subring its own.
     # An input with only q0 left must be at most 2 * q0 / 2**log_delta.
     'log_delta' : 8,
     'log_delta_slim' : 12,
@@ -44,23 +44,25 @@ BOOT_CONFIGURATION = {
 # at its error floor with that split. A component of k stages has 2**(k+1) - 1 diagonals,
 # 2**k if it holds the top stage, and costs about its giant steps; the splits are the
 # fastest measured (RTX 5090, logN 16, REAL, ratio 4). One level needs a wider CtS prime:
-# its single factor takes the whole CtS normalization.
-DFT_TABLE = {
-    2:  ((1,), 48),
-    3:  ((2,), 49),
-    4:  ((3,), 50),
-    5:  ((4,), 54),
-    6:  ((5,), 55),
-    7:  ((3, 3), 44),
-    8:  ((3, 4), 45),
-    9:  ((3, 5), 46),
-    10: ((4, 5), 47),
-    11: ((3, 3, 4), 45),
-    12: ((3, 3, 5), 46),
-    13: ((3, 3, 3, 3), 45),
-    14: ((3, 3, 3, 4), 46),
-    15: ((3, 3, 3, 5), 47),
-    16: ((3, 3, 4, 5), 47),
+# its single factor takes the whole CtS normalization. Last, the bootstrap's log_delta: fewer
+# slots leave StC less noise to sum, so they afford more headroom (measured at 2**15, 2**14,
+# 2**12, 2**10, 2**8, 2**6 and 2**4 slots, the others in between).
+BOOT_PARAMS_PER_SUBRING = {
+    2:  ((1,), 48, 10),
+    3:  ((2,), 49, 10),
+    4:  ((3,), 50, 10),
+    5:  ((4,), 54, 10),
+    6:  ((5,), 55, 9),
+    7:  ((3, 3), 44, 9),
+    8:  ((3, 4), 45, 9),
+    9:  ((3, 5), 46, 9),
+    10: ((4, 5), 47, 9),
+    11: ((3, 3, 4), 45, 9),
+    12: ((3, 3, 5), 46, 9),
+    13: ((3, 3, 3, 3), 45, 9),
+    14: ((3, 3, 3, 4), 46, 9),
+    15: ((3, 3, 3, 5), 47, 8),
+    16: ((3, 3, 4, 5), 47, 8),
 }
 
 
@@ -94,20 +96,20 @@ class BootstrappingParams:
     
     @classmethod
     def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts) -> "BootstrappingParams":
-        """The chain for bootstraps of these slot counts (one per DFT_TABLE entry): as many
+        """The chain for bootstraps of these slot counts (one per BOOT_PARAMS_PER_SUBRING entry): as many
         CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use."""
         entries = []
         for n_slots in slot_counts:
             log_n_subring = (2 * n_slots).bit_length() - 1
-            if log_n_subring not in DFT_TABLE:
-                raise ValueError(f"no DFT split for {n_slots} slots (subring 2**{log_n_subring})")
-            entries.append(DFT_TABLE[log_n_subring])
+            if log_n_subring not in BOOT_PARAMS_PER_SUBRING:
+                raise ValueError(f"no bootstrap parameters for {n_slots} slots (subring 2**{log_n_subring})")
+            entries.append(BOOT_PARAMS_PER_SUBRING[log_n_subring])
         if not entries:
             raise ValueError("slot_counts must not be empty")
         return cls(real_boot, slim_boot,
-                   dft_levels=max(len(split) for split, _ in entries),
-                   cts_scale=max(bits for _, bits in entries))
+                   dft_levels=max(len(split) for split, _, _ in entries),
+                   cts_scale=max(bits for _, bits, _ in entries))
 
     def __init__(self, real_boot: bool = True, slim_boot: bool = False,
                  dft_levels: int | None = None, cts_scale: int | None = None) -> None:
