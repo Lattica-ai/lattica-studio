@@ -165,19 +165,33 @@ def test_composites_and_pipeline_clear_execution():
     assert torch.equal(pipeline.forward_clear(x), expected)
 
 
-def test_mux_ops_refuse_clear_execution():
-    """The mux conv has no clear path; it must not pass its input through."""
-    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBias
+@pytest.mark.parametrize("c_in,c_out,hw,kernel,stride,padding", [
+    (4, 4, (4, 4), 3, 1, 1),     # same layout
+    (4, 8, (4, 4), 3, 2, 1),     # strided, re-interleaved to 8 channels
+    (8, 10, (1, 1), 1, 1, 0),    # the FC head: 10 channels in 16 slots
+])
+def test_mux_conv_clear_matches_torch(c_in, c_out, hw, kernel, stride, padding):
+    """HomMuxConv in the clear: unpack, conv2d, pack into the output layout."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBias, _mux_slot_indices, mux_pack
 
-    x = torch.arange(16, dtype=torch.float64)
-    conv_bias = HomMuxConvBias(4, 4, 1, (2, 2))
-    conv_bias.set_data(torch.ones(4, 4, 1, 1), torch.ones(4))
-    for op in (HomMuxConv((4, 4, 1, 1), (2, 2)), conv_bias):
-        try:
-            op.forward_clear(x)
-        except NotImplementedError:
-            continue
-        raise AssertionError(f"{type(op).__name__}.forward_clear did not raise")
+    torch.manual_seed(0)
+    x = torch.randn(c_in, *hw, dtype=torch.float64)
+    weight = torch.randn(c_out, c_in, kernel, kernel, dtype=torch.float64)
+    bias = torch.randn(c_out, dtype=torch.float64)
+    conv = HomMuxConv((c_out, c_in, kernel, kernel), hw, stride=stride, padding=padding)
+    conv.set_data(weight)
+    in_slots = (1 << (hw[0] - 1).bit_length()) * (1 << (hw[1] - 1).bit_length()) * c_in
+    vec = mux_pack(x, 1 << (in_slots - 1).bit_length())
+
+    expected = torch.nn.functional.conv2d(x[None], weight, stride=stride, padding=padding)[0]
+    out = conv.forward_clear(vec)
+    assert torch.allclose(out[_mux_slot_indices(c_out, *conv.output_hw())], expected)
+    assert int((out != 0).sum()) <= expected.numel()
+
+    conv_bias = HomMuxConvBias(c_in, c_out, kernel, hw, stride=stride, padding=padding)
+    conv_bias.set_data(weight, bias)
+    out = conv_bias.forward_clear(vec)
+    assert torch.allclose(out[_mux_slot_indices(c_out, *conv.output_hw())], expected + bias[:, None, None])
 
 
 def test_clear_execution_does_not_trace():

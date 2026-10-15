@@ -24,6 +24,14 @@ def _mux_slots(channels, image_hw):
     return 1 << (used - 1).bit_length()
 
 
+def _mux_slot_indices(channels, h, w, device=None) -> torch.Tensor:
+    """[C, H, W] slot of each map entry: (i * Wt + j) * C + c."""
+    wt = 1 << (w - 1).bit_length()
+    c, i, j = torch.meshgrid(torch.arange(channels, device=device), torch.arange(h, device=device),
+                             torch.arange(w, device=device), indexing="ij")
+    return (i * wt + j) * channels + c
+
+
 def mux_pack(x, n_slots: int) -> torch.Tensor:
     """A (C, H, W) map as the slot vector a client encrypts for a mux conv: channel c of
     pixel (i, j) at slot (i * Wt + j) * C + c, with Wt the width rounded up to a power of 2.
@@ -33,9 +41,8 @@ def mux_pack(x, n_slots: int) -> torch.Tensor:
     ht, wt = 1 << (h - 1).bit_length(), 1 << (w - 1).bit_length()
     if channels * ht * wt > n_slots:
         raise ValueError(f"a {channels}x{h}x{w} map needs {channels * ht * wt} slots, got {n_slots}")
-    c, i, j = torch.meshgrid(torch.arange(channels), torch.arange(h), torch.arange(w), indexing="ij")
     vec = torch.zeros(n_slots, dtype=torch.float64)
-    vec[(i * wt + j) * channels + c] = x
+    vec[_mux_slot_indices(channels, h, w)] = x
     return vec
 
 
@@ -87,9 +94,22 @@ class HomMuxConv(HomConvBase):
             f"mux conv weight should be {self.kernel_shape}, got {tuple(weight.shape)}")
         super().set_data(weight)
 
-    def forward_clear(self, *inputs, **kwargs):
-        # without this, the leaf default would return the input unchanged
-        raise NotImplementedError("HomMuxConv has no clear execution; the backend's apply_clear has one")
+    def forward_clear(self, input):
+        """The conv on slot vectors [..., n]: unpack the input map (the input repeats at its
+        length, so a shorter one is tiled), torch's conv2d, pack into the output's slots."""
+        weight = self._require_clear_data().to(dtype=input.dtype, device=input.device)
+        c_out, c_in = self.kernel_shape[:2]
+        h, w = self.image_hw
+        in_slots = _mux_slots(c_in, self.image_hw)
+        if input.shape[-1] < in_slots:
+            input = input.repeat(*([1] * (input.dim() - 1)), in_slots // input.shape[-1])
+        batch = input.shape[:-1]
+        x = input.reshape(-1, input.shape[-1])[:, _mux_slot_indices(c_in, h, w, input.device)]
+        y = torch.nn.functional.conv2d(x, weight, stride=self.stride, padding=self.padding,
+                                       dilation=self.dilation)
+        out = torch.zeros(y.shape[0], _mux_slots(c_out, self.output_hw()), dtype=input.dtype, device=input.device)
+        out[:, _mux_slot_indices(c_out, *self.output_hw(), input.device)] = y
+        return out.reshape(*batch, out.shape[-1])
 
 
 class HomMuxConvBias(HomOp):
