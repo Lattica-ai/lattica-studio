@@ -72,7 +72,7 @@ These modules live under `lattica_build.examples.advanced`.
 | `mnist_fc` | Reshape, two FC layers, square, and client softmax |
 | `bootstrap` | Two bootstrapping operations |
 | `bitonic_sort` | Composite compare/exchange stages with bootstrapping |
-| `resnet20` | ResNet-20 on CIFAR-10 with multiplexed convolutions, at n = 2^16 (encrypted: a 32 GB GPU) |
+| `resnet20` | A full ResNet-20 pipeline using downloaded weights |
 | `rnn` | A recurrent layer unrolled over 128 timesteps with a polynomial tanh and bootstrapping |
 
 `resnet20` downloads a pretrained model when its pipeline is built. All basic

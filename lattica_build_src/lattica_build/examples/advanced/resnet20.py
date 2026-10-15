@@ -1,6 +1,4 @@
-"""ResNet-20 on CIFAR-10, on the multiplexed ("gap") layout (Lee et al. 2022).
-
-Every feature map is one ciphertext with all its channels interleaved per pixel.
+"""Every feature map is one ciphertext with all its channels interleaved per pixel.
 A conv is one plaintext multiply; a strided conv also re-interleaves to the next
 stage's layout in the same level. A bootstrap precedes every ReLU.
 Runs at n = 2^16: encrypted, it needs a 32 GB GPU.
@@ -17,7 +15,7 @@ from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.ml.conv_bn_fused import fold_batch_norm
-from lattica_build.operators.ml.h_mux_conv import HomMuxConvBias, mux_pack
+from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
@@ -63,10 +61,9 @@ def _conv_bn(conv, bn, layout, delta, *, weight=None):
     """A mux convolution with its batch norm and the next ReLU's 1/delta folded in."""
     _, height, width = layout
     weight = conv.weight if weight is None else weight
-    op = HomMuxConvBias(
-        in_channels=weight.shape[1], out_channels=weight.shape[0],
-        kernel_size=conv.kernel_size, image_hw=(height, width),
-        stride=conv.stride, padding=conv.padding, dilation=conv.dilation,
+    op = HomMuxConv(
+        kernel_shape=tuple(weight.shape), image_hw=(height, width),
+        stride=conv.stride, padding=conv.padding, dilation=conv.dilation, bias=True,
     )
     op.set_data(*fold_batch_norm(
         weight.detach().to(torch.float64), None,
@@ -161,8 +158,8 @@ class _MuxHead(HomOp):
         spatial_positions = height * width
         # the last ReLU leaves one level, for the FC
         self.avgpool = HomSumSlots(k=spatial_positions)
-        self.fc = HomMuxConvBias(in_channels=channels, out_channels=10, kernel_size=(1, 1),
-                                 image_hw=(1, 1), padding=(0, 0))
+        self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0),
+                             bias=True)
         # SumSlots supplies a sum; fold the averaging factor into the FC weights.
         fc_weights = model.fc.weight.detach().to(torch.float64).reshape(10, channels, 1, 1)
         self.fc.set_data(weight=fc_weights / spatial_positions,
@@ -224,7 +221,7 @@ class Pipeline(PipelineWrapper):
 
     def _set_example_pt(self):
         self._img, self._category = self.load_cifar_sample()
-        return mux_pack(pad_channels(self._img, STEM_CHANNELS), SUBRING_SLOTS)
+        return MuxLayout(*STEM_LAYOUT, SUBRING_SLOTS).pack(pad_channels(self._img, STEM_CHANNELS))
 
     def verify_results(self, actual, expected):
         # FHE must track the clear run of the same pipeline.

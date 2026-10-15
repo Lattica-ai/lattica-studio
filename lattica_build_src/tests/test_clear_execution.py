@@ -1,5 +1,7 @@
 import itertools
 import json
+import pickle
+import random
 from pathlib import Path
 from unittest import SkipTest
 
@@ -58,7 +60,7 @@ def test_slot_client_and_fhe_clear_execution():
     assert torch.equal(HomConj()(z), z.conj())
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
     assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
-    assert torch.equal(HomSumSlots(k=3)(x), x[:3].sum().expand_as(x))
+    assert torch.equal(HomSumSlots(k=4)(x), x.reshape(4, 2).sum(0).repeat(4))
     assert torch.equal(HomModSwitch()(x), x)
     assert torch.equal(Bootstrap()(x), x)
     assert torch.equal(HomRingSwitch(10)(x), x)
@@ -172,7 +174,7 @@ def test_composites_and_pipeline_clear_execution():
 ])
 def test_mux_conv_clear_matches_torch(c_in, c_out, hw, kernel, stride, padding):
     """HomMuxConv in the clear: unpack, conv2d, pack into the output layout."""
-    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBias, _mux_slot_indices, mux_pack
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
 
     torch.manual_seed(0)
     x = torch.randn(c_in, *hw, dtype=torch.float64)
@@ -180,18 +182,17 @@ def test_mux_conv_clear_matches_torch(c_in, c_out, hw, kernel, stride, padding):
     bias = torch.randn(c_out, dtype=torch.float64)
     conv = HomMuxConv((c_out, c_in, kernel, kernel), hw, stride=stride, padding=padding)
     conv.set_data(weight)
-    in_slots = (1 << (hw[0] - 1).bit_length()) * (1 << (hw[1] - 1).bit_length()) * c_in
-    vec = mux_pack(x, 1 << (in_slots - 1).bit_length())
+    vec = MuxLayout(c_in, *hw).pack(x)
 
     expected = torch.nn.functional.conv2d(x[None], weight, stride=stride, padding=padding)[0]
     out = conv.forward_clear(vec)
-    assert torch.allclose(out[_mux_slot_indices(c_out, *conv.output_hw())], expected)
+    assert torch.allclose(out[MuxLayout(c_out, *conv.output_hw).slot_map()], expected)
     assert int((out != 0).sum()) <= expected.numel()
 
-    conv_bias = HomMuxConvBias(c_in, c_out, kernel, hw, stride=stride, padding=padding)
+    conv_bias = HomMuxConv((c_out, c_in, kernel, kernel), hw, stride=stride, padding=padding, bias=True)
     conv_bias.set_data(weight, bias)
     out = conv_bias.forward_clear(vec)
-    assert torch.allclose(out[_mux_slot_indices(c_out, *conv.output_hw())], expected + bias[:, None, None])
+    assert torch.allclose(out[MuxLayout(c_out, *conv.output_hw).slot_map()], expected + bias[:, None, None])
 
 
 def test_clear_execution_does_not_trace():
@@ -239,29 +240,59 @@ def test_bitonic_sort_composite_example_sorts_input():
     example.verify_results(result, expected)
 
 
-def test_resnet_example_builds_the_mux_resnet():
-    """A bootstrap before every ReLU, none in the head; each stage's first block downsamples
-    with stride-2 convs that re-interleave to the stage's channel count."""
+def test_resnet_composite_example_matches_pretrained_model():
     from lattica_build.examples.advanced import resnet20
+    from lattica_build.operators.ml.h_mux_conv import MuxLayout
 
+    examples_data = (
+        Path(__file__).resolve().parents[1]
+        / "lattica_build/examples/advanced/data"
+    )
+    cifar_batch_path = examples_data / "cifar10_test_batch"
+    if not cifar_batch_path.exists():
+        raise SkipTest("local CIFAR-10 test fixture is not available")
+
+    with cifar_batch_path.open("rb") as batch_file:
+        batch = pickle.load(batch_file, encoding="bytes")
+
+    sample_index = random.Random(0).randrange(len(batch[b"labels"]))
+    normalized_image, _ = resnet20.Pipeline.load_cifar_sample(sample_index)
+    reference_model = torch.hub.load(
+        "chenyaofo/pytorch-cifar-models",
+        "cifar10_resnet20",
+        pretrained=True,
+        verbose=False,
+    ).eval()
     example = resnet20.Pipeline()
-    hom = example.get_hom_pipeline().hom
-    assert hasattr(hom.stem, "bootstrap") and not hasattr(hom.head, "bootstrap")
-    assert not hom.layer1.block1.is_transition
-    for layer in (2, 3):
-        block = getattr(hom, f"layer{layer}").block1
-        channels = resnet20.LAYER_OUT[layer][0]
-        for conv in (block.convBN1.conv, block.downsample.conv):
-            assert conv.stride == (2, 2) and conv.kernel_shape[0] == channels
-    assert example.build_params().n == resnet20.N
+    pipeline = example.build_pipeline()
+    params = example.build_params()
+    with torch.no_grad():
+        expected_class = reference_model(
+            normalized_image.to(torch.float32).reshape(1, 3, 32, 32)
+        ).argmax(dim=-1).item()
+
+    # The client packs the normalized image into the mux layout; there is no client_pre.
+    packed_image = MuxLayout(*resnet20.STEM_LAYOUT, resnet20.SUBRING_SLOTS).pack(
+        resnet20.pad_channels(normalized_image, resnet20.STEM_CHANNELS)
+    )
+    result = pipeline.forward_clear(
+        packed_image,
+        hom_params=params,
+    )
+    # The head's 1x1 output layout puts logit c at slot c.
+    predicted_class = result[..., :10].argmax().item()
+    assert predicted_class == expected_class, (
+        f"clear ResNet predicted {predicted_class} for CIFAR sample "
+        f"{sample_index}, expected pretrained-model class {expected_class}"
+    )
 
 
-def test_mux_pack_places_each_channel_at_its_slot():
+def test_mux_layout_packs_each_channel_at_its_slot():
     """Sides that are not powers of 2: the width pads to 8."""
-    from lattica_build.operators.ml.h_mux_conv import mux_pack
+    from lattica_build.operators.ml.h_mux_conv import MuxLayout
 
     x = torch.arange(1, 4 * 3 * 5 + 1, dtype=torch.float64).reshape(4, 3, 5)
-    vec = mux_pack(x, 128)
+    vec = MuxLayout(4, 3, 5, 128).pack(x)
     for c, i, j in itertools.product(range(4), range(3), range(5)):
         assert vec[(i * 8 + j) * 4 + c] == x[c, i, j]
     assert int((vec != 0).sum()) == x.numel()

@@ -1,49 +1,82 @@
-"""Convolution operators on the multiplexed ("gap") packing of Lee et al. 2022.
+"""Convolution operators on the multiplexed ("gap") packing.
 
 A (C, H, W) feature map is one ciphertext with all its channels interleaved per
-pixel. Each conv spends one level; its bias is a plaintext add (HomConstAdd) of the
-bias spread over the output map, which spends none.
+pixel. Each conv spends one level; its optional bias, spread over the output map, is
+a plaintext add that spends none.
 """
 
-from typing import Tuple, Union
+from dataclasses import dataclass
+from typing import Optional, Tuple, Union
 
 import torch
 
-from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
-from lattica_build.operators.ml.h_conv import HomConvBase, _normalize_tuple, conv_output_hw
+from lattica_build.operators.ml.h_conv import HomConvBase
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 
-def _mux_slots(channels, image_hw):
-    """Slots a (channels, H, W) mux layout takes, rounded up to a power of two."""
-    h, w = image_hw
-    used = (1 << (h - 1).bit_length()) * (1 << (w - 1).bit_length()) * channels
-    return 1 << (used - 1).bit_length()
+def next_pow2(x: int) -> int:
+    """The smallest power of 2 >= x (1 for x <= 1)."""
+    return 1 << (max(int(x), 1) - 1).bit_length()
 
 
-def _mux_slot_indices(channels, h, w, device=None) -> torch.Tensor:
-    """[C, H, W] slot of each map entry: (i * Wt + j) * C + c."""
-    wt = 1 << (w - 1).bit_length()
-    c, i, j = torch.meshgrid(torch.arange(channels, device=device), torch.arange(h, device=device),
-                             torch.arange(w, device=device), indexing="ij")
-    return (i * wt + j) * channels + c
+@dataclass(frozen=True)
+class MuxLayout:
+    """A (C, H, W) map in one ciphertext of n_slots slots.
 
+    Each pixel holds its C channels side by side: channel c of pixel (i, j) sits at slot
+    (i * Wt + j) * C + c, with Wt the width rounded up to a power of 2. n_slots defaults
+    to the layout's period.
+    """
 
-def mux_pack(x, n_slots: int) -> torch.Tensor:
-    """A (C, H, W) map as the slot vector a client encrypts for a mux conv: channel c of
-    pixel (i, j) at slot (i * Wt + j) * C + c, with Wt the width rounded up to a power of 2.
-    The map takes C * Ht * Wt slots, Ht the height rounded up the same way."""
-    x = torch.as_tensor(x, dtype=torch.float64)
-    channels, h, w = x.shape
-    ht, wt = 1 << (h - 1).bit_length(), 1 << (w - 1).bit_length()
-    if channels * ht * wt > n_slots:
-        raise ValueError(f"a {channels}x{h}x{w} map needs {channels * ht * wt} slots, got {n_slots}")
-    vec = torch.zeros(n_slots, dtype=torch.float64)
-    vec[_mux_slot_indices(channels, h, w)] = x
-    return vec
+    channels: int
+    height: int
+    width: int
+    n_slots: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.n_slots is None:
+            object.__setattr__(self, "n_slots", self.period)
+        if min(self.channels, self.height, self.width, self.n_slots) <= 0:
+            raise ValueError(f"layout sizes must be positive, got {self}")
+        if self.size > self.n_slots:
+            raise ValueError(f"a {self.channels}x{self.height}x{self.width} map needs {self.size} "
+                             f"slots, the ciphertext has {self.n_slots}")
+
+    @property
+    def size(self) -> int:
+        """Slots the map occupies: C channels on a power-of-2 grid."""
+        return next_pow2(self.height) * next_pow2(self.width) * self.channels
+
+    @property
+    def period(self) -> int:
+        """The size rounded up to a power of 2: the least period that holds the map."""
+        return next_pow2(self.size)
+
+    def slot(self, channel, row, column):
+        """The slot of each (channel, row, column); takes ints or index arrays, numpy or torch."""
+        return (row * next_pow2(self.width) + column) * self.channels + channel
+
+    def slot_map(self, device=None) -> torch.Tensor:
+        """[C, H, W] slot of each map entry."""
+        return self.slot(*torch.meshgrid(torch.arange(self.channels, device=device),
+                                         torch.arange(self.height, device=device),
+                                         torch.arange(self.width, device=device), indexing="ij"))
+
+    def pack(self, x) -> torch.Tensor:
+        """A (C, H, W) map as the slot vector a client encrypts."""
+        x = torch.as_tensor(x, dtype=torch.float64)
+        assert tuple(x.shape) == (self.channels, self.height, self.width), (
+            f"pack expects {(self.channels, self.height, self.width)}, got {tuple(x.shape)}")
+        vec = torch.zeros(self.n_slots, dtype=torch.float64)
+        vec[self.slot_map()] = x
+        return vec
+
+    def unpack(self, vec) -> torch.Tensor:
+        """Slot vectors [..., n] -> maps [..., C, H, W], as the client decodes them."""
+        vec = torch.as_tensor(vec)
+        return vec[..., self.slot_map(vec.device)]
 
 
 def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n) -> HomValue:
@@ -58,10 +91,13 @@ def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n
 
 
 class HomMuxConv(HomConvBase):
-    """Convolution on the mux layout, without bias (see HomMuxConvBias).
+    """Convolution on the mux layout.
 
     kernel_shape: (C_out, C_in, kh, kw). image_hw: (H, W) of the input. A strided
     conv also re-interleaves its output to the C_out channels, in the same level.
+    bias: set_data takes a per-channel bias after the weight, added at every slot of
+    its channel. A batch norm folds into the weight and bias first
+    (conv_bn_fused.fold_batch_norm).
     """
 
     OP_TYPE = HomOpType.MuxConv
@@ -70,70 +106,50 @@ class HomMuxConv(HomConvBase):
                  stride: Union[int, Tuple[int, int]] = (1, 1),
                  padding: Union[int, Tuple[int, int]] = (0, 0),
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
-                 with_modswitch: bool = True) -> None:
+                 with_modswitch: bool = True,
+                 bias: bool = False) -> None:
         super().__init__()
         self.kernel_shape = tuple(kernel_shape)
         self._set_geometry(self.kernel_shape[2:], stride, padding, dilation, image_hw)
         self.with_modswitch = with_modswitch
+        self.bias = bias
 
-    def output_hw(self):
-        return conv_output_hw(self.image_hw, self.kernel_size, self.stride, self.padding, self.dilation)
+    def _layouts(self):
+        """The input and output maps' layouts, each at its own period."""
+        c_out, c_in = self.kernel_shape[:2]
+        return MuxLayout(c_in, *self.image_hw), MuxLayout(c_out, *self.output_hw)
 
     def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
-        c_out, c_in = self.kernel_shape[:2]
-        out_hw = self.output_hw()
-        return _infer_mux_output(input, _mux_slots(c_in, self.image_hw),
-                                 _mux_slots(c_out, out_hw), internal_n)
+        input_layout, output_layout = self._layouts()
+        return _infer_mux_output(input, input_layout.period, output_layout.period, internal_n)
 
     def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
         return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
                                         rows_budget=None, op_scale_up=None)
 
-    def set_data(self, weight: torch.Tensor, **kwargs) -> None:
+    def set_data(self, weight: torch.Tensor, bias: Optional[torch.Tensor] = None, **kwargs) -> None:
         assert tuple(weight.shape) == self.kernel_shape, (
             f"mux conv weight should be {self.kernel_shape}, got {tuple(weight.shape)}")
-        super().set_data(weight)
+        if not self.bias:
+            assert bias is None, "HomMuxConv defined with bias=False, but got a bias"
+            super().set_data(weight)
+            return
+        assert bias is not None, "HomMuxConv defined with bias=True, but the bias is missing"
+        bias = torch.as_tensor(bias, dtype=torch.float64)
+        assert bias.shape == (self.kernel_shape[0],), (
+            f"mux conv bias should be 1D of length {self.kernel_shape[0]}, got {tuple(bias.shape)}")
+        super().set_data(weight, bias)
 
     def forward_clear(self, input):
         """The conv on slot vectors [..., n]: unpack the input map (the input repeats at its
-        length, so a shorter one is tiled), torch's conv2d, pack into the output's slots."""
-        weight = self._require_clear_data().to(dtype=input.dtype, device=input.device)
-        c_out, c_in = self.kernel_shape[:2]
-        h, w = self.image_hw
-        in_slots = _mux_slots(c_in, self.image_hw)
-        if input.shape[-1] < in_slots:
-            input = input.repeat(*([1] * (input.dim() - 1)), in_slots // input.shape[-1])
+        length, so a shorter one is tiled), the clear conv HomConv also runs, bias included,
+        pack into the output's slots."""
+        input_layout, output_layout = self._layouts()
+        if input.shape[-1] < input_layout.n_slots:
+            input = input.repeat(*([1] * (input.dim() - 1)), input_layout.n_slots // input.shape[-1])
         batch = input.shape[:-1]
-        x = input.reshape(-1, input.shape[-1])[:, _mux_slot_indices(c_in, h, w, input.device)]
-        y = torch.nn.functional.conv2d(x, weight, stride=self.stride, padding=self.padding,
-                                       dilation=self.dilation)
-        out = torch.zeros(y.shape[0], _mux_slots(c_out, self.output_hw()), dtype=input.dtype, device=input.device)
-        out[:, _mux_slot_indices(c_out, *self.output_hw(), input.device)] = y
+        x = input_layout.unpack(input.reshape(-1, input.shape[-1]))
+        y = self._clear_conv2d(x, stride=self.stride, padding=self.padding)
+        out = torch.zeros(y.shape[0], output_layout.n_slots, dtype=input.dtype, device=input.device)
+        out[:, output_layout.slot_map(input.device)] = y
         return out.reshape(*batch, out.shape[-1])
-
-
-class HomMuxConvBias(HomOp):
-    """Conv + bias on the mux layout: a HomMuxConv, then a HomConstAdd of bias[c] at every
-    slot of output channel c. A batch norm folds into the weight and bias first
-    (conv_bn_fused.fold_batch_norm)."""
-
-    def __init__(self, in_channels, out_channels, kernel_size, image_hw,
-                 stride=(1, 1), padding=(0, 0), dilation=(1, 1)) -> None:
-        super().__init__()
-        self.conv = HomMuxConv(
-            kernel_shape=(out_channels, in_channels, *_normalize_tuple(kernel_size, 2, 'kernel_size')),
-            image_hw=image_hw, stride=stride, padding=padding, dilation=dilation)
-        self._output_slots = _mux_slots(out_channels, self.conv.output_hw())
-        self.bias_add = HomConstAdd(dims=(self._output_slots,))
-
-    def forward(self, x: HomValue) -> HomValue:
-        return self.bias_add(self.conv(x))
-
-    def set_data(self, weight, bias, **kwargs) -> None:
-        out_channels = self.conv.kernel_shape[0]
-        bias = torch.as_tensor(bias, dtype=torch.float64)
-        assert bias.shape == (out_channels,), (
-            f"mux bias should be 1D of length {out_channels}, got {tuple(bias.shape)}")
-        self.conv.set_data(weight)
-        bias_map = bias[:, None, None].expand(out_channels, *self.conv.output_hw())
-        self.bias_add.set_data(mux_pack(bias_map, self._output_slots))
