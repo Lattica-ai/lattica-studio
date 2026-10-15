@@ -27,10 +27,12 @@ BOOT_CONFIGURATION = {
     # Headroom q0/|m| for messages bounded by 1, set by what EvalMod sees: the
     # slots with slim_boot (StC first), the polynomial coefficients otherwise.
     # Costs precision 1:1 but suppresses the sine's uncorrected cubic term, an
-    # error of ~6.6 * m**3 / 2**(2 * log_delta). Slots peak at 12. Coefficients
+    # error of (2*pi)**2 / 6 * m**3 / 4**log_delta (~6.6 m**3 / 4**log_delta) for
+    # the largest value m EvalMod sees. Slots peak at 12. Coefficients
     # are ~sqrt(2n) below the n slots, except the constant one, which carries
     # the slots' mean: a mean of 0.5 costs 2e-4 at 6, 1.3e-5 at 8. Above 8,
     # EvalMod's own error, summed over the coefficients by StC, takes over.
+    # An input with only q0 left must be at most 2 * q0 / 2**log_delta.
     'log_delta' : 8,
     'log_delta_slim' : 12,
 
