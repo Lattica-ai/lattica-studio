@@ -26,9 +26,9 @@ BOOT_CONFIGURATION = {
     # wrap count |I| depends on it rather than on sk_hw. ModRaise always
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
-    # Bound on the ModRaise wrap count |I|: at H=32, |I| >= 14 has probability 2**-38.8. The degree-30
-    # cosine fits [-K, K] to 1.5e-12 at K = 14 (8e-11 at K = 16), so a larger K costs accuracy, not depth.
-    'k' : 14,
+    # Bound on the ModRaise wrap count |I| (at H=32, |I| >= 14 has probability 2**-38.8). Han-Ki's
+    # cosine needs degree 2K-2, so the even degree 30 allows K = 16, as Lattigo and Cheddar use.
+    'k' : 16,
 
     # Headroom q0/|m| for messages bounded by 1:
     # the slots for SLIM, the polynomial coefficients for REAL/COMPLEX. Costs
@@ -102,4 +102,9 @@ class BootstrappingParams:
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
         # EvalMod's cosine is an even polynomial in y = x - 1/(4K), evaluated through z = T_2(y)
         self.cosine_deg = self.optimal_poly_deg_per_depth(self.n_cosine_levels, even=True)
+        # Han-Ki silently raises a lower degree to 2K-2, deeper than provisioned.
+        if 2 * self.k - 2 > self.cosine_deg:
+            raise ValueError(
+                f"k={self.k} needs a cosine of degree {2 * self.k - 2}; "
+                f"n_cosine_levels={self.n_cosine_levels} gives degree {self.cosine_deg}.")
         self.arcsine_deg = self.optimal_poly_deg_per_depth(self.n_arcsine_levels)
