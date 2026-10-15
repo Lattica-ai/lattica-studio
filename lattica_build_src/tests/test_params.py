@@ -10,10 +10,10 @@ def _boot_params_dict(n=1024, **extra):
                 bootstrapping=True, **extra)
 
 
-@pytest.mark.parametrize("variant, flags", [(0, (True, True)), (1, (False, False)), (2, (True, False))])
-def test_legacy_boot_variant_maps_to_the_flags(variant, flags):
-    """Params saved with bootstrapping_variant (SLIM, COMPLEX, REAL) load as the two flags, and round-trip."""
-    params = HomParams.from_dict(_boot_params_dict(bootstrapping_variant=variant))
+@pytest.mark.parametrize("flags", [(True, True), (False, False), (True, False)])
+def test_boot_flags_round_trip(flags):
+    """real_boot and slim_boot load into the params and their boot params, and round-trip."""
+    params = HomParams.from_dict(_boot_params_dict(real_boot=flags[0], slim_boot=flags[1]))
     assert (params.real_boot, params.slim_boot) == flags
     assert (params.boot_params.real_boot, params.boot_params.slim_boot) == flags
     assert HomParams.from_dict(params.to_dict()).to_dict() == params.to_dict()

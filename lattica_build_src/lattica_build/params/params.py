@@ -8,9 +8,6 @@ from typing import Any, Sequence, Tuple, Union
 from lattica_build.params.bootstrapping_params import BootstrappingParams
 
 QListNorm = Tuple[Tuple[int, ...], ...]
-# Params saved before the two flags carry bootstrapping_variant (SLIM = 0, COMPLEX = 1, REAL = 2), e.g. the
-# models already uploaded; from_dict maps it to (real_boot, slim_boot) so they still load.
-_LEGACY_BOOT_VARIANTS = {0: (True, True), 1: (False, False), 2: (True, False)}
 QListInput = Sequence[Sequence[int]]
 GHSInput = Sequence[int]
 
@@ -154,11 +151,6 @@ class HomParams:
             else:
                 d["num_special_primes"] = d.pop("g_base_bits") // 61
         d.pop("ghs_keyswtich_scale_precision", None)
-        if "bootstrapping_variant" in d:
-            variant = d.pop("bootstrapping_variant")
-            if variant not in _LEGACY_BOOT_VARIANTS:
-                raise ValueError(f"Invalid bootstrapping_variant value: {variant!r}")
-            d["real_boot"], d["slim_boot"] = _LEGACY_BOOT_VARIANTS[variant]
 
         params = cls(**d)
         if bootstrapping and boot_dft_levels is not None and boot_cts_scale is not None:
