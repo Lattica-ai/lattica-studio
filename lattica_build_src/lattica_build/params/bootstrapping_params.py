@@ -26,9 +26,9 @@ BOOT_CONFIGURATION = {
     # wrap count |I| depends on it rather than on sk_hw. ModRaise always
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
-    # Bound on the ModRaise wrap count |I|: Han-Ki needs degree 2K-2, so depth 5
-    # (degree 27) allows K <= 14. At H=32, |I| >= 14 has probability 2**-38.8.
-    'k' : 14,
+    # Bound on the ModRaise wrap count |I| (at H=32, |I| >= 14 has probability 2**-38.8). Han-Ki's
+    # cosine needs degree 2K-2, so the even degree 30 allows K = 16, as Lattigo and Cheddar use.
+    'k' : 16,
 
     # Headroom q0/|m| for messages bounded by 1:
     # the slots for SLIM, the polynomial coefficients for REAL/COMPLEX. Costs
@@ -47,13 +47,14 @@ BOOT_CONFIGURATION = {
 class BootstrappingParams:
 
     @staticmethod
-    def optimal_poly_deg_per_depth(depth):
-        optimal_degs = [2, 3, 5, 13, 27, 59, 119, 243]
+    def optimal_poly_deg_per_depth(depth, even=False):
+        """The highest degree the backend's tree evaluates in `depth` levels: it takes
+        ceil(log2(deg + 1)) of them, so 2**depth - 1, and 2**depth - 2 for an even polynomial."""
         if depth < 0 or depth > 8:
             raise ValueError("depth must be in the range [0, 8]")
         if depth == 0:
             return 0
-        return optimal_degs[depth - 1]
+        return 2 ** depth - 2 if even else 2 ** depth - 1
 
     @staticmethod
     def get_q_list_precision(scale: int, levels: int):
@@ -99,7 +100,8 @@ class BootstrappingParams:
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
         self.q_base_precision = self.get_q_base_precision()
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
-        self.cosine_deg = self.optimal_poly_deg_per_depth(self.n_cosine_levels)
+        # EvalMod's cosine is an even polynomial in y = x - 1/(4K), evaluated through z = T_2(y)
+        self.cosine_deg = self.optimal_poly_deg_per_depth(self.n_cosine_levels, even=True)
         # Han-Ki silently raises a lower degree to 2K-2, deeper than provisioned.
         if 2 * self.k - 2 > self.cosine_deg:
             raise ValueError(
