@@ -1,6 +1,5 @@
 """See `params/README.md` for usage details."""
 
-
 BOOT_CONFIGURATION = {
     # Prime sizes (bits) and level counts of the CtS, EvalMod and StC sections.
     # 4 DFT levels rather than 3: about half the diagonals per factor (16-31 vs

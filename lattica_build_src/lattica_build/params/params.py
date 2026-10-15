@@ -8,7 +8,8 @@ from typing import Any, Sequence, Tuple, Union
 from lattica_build.params.bootstrapping_params import BootstrappingParams
 
 QListNorm = Tuple[Tuple[int, ...], ...]
-# (real_boot, slim_boot) of the bootstrapping_variant values saved before the two flags: SLIM, COMPLEX, REAL
+# Params saved before the two flags carry bootstrapping_variant (SLIM = 0, COMPLEX = 1, REAL = 2), e.g. the
+# models already uploaded; from_dict maps it to (real_boot, slim_boot) so they still load.
 _LEGACY_BOOT_VARIANTS = {0: (True, True), 1: (False, False), 2: (True, False)}
 QListInput = Sequence[Sequence[int]]
 GHSInput = Sequence[int]
