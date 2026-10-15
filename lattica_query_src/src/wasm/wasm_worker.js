@@ -134,7 +134,8 @@ let wasmRuntimeInitializedHandler = async () => {
       }
     } catch (e) {
       console.error('Error in WASM worker operation:', e);
-      self.postMessage({ success: false, error: e.message || String(e) });
+      const error = `${e.message || String(e)} (WASM memory limit: ${memoryLimitMb} MB)`;
+      self.postMessage({ success: false, error });
     }
   };
 };
@@ -157,7 +158,39 @@ function customPrintErr(...args) {
   postMessage({ log: true, logtype: 'WASM Error', logmsg: message });
 }
 
+const WASM_PAGE_BYTES = 64 * 1024;
+const INITIAL_MEMORY_MB = 32; // memory the WASM starts with
+const MAX_MEMORY_MB_TO_TRY = [3072, 2048, 1024, 512, 256]; // memory limits to try, biggest first
+
+// Try the memory limits from the biggest down and return the first memory the browser accepts.
+// * iPhones refuse a 3 GB limit.
+let memoryLimitMb; // memory limit the browser accepted
+
+function createWasmMemory() {
+  let lastError;
+  for (const maxMb of MAX_MEMORY_MB_TO_TRY) {
+    try {
+      const memory = new WebAssembly.Memory({
+        initial: (INITIAL_MEMORY_MB * 1024 * 1024) / WASM_PAGE_BYTES,
+        maximum: (maxMb * 1024 * 1024) / WASM_PAGE_BYTES,
+        shared: true,
+      });
+      memoryLimitMb = maxMb;
+      console.log(`WASM memory limit: ${maxMb} MB`);
+      return memory;
+    } catch (e) {
+      console.warn(`WASM memory limit of ${maxMb} MB refused:`, e.message || e);
+      lastError = e;
+    }
+  }
+  throw lastError;
+}
+
+// Tells whether this is a worker thread, so that only the main thread allocates the memory.
+const IS_WASM_THREAD = typeof self.name === 'string' && self.name.startsWith('em-pthread');
+
 self.Module = {
+  ...(IS_WASM_THREAD ? {} : { wasmMemory: createWasmMemory() }),
   print: customPrint,
   printErr: customPrintErr,
   onRuntimeInitialized: wasmRuntimeInitializedHandler,

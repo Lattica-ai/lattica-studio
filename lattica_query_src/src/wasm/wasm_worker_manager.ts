@@ -38,6 +38,8 @@ export class WasmWorkerManager {
         };
 
         const onWorkerInitMessage = (event: MessageEvent) => {
+          // Skip log messages, so only the load result is checked below.
+          if (event.data?.log === true) return;
           if (this.worker) {
             this.worker.removeEventListener('message', onWorkerInitMessage);
             this.worker.removeEventListener('error', onWorkerInitError);
@@ -46,7 +48,7 @@ export class WasmWorkerManager {
             console.log('WasmWorker initialized successfully');
             resolve(undefined);
           } else {
-            const errMsg = `WasmWorker unexpected message: ${String(event.data)}`;
+            const errMsg = `WasmWorker unexpected message: ${JSON.stringify(event.data)}`;
             console.error(errMsg, event.data);
             reject(new Error(errMsg));
           }
