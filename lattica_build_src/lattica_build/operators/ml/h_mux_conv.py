@@ -1,7 +1,8 @@
 """Convolution operators on the multiplexed ("gap") packing of Lee et al. 2022.
 
 A (C, H, W) feature map is one ciphertext with all its channels interleaved per
-pixel. Each conv spends one level; the bias add spends none.
+pixel. Each conv spends one level; its bias is a plaintext add (HomConstAdd) of the
+bias spread over the output map, which spends none.
 """
 
 from typing import Tuple, Union
@@ -10,6 +11,7 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
 from lattica_build.operators.ml.h_conv import HomConvBase, _normalize_tuple, conv_output_hw
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 from lattica_build.serialization.hom_op_pb2 import HomOpType
@@ -91,8 +93,9 @@ class HomMuxConv(HomConvBase):
 
 
 class HomMuxConvBias(HomOp):
-    """Conv + bias on the mux layout: a HomMuxConv followed by a HomMuxBiasAdd. A batch
-    norm folds into the weight and bias first (conv_bn_fused.fold_batch_norm)."""
+    """Conv + bias on the mux layout: a HomMuxConv, then a HomConstAdd of bias[c] at every
+    slot of output channel c. A batch norm folds into the weight and bias first
+    (conv_bn_fused.fold_batch_norm)."""
 
     def __init__(self, in_channels, out_channels, kernel_size, image_hw,
                  stride=(1, 1), padding=(0, 0), dilation=(1, 1)) -> None:
@@ -100,32 +103,17 @@ class HomMuxConvBias(HomOp):
         self.conv = HomMuxConv(
             kernel_shape=(out_channels, in_channels, *_normalize_tuple(kernel_size, 2, 'kernel_size')),
             image_hw=image_hw, stride=stride, padding=padding, dilation=dilation)
-        self.bias_add = HomMuxBiasAdd(channels=out_channels, image_hw=self.conv.output_hw())
+        self._output_slots = _mux_slots(out_channels, self.conv.output_hw())
+        self.bias_add = HomConstAdd(dims=(self._output_slots,))
 
     def forward(self, x: HomValue) -> HomValue:
         return self.bias_add(self.conv(x))
 
     def set_data(self, weight, bias, **kwargs) -> None:
+        out_channels = self.conv.kernel_shape[0]
+        bias = torch.as_tensor(bias, dtype=torch.float64)
+        assert bias.shape == (out_channels,), (
+            f"mux bias should be 1D of length {out_channels}, got {tuple(bias.shape)}")
         self.conv.set_data(weight)
-        self.bias_add.set_data(bias)
-
-
-class HomMuxBiasAdd(HomOp):
-    """Adds a per-channel bias on the mux layout. channels and image_hw describe the
-    layout it is added on (the conv's output)."""
-
-    OP_TYPE = HomOpType.MuxBiasAdd
-
-    def __init__(self, channels, image_hw) -> None:
-        super().__init__()
-        self.channels = channels
-        self.image_hw = _normalize_tuple(image_hw, 2, 'image_hw')
-
-    def set_data(self, bias: torch.Tensor, **kwargs) -> None:
-        assert bias.ndim == 1 and len(bias) == self.channels, (
-            f"mux bias should be 1D of length {self.channels}, got {tuple(bias.shape)}")
-        super().set_data(bias)
-
-    def forward_clear(self, *inputs, **kwargs):
-        # without this, the leaf default would return the input unchanged
-        raise NotImplementedError("HomMuxBiasAdd has no clear execution; the backend's apply_clear has one")
+        bias_map = bias[:, None, None].expand(out_channels, *self.conv.output_hw())
+        self.bias_add.set_data(mux_pack(bias_map, self._output_slots))

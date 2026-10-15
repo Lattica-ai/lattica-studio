@@ -166,13 +166,13 @@ def test_composites_and_pipeline_clear_execution():
 
 
 def test_mux_ops_refuse_clear_execution():
-    """The mux conv and bias have no clear path; they must not pass their input through."""
-    from lattica_build.operators.ml.h_mux_conv import HomMuxBiasAdd, HomMuxConv, HomMuxConvBias
+    """The mux conv has no clear path; it must not pass its input through."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBias
 
     x = torch.arange(16, dtype=torch.float64)
     conv_bias = HomMuxConvBias(4, 4, 1, (2, 2))
     conv_bias.set_data(torch.ones(4, 4, 1, 1), torch.ones(4))
-    for op in (HomMuxConv((4, 4, 1, 1), (2, 2)), HomMuxBiasAdd(4, (2, 2)), conv_bias):
+    for op in (HomMuxConv((4, 4, 1, 1), (2, 2)), conv_bias):
         try:
             op.forward_clear(x)
         except NotImplementedError:
