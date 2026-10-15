@@ -37,7 +37,45 @@ def _normalize_tuple(value, n, name):
     return value_tuple
 
 
-class HomConv(HomOp):
+def conv_output_hw(image_hw, kernel_size, stride, padding, dilation):
+    """(H, W) of a conv's output, as torch.nn.Conv2d computes it."""
+    (h, w) = _normalize_tuple(image_hw, 2, 'image_hw')
+    (kh, kw) = _normalize_tuple(kernel_size, 2, 'kernel_size')
+    (sh, sw) = _normalize_tuple(stride, 2, 'stride')
+    (ph, pw) = _normalize_tuple(padding, 2, 'padding')
+    (dh, dw) = _normalize_tuple(dilation, 2, 'dilation')
+    return ((h + 2 * ph - dh * (kh - 1) - 1) // sh + 1,
+            (w + 2 * pw - dw * (kw - 1) - 1) // sw + 1)
+
+
+class HomConvBase(HomOp):
+    """The geometry and clear execution every convolution operator shares."""
+
+    def _set_geometry(self, kernel_size, stride, padding, dilation, image_hw=None):
+        """Store kernel_size, stride, padding, dilation and image_hw as 2-tuples of ints (each
+        given as an int or a pair), and output_hw when image_hw is given. padding None is
+        'same': (k - 1) // 2 on each side, 1 for a 3x3 kernel."""
+        self.kernel_size = _normalize_tuple(kernel_size, 2, "kernel_size")
+        self.stride = _normalize_tuple(stride, 2, "stride")
+        self.padding = (tuple((k - 1) // 2 for k in self.kernel_size) if padding is None
+                        else _normalize_tuple(padding, 2, "padding"))
+        self.dilation = _normalize_tuple(dilation, 2, "dilation")
+        self.image_hw = None if image_hw is None else _normalize_tuple(image_hw, 2, "image_hw")
+        self.output_hw = None if image_hw is None else conv_output_hw(
+            self.image_hw, self.kernel_size, self.stride, self.padding, self.dilation)
+
+    def _clear_conv2d(self, maps, stride, padding, groups=1):
+        """torch's conv2d of (batch, C, H, W) maps with this op's weight, and its bias if it has one."""
+        data = self._require_clear_data()
+        weight = data[0] if isinstance(data, tuple) else data
+        weight = weight.to(dtype=maps.dtype, device=maps.device)
+        bias = data[1].to(dtype=maps.dtype, device=maps.device)\
+            if isinstance(data, tuple) and len(data) > 1 else None
+        return functional.conv2d(maps, weight, bias=bias, stride=stride, padding=padding,
+                                 dilation=self.dilation, groups=groups)
+
+
+class HomConv(HomConvBase):
     """Base homomorphic 2D convolution operator.
 
     This is a backend base op (`OP_TYPE = HomOpType.Conv`) with explicit
@@ -49,7 +87,7 @@ class HomConv(HomOp):
         kernel_size: Spatial kernel size `(kh, kw)` or scalar.
         stride: Spatial stride `(sh, sw)` or scalar.
         padding: Spatial zero-padding `(ph, pw)` or scalar. When `None`, uses
-            full kernel padding.
+            'same' padding, `(k - 1) // 2` on each side.
         groups: Grouped convolution factor.
         bias: Whether this op expects a bias tensor in `set_data`.
         dilation: Spatial dilation `(dh, dw)` or scalar.
@@ -73,20 +111,11 @@ class HomConv(HomOp):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.kernel_size = _normalize_tuple(kernel_size, 2, "kernel_size")
-        if padding is None:
-            self.padding = (self.kernel_size[0], self.kernel_size[1])
-        else:
-            self.padding = _normalize_tuple(padding, 2, "padding")
-        self.stride = _normalize_tuple(stride, 2, "stride")
+        self._set_geometry(kernel_size, stride, padding, dilation, image_hw)
         self.groups = groups
         self.bias = bias
-        self.dilation = _normalize_tuple(dilation, 2, "dilation")
         self.strided = self.stride != (1, 1)
         self.stride_pitch = tuple(s * d for s, d in zip(self.stride, self.dilation))
-        self.image_hw = (
-            _normalize_tuple(image_hw, 2, "image_hw") if image_hw is not None else None
-        )
 
         if groups <= 0:
             raise ValueError(f"groups must be positive, got {groups}")
@@ -183,12 +212,6 @@ class HomConv(HomOp):
 
 
     def forward_clear(self, input):
-        data = self._require_clear_data()
-        weight = data[0] if isinstance(data, tuple) else data
-        weight = weight.to(dtype=input.dtype, device=input.device)
-        bias = data[1].to(dtype=input.dtype, device=input.device)\
-            if isinstance(data, tuple) and len(data) > 1 else None
-
         height, width = self._resolve_image_hw(input)
         channels, n_pixels = input.shape
         image_size = height * width
@@ -196,14 +219,11 @@ class HomConv(HomOp):
 
         # Present packed tiles as the batch dimension expected by conv2d.
         conv_input = input.reshape(channels, n_tiles, height, width).permute(1, 0, 2, 3)
-        raw_result = functional.conv2d(
+        raw_result = self._clear_conv2d(
             conv_input,
-            weight,
-            bias=bias,
             # Compute the dense full-resolution result first. The strided layout is applied afterward.
             stride=1,
             padding=tuple(p * d for p, d in zip(self.padding, self.dilation)),
-            dilation=self.dilation,
             groups=self.groups,
         )
 

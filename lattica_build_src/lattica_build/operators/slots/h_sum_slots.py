@@ -15,7 +15,8 @@ class HomSumSlots(HomOp):
     consume levels.
 
     Args:
-        k: Optional slot span to reduce (defaults to full slot count).
+        k: Optional number of slots each sum adds, n / k apart (defaults to full
+            slot count): slot j gets x[j] + x[j + n / k] + ... for n slots.
         stage_sizes: Optional explicit stage schedule for the summation tree.
     """
 
@@ -31,6 +32,7 @@ class HomSumSlots(HomOp):
         self.stage_sizes = stage_sizes
 
     def forward_clear(self, input):
-        dim = -1
-        k = self.k if self.k is not None else input.shape[dim]
-        return input[..., :k].sum(dim=dim, keepdim=True).expand_as(input).clone()
+        n_slots = input.shape[-1]
+        k = self.k if self.k is not None else n_slots
+        groups = input.reshape(*input.shape[:-1], k, n_slots // k)
+        return groups.sum(dim=-2, keepdim=True).expand_as(groups).reshape(input.shape).clone()

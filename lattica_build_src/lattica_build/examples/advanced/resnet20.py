@@ -1,5 +1,11 @@
+"""Every feature map is one ciphertext with all its channels interleaved per pixel.
+A conv is one plaintext multiply; a strided conv also re-interleaves to the next
+stage's layout in the same level. A bootstrap precedes every ReLU.
+Runs at n = 2^16: encrypted, it needs a 32 GB GPU.
+"""
 import pickle
 from pathlib import Path
+
 import numpy as np
 import torch
 
@@ -7,315 +13,228 @@ from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
-from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
-from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
-from lattica_build.operators.ml.conv_bn_fused import HomConvBnFused
-from lattica_build.operators.ml.h_linear import HomLinear
+from lattica_build.operators.ml.conv_bn_fused import fold_batch_norm
+from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
-from lattica_build.operators.shape.h_reshape import HomReshape
-from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
+from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
 
-# Note: not secure for production use, run with 2**16 for secure parameters.
-N = 2 ** 11
-LOG_N_SUBRING = 11
+N = 2 ** 16                                  # stem tile = 32*32*16 = 16384 <= n/2
+LOG_SUBRING = 15                              # subring_dim 2**15, nb_cols 2**14
 PT_SCALE = 2 ** 30
 Q_LIST_PRECISION = ((60, 30),) * 4
 N_SPECIAL_PRIMES = 9
-RELU_DEG = 119
-IMAGE_HW = (32, 32)
-HOM_INPUT_SHAPE = (3, IMAGE_HW[0] * IMAGE_HW[1])
-FINAL_PITCH = 4
-# The pretrained CIFAR-10 models expect normalized inputs.
-CIFAR10_MEAN = torch.tensor((0.4914, 0.4822, 0.4465))
-CIFAR10_STD = torch.tensor((0.2023, 0.1994, 0.201))
+RELU_DEG = 119                               # 7 levels with Paterson-Stockmeyer; relu(7) + conv(1) = 8 exactly
+STEM_CHANNELS = 16                            # RGB (3) zero-padded up to 16 channels
+
+# Per-stage map (C, H, W) after the stage's downsampling.
+STEM_LAYOUT = (16, 32, 32)
+LAYER_OUT = {1: (16, 32, 32), 2: (32, 16, 16), 3: (64, 8, 8)}
+LAYER_IN = {1: (16, 32, 32), 2: (16, 32, 32), 3: (32, 16, 16)}
+
+SUBRING_SLOTS = (2 ** (LOG_SUBRING-1))
+
+# ReLU-domain scaling folded into each conv's BN affine (per block, per conv).
 DELTA_INITIAL = 0.1806
 DELTAS = [
-    [[0.1722, 0.131], [0.1973, 0.1273], [0.2429, 0.1275]],  # layer 1
-    [[0.1906, 0.1232], [0.3359, 0.1161], [0.2869, 0.0893]],  # layer 2
-    [[0.2563, 0.1762], [0.2739, 0.1279], [0.2108, 0.0348]],  # layer 3
+    [[0.1722, 0.1310], [0.1973, 0.1273], [0.2429, 0.1275]],   # layer 1
+    [[0.1906, 0.1232], [0.3359, 0.1161], [0.2869, 0.0893]],   # layer 2
+    [[0.2563, 0.1762], [0.2739, 0.1279], [0.2108, 0.0348]],   # layer 3
 ]
 
+# The official CIFAR-10 test batch (lossless), and the normalization the model expects.
+CIFAR_BATCH = Path(__file__).parent / "data" / "cifar10_test_batch"
+CIFAR_SAMPLE_INDEX = 0
+CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
+CIFAR10_STD = (0.2023, 0.1994, 0.2010)
+# CIFAR-10 labels in the model's output-index order.
+CIFAR10_CLASSES = ('airplane', 'automobile', 'bird', 'cat', 'deer',
+                   'dog', 'frog', 'horse', 'ship', 'truck')
 
-def _make_relu(delta, degree):
-    return HomPolyEval(func=lambda x: np.maximum(0, x / delta), degree=degree)
+
+def make_relu(delta: float) -> HomPolyEval:
+    return HomPolyEval(func=lambda x: np.maximum(0, x / delta), degree=RELU_DEG)
 
 
-def _dilation(layer, block, transition):
-    if transition and layer >= 2 and block == 1:
-        return (2 ** (layer - 2),) * 2
-    return (2 ** (layer - 1),) * 2
-
-
-def _convbn_kwargs(conv, bn, delta, dilation, image_hw):
-    data = dict(
-        weight=conv.weight.detach(),
-        bias=None,
-        mean=bn.running_mean.detach(),
-        var=bn.running_var.detach(),
-        gamma=bn.weight.detach(),
-        beta=bn.bias.detach(),
-        eps=float(bn.eps),
-        delta=delta,
+def _conv_bn(conv, bn, layout, delta, *, weight=None):
+    """A mux convolution with its batch norm and the next ReLU's 1/delta folded in."""
+    _, height, width = layout
+    weight = conv.weight if weight is None else weight
+    op = HomMuxConv(
+        kernel_shape=tuple(weight.shape), image_hw=(height, width),
+        stride=conv.stride, padding=conv.padding, dilation=conv.dilation, bias=True,
     )
-    cout, cin_pg, kh, kw = conv.weight.shape
-    init = dict(
-        in_channels=cin_pg * conv.groups,
-        out_channels=cout,
-        kernel_size=(kh, kw),
-        stride=tuple(conv.stride),
-        padding=(kh // 2, kw // 2),
-        groups=conv.groups,
-        dilation=dilation,
-        image_hw=image_hw,
-    )
-    return {"delta": delta, "init_kwargs": init, "set_data_kwargs": data}
+    op.set_data(*fold_batch_norm(
+        weight.detach().to(torch.float64), None,
+        bn.running_mean.detach().to(torch.float64),
+        bn.running_var.detach().to(torch.float64),
+        bn.weight.detach().to(torch.float64),
+        bn.bias.detach().to(torch.float64), float(bn.eps), delta))
+    return op
 
 
-def _block_kwargs(model, layer, block, deltas, image_hw):
-    module = getattr(model, f"layer{layer}")[block - 1]
-    d1, d2 = deltas[layer - 1][block - 1]
-    result = {
-        "conv1": _convbn_kwargs(
-            module.conv1, module.bn1, d1, _dilation(layer, block, True), image_hw
-        ),
-        "conv2": _convbn_kwargs(
-            module.conv2, module.bn2, d2, _dilation(layer, block, False), image_hw
-        ),
-    }
-    if module.downsample is not None:  # dx reuses conv2's delta (d2)
-        result["downsample"] = _convbn_kwargs(
-            module.downsample[0],
-            module.downsample[1],
-            d2,
-            _dilation(layer, block, True),
-            image_hw,
-        )
-    return result
+def pad_channels(x: torch.Tensor, channels: int) -> torch.Tensor:
+    """Zero-pad a (C, H, W) tensor's channel axis up to ``channels`` (client-side,
+    free before encryption). Used for the initial 3->16 conv: with the RGB input as
+    16 channels, the stem has the layout of layer 1 (|R| small)."""
+    c = x.shape[0]
+    assert c <= channels, f"cannot pad {c} channels down to {channels}"
+    return torch.nn.functional.pad(x, (0, 0, 0, 0, 0, channels - c))
 
 
-def _final_layer_kwargs(model, image_hw, final_pitch):
-    fc = model.fc
-    cout, cin = fc.weight.shape
-    dim_final = image_hw[0] // final_pitch
-    rots = [
-        final_pitch * (i * image_hw[1] + j)
-        for i in range(dim_final)
-        for j in range(dim_final)
-        if (i, j) != (0, 0)
-    ]
-    return {
-        "avgpool_rots": rots,
-        "fc": {
-            "dims": (cout, cin, 1),  # trailing 1 broadcasts over slots
-            "weight": (fc.weight.detach() / dim_final ** 2).reshape(cout, cin, 1),
-            "bias": fc.bias.detach().reshape(cout, 1),
-        },
-    }
-
-
-class _InitialLayerPipeline(HomOp):
-    def __init__(self, kwargs, log_n_subring, relu_deg):
+# A bootstrap sits right before each ReLU: the ReLU takes 7 of its 8 levels and the
+# next conv the last one, so every conv runs on the bottom of the chain (2 limbs).
+# Each bootstrap reads its sub-ring from the incoming ciphertext.
+class _MuxStem(HomOp):
+    def __init__(self, model):
         super().__init__()
-        self.convBN = HomConvBnFused(**kwargs["init_kwargs"])
+        weight = torch.zeros(STEM_LAYOUT[0], STEM_CHANNELS, 3, 3, dtype=torch.float64)
+        weight[:, :3] = model.conv1.weight.detach().to(torch.float64)
+        self.convBN = _conv_bn(model.conv1, model.bn1, STEM_LAYOUT,
+                              DELTA_INITIAL, weight=weight)
         self.bootstrap = Bootstrap()
-        self.relu = _make_relu(kwargs["delta"], relu_deg)
+        self.relu = make_relu(DELTA_INITIAL)
 
-    def forward(self, x):
-        return self.relu(self.bootstrap(self.convBN(x)))
+    def forward(self, x: HomValue) -> HomValue:
+        convolved = self.convBN(x)
+        refreshed = self.bootstrap(convolved)
+        return self.relu(refreshed)
 
 
-class _BlockPipeline(HomOp):
-    def __init__(self, kwargs, log_n_subring, relu_deg):
+class _MuxBlock(HomOp):
+    def __init__(self, model, layer, block):
         super().__init__()
-        d1, d2 = kwargs["conv1"]["delta"], kwargs["conv2"]["delta"]
-        self.bootstrap = Bootstrap()
-        self.convBN1 = HomConvBnFused(**kwargs["conv1"]["init_kwargs"])
-        self.relu1 = _make_relu(d1, relu_deg)
-        self.convBN2 = HomConvBnFused(**kwargs["conv2"]["init_kwargs"])
-        self.relu2 = _make_relu(d2, relu_deg)
-        self.has_downsample = "downsample" in kwargs
-        if self.has_downsample:
-            self.downsample = HomConvBnFused(**kwargs["downsample"]["init_kwargs"])
+        input_layout = LAYER_IN[layer] if block == 1 else LAYER_OUT[layer]
+        output_layout = LAYER_OUT[layer]
+        first_relu_scale, second_relu_scale = DELTAS[layer - 1][block - 1]
+        self.is_transition = model.downsample is not None
+        self.convBN1 = _conv_bn(model.conv1, model.bn1, input_layout, first_relu_scale)
+        self.bootstrap1 = Bootstrap()
+        self.relu1 = make_relu(first_relu_scale)
+        self.convBN2 = _conv_bn(model.conv2, model.bn2, output_layout, second_relu_scale)
+        if self.is_transition:
+            skip_conv, skip_bn = model.downsample
+            self.downsample = _conv_bn(skip_conv, skip_bn, input_layout, second_relu_scale)
         else:
-            self.skip_delta = d2
+            self.skip_delta = second_relu_scale
+        self.bootstrap2 = Bootstrap()
+        self.relu2 = make_relu(second_relu_scale)
 
-    def forward(self, x):
-        res = self.relu1(self.bootstrap(self.convBN1(x)))
-        res = self.convBN2(res)
-        skip = self.downsample(x) if self.has_downsample else self.skip_delta * x
-        return self.relu2(self.bootstrap(res + skip))
+    def forward(self, x: HomValue) -> HomValue:
+        residual = self.convBN1(x)
+        residual = self.bootstrap1(residual)
+        residual = self.relu1(residual)
+        residual = self.convBN2(residual)
+
+        if self.is_transition:
+            shortcut = self.downsample(x)
+        else:
+            shortcut = self.skip_delta * x
+
+        combined = residual + shortcut
+        refreshed = self.bootstrap2(combined)
+        return self.relu2(refreshed)
 
 
-class _MainLayerPipeline(HomOp):
-    def __init__(self, layer, kwargs, log_n_subring, relu_deg):
+class _MuxLayer(HomOp):
+    def __init__(self, model, layer):
         super().__init__()
-        self.block1 = _BlockPipeline(kwargs[layer, 1], log_n_subring, relu_deg)
-        self.block2 = _BlockPipeline(kwargs[layer, 2], log_n_subring, relu_deg)
-        self.block3 = _BlockPipeline(kwargs[layer, 3], log_n_subring, relu_deg)
+        self.block1 = _MuxBlock(model[0], layer, 1)
+        self.block2 = _MuxBlock(model[1], layer, 2)
+        self.block3 = _MuxBlock(model[2], layer, 3)
 
-    def forward(self, x):
-        return self.block3(self.block2(self.block1(x)))
+    def forward(self, x: HomValue) -> HomValue:
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        return x
 
 
-class _FinalLayerPipeline(HomOp):
-    def __init__(self, kwargs):
+class _MuxHead(HomOp):
+    def __init__(self, model):
         super().__init__()
-        self.avgpool_sum = HomRotateSum(rotations=kwargs["avgpool_rots"], perform_sum=True)
-        self.fc = HomLinear(dims=kwargs["fc"]["dims"], mul_axis=-2)
+        channels, height, width = LAYER_OUT[3]
+        spatial_positions = height * width
+        # the last ReLU leaves one level, for the FC
+        self.avgpool = HomSumSlots(k=spatial_positions)
+        self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0),
+                             bias=True)
+        # SumSlots supplies a sum; fold the averaging factor into the FC weights.
+        fc_weights = model.fc.weight.detach().to(torch.float64).reshape(10, channels, 1, 1)
+        self.fc.set_data(weight=fc_weights / spatial_positions,
+                         bias=model.fc.bias.detach().to(torch.float64))
 
-    def forward(self, x):
-        return self.fc(self.avgpool_sum(x))
+    def forward(self, x: HomValue) -> HomValue:
+        return self.fc(self.avgpool(x))
 
 
-class _ResnetPipeline(HomOp):
-    def __init__(self, initial, blocks, final, log_n_subring, relu_deg):
+class _MuxResnetGraph(HomOp):
+    def __init__(self, model):
         super().__init__()
-        self.initial_layer = _InitialLayerPipeline(initial, log_n_subring, relu_deg)
-        self.layer1 = _MainLayerPipeline(1, blocks, log_n_subring, relu_deg)
-        self.layer2 = _MainLayerPipeline(2, blocks, log_n_subring, relu_deg)
-        self.layer3 = _MainLayerPipeline(3, blocks, log_n_subring, relu_deg)
-        self.final_layer = _FinalLayerPipeline(final)
+        self.stem = _MuxStem(model)
+        self.layer1 = _MuxLayer(model.layer1, 1)
+        self.layer2 = _MuxLayer(model.layer2, 2)
+        self.layer3 = _MuxLayer(model.layer3, 3)
+        self.head = _MuxHead(model)
 
-    def forward(self, x):
-        return self.final_layer(self.layer3(self.layer2(self.layer1(self.initial_layer(x)))))
+    def forward(self, x: HomValue) -> HomValue:
+        x = self.stem(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        return self.head(x)
 
 
 class Pipeline(PipelineWrapper):
-    CIFAR_SAMPLE_INDEX = 0
-    CIFAR10_CLASSES = ('airplane', 'automobile', 'bird', 'cat', 'deer',
-                       'dog', 'frog', 'horse', 'ship', 'truck')
-
-    def build_pipeline(
-        self,
-        log_n_subring=LOG_N_SUBRING,
-        relu_deg=RELU_DEG,
-        image_hw=IMAGE_HW,
-        hom_input_shape=HOM_INPUT_SHAPE,
-        final_pitch=FINAL_PITCH,
-        delta_initial=DELTA_INITIAL,
-        deltas=DELTAS,
-    ):
-        # Download the pretrained model from torch hub. This is cached locally
-        # after the first build.
-        model = torch.hub.load(
-            "chenyaofo/pytorch-cifar-models",
-            "cifar10_resnet20",
-            pretrained=True,
-            verbose=False,
-        )
+    def _load_model(self):
+        model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar10_resnet20",
+                               pretrained=True, verbose=False)
         model.eval()
-        initial = _convbn_kwargs(model.conv1, model.bn1, delta_initial, (1, 1), image_hw)
-        blocks = {
-            (layer, block): _block_kwargs(model, layer, block, deltas, image_hw)
-            for layer in (1, 2, 3)
-            for block in (1, 2, 3)
-        }
-        final = _final_layer_kwargs(model, image_hw, final_pitch)
-        pipeline = HomomorphicPipeline(
-            client_pre=[
-                HomConstMul(dims=(3, 1, 1)).set_data(
-                    1.0 / (255.0 * CIFAR10_STD)
-                ),
-                HomConstAdd(dims=(3, 1, 1)).set_data(
-                    -CIFAR10_MEAN / CIFAR10_STD
-                ),
-                HomReshape(hom_input_shape),
-            ],
-            hom=_ResnetPipeline(initial, blocks, final, log_n_subring, relu_deg),
-            input_shape=(3, *image_hw),
-        )
-        pipeline.set_data("initial_layer.convBN", *initial["set_data_kwargs"].values())
-        for (layer, block), kwargs in blocks.items():
-            base = f"layer{layer}.block{block}"
-            pipeline.set_data(f"{base}.convBN1", *kwargs["conv1"]["set_data_kwargs"].values())
-            pipeline.set_data(f"{base}.convBN2", *kwargs["conv2"]["set_data_kwargs"].values())
-            if "downsample" in kwargs:
-                pipeline.set_data(
-                    f"{base}.downsample",
-                    *kwargs["downsample"]["set_data_kwargs"].values(),
-                )
-        pipeline.set_data("final_layer.fc", final["fc"]["weight"], final["fc"]["bias"])
-        pipeline.reference_model = model
-        return pipeline
+        return model
 
-    def build_params(
-        self,
-        q_list_precision=Q_LIST_PRECISION,
-        n=N,
-        pt_scale=PT_SCALE,
-        num_special_primes=N_SPECIAL_PRIMES,
-        n_slots=HOM_INPUT_SHAPE[1],
-    ) -> HomParams:
+    def build_pipeline(self):
+        self._model = self._load_model()
+        return HomomorphicPipeline(
+            hom=_MuxResnetGraph(self._model), input_shape=(SUBRING_SLOTS,),
+        )
+
+    def build_params(self):
         return HomParams(
-            full_q_list_precision=q_list_precision,
-            n=n,
-            pt_scale=pt_scale,
+            full_q_list_precision=Q_LIST_PRECISION,
+            n=N,
+            pt_scale=PT_SCALE,
             sk_hw=192,
-            num_special_primes=num_special_primes,
-            num_init_rows=1,
-            n_slots=n_slots,
+            num_special_primes=N_SPECIAL_PRIMES,
+            n_slots=SUBRING_SLOTS,
         )
-
-    @classmethod
-    def _load_cifar_sample(cls):
-        batch_path = Path(__file__).parent / "data" / "cifar10_test_batch"
-        if not batch_path.exists():
-            raise FileNotFoundError(
-                f"CIFAR-10 test file not found at {batch_path}")
-        with batch_path.open("rb") as batch_file:
-            batch = pickle.load(batch_file, encoding="bytes")
-        image = torch.tensor(
-            batch[b"data"][cls.CIFAR_SAMPLE_INDEX], dtype=torch.float32
-        ).reshape(3, *IMAGE_HW)
-        return image, cls.CIFAR10_CLASSES[int(batch[b"labels"][cls.CIFAR_SAMPLE_INDEX])]
-
-    def _set_example_pt(self):
-        example_pt, self._example_category = self._load_cifar_sample()
-        hom_pipeline = self.get_hom_pipeline()
-        self._model = hom_pipeline.reference_model
-        # The pipeline normalizes in client_pre, so the reference model is fed
-        # through it rather than through a second copy of the transform.
-        self._example_img = hom_pipeline.client_pre.forward_clear(
-            example_pt, internal_n=self.get_hom_params().internal_n
-        ).reshape(1, 3, *IMAGE_HW)
-        return example_pt
 
     @staticmethod
-    def _print_error(x, y):
-        diff = x - y
-        abs_err = diff.abs()
-        rel_err = (diff.norm() / y.norm().clamp_min(1e-12)).item()
-        print(f"absolute error: mean={abs_err.mean():.4e} max={abs_err.max():.4e}")
-        print(f"relative error: {rel_err:.4e}")
-        print()
+    def load_cifar_sample(index=CIFAR_SAMPLE_INDEX):
+        """A test image as the model sees it, normalized float64 (3, 32, 32), and its class."""
+        with CIFAR_BATCH.open("rb") as batch_file:
+            batch = pickle.load(batch_file, encoding="bytes")
+        image = torch.tensor(batch[b"data"][index], dtype=torch.float64).reshape(3, 32, 32) / 255
+        mean = torch.tensor(CIFAR10_MEAN, dtype=torch.float64)[:, None, None]
+        std = torch.tensor(CIFAR10_STD, dtype=torch.float64)[:, None, None]
+        return (image - mean) / std, CIFAR10_CLASSES[int(batch[b"labels"][index])]
+
+    def _set_example_pt(self):
+        self._img, self._category = self.load_cifar_sample()
+        return MuxLayout(*STEM_LAYOUT, SUBRING_SLOTS).pack(pad_channels(self._img, STEM_CHANNELS))
 
     def verify_results(self, actual, expected):
+        # FHE must track the clear run of the same pipeline.
+        rel = (actual - expected).norm() / expected.norm().clamp_min(1e-12)
+        print(f"[resnet20] decrypted vs clear-pipeline rel-err: {rel:.3e}")
+        # the FC's 1x1 output layout puts logit c at slot c
+        logits = np.asarray(actual.detach().cpu(), dtype=np.float64).reshape(-1)[:10]
+
         with torch.no_grad():
-            out = self._model(self._example_img)
-            ref = out.reshape(out.shape[1], -1).to(torch.float64)
-        dec = actual[:, :1].to(torch.float64)
+            ref = self._model(self._img.to(torch.float32).unsqueeze(0)).reshape(-1).numpy()
 
-        # 1) Compare homomorphic results to model results.
-        print("=== homomorphic vs model ===")
-        self._print_error(dec, ref)
-
-        # 2) Compare homomorphic results to cleartext results (if available).
-        if expected is not None:
-            clear = expected[:, :1].to(torch.float64)
-            print("=== homomorphic vs clear ===")
-            self._print_error(dec, clear)
-
-        # 3) Final classification results.
-        pred_dec = int(dec.reshape(-1).argmax())
-        pred_true = int(ref.reshape(-1).argmax())
-        print("=== classification results ===")
-        print(f"true category        : {self._example_category}")
-        print(f"predicted (decrypted): {self.CIFAR10_CLASSES[pred_dec]}"
-              f"   |   (true model): {self.CIFAR10_CLASSES[pred_true]}"
-              f"   |   match: {pred_dec == pred_true}")
-        assert pred_dec == pred_true, (
-            f"misclassified: predicted class = {self.CIFAR10_CLASSES[pred_dec]!r}, "
-            f"true class = {self.CIFAR10_CLASSES[pred_true]!r}."
-        )
+        pred, true = int(logits.argmax()), int(ref.argmax())
+        print(f"[resnet20] image category    : {self._category}")
+        print(f"[resnet20] predicted (decrypted): {CIFAR10_CLASSES[pred]}"
+              f"   |   (true model): {CIFAR10_CLASSES[true]}   |   match: {pred == true}")
+        assert rel <= 5e-2, f"FHE diverges from clear pipeline: rel={rel:.3e}"
