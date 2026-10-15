@@ -7,8 +7,9 @@ BOOT_CONFIGURATION = {
     'cts_scale' : 48,
     'n_cts_levels' : 4,
     # Also the size of q0: EvalMod running at scale q0 makes the division by
-    # delta a free scale relabel.
-    'eval_mod_scale' : 50,
+    # delta a free scale relabel. 54 is where EvalMod's error stops improving
+    # (vs 50: ~30% lower max error, same time; 58 gains nothing).
+    'eval_mod_scale' : 54,
     'stc_scale' : 30,
     'n_stc_levels' : 4,
 
@@ -24,14 +25,9 @@ BOOT_CONFIGURATION = {
     # (degree 27) allows K <= 14. At H=32, |I| >= 14 has probability 2**-38.8.
     'k' : 14,
 
-    # Headroom q0/|m| for messages bounded by 1, set by what EvalMod sees: the
-    # slots with slim_boot (StC first), the polynomial coefficients otherwise.
-    # Costs precision 1:1 but suppresses the sine's uncorrected cubic term, an
-    # error of (2*pi)**2 / 6 * m**3 / 4**log_delta (~6.6 m**3 / 4**log_delta) for
-    # the largest value m EvalMod sees. Slots peak at 12. Coefficients
-    # are ~sqrt(2n) below the n slots, except the constant one, which carries
-    # the slots' mean: a mean of 0.5 costs 2e-4 at 6, 1.3e-5 at 8. Above 8,
-    # EvalMod's own error, summed over the coefficients by StC, takes over.
+    # Headroom q0/|m| for messages bounded by 1. Each bit divides the sine's cubic
+    # error (~6.6 m**3 / 4**log_delta, m: for REAL the slots' mean) by 4 but
+    # doubles EvalMod's noise; 8 gives the lowest max error (9: lower mean, higher max).
     # An input with only q0 left must be at most 2 * q0 / 2**log_delta.
     'log_delta' : 8,
     'log_delta_slim' : 12,
