@@ -38,23 +38,16 @@ def _normalize_tuple(value, n, name):
 
 
 def conv_output_hw(image_hw, kernel_size, stride, padding, dilation):
-    """(H, W) of a conv's output, as torch.nn.Conv2d computes it."""
-    (h, w) = _normalize_tuple(image_hw, 2, 'image_hw')
-    (kh, kw) = _normalize_tuple(kernel_size, 2, 'kernel_size')
-    (sh, sw) = _normalize_tuple(stride, 2, 'stride')
-    (ph, pw) = _normalize_tuple(padding, 2, 'padding')
-    (dh, dw) = _normalize_tuple(dilation, 2, 'dilation')
-    return ((h + 2 * ph - dh * (kh - 1) - 1) // sh + 1,
-            (w + 2 * pw - dw * (kw - 1) - 1) // sw + 1)
+    """(H, W) of a conv's output, as torch.nn.Conv2d computes it, from (h, w) pairs."""
+    return tuple((size + 2 * pad - dil * (k - 1) - 1) // s + 1
+                 for size, k, s, pad, dil in zip(image_hw, kernel_size, stride, padding, dilation))
 
 
 class HomConvBase(HomOp):
-    """The geometry and clear execution every convolution operator shares."""
+    """The geometry, clear execution and BatchNorm fold the convolution operators share."""
 
     def _set_geometry(self, kernel_size, stride, padding, dilation, image_hw=None):
-        """Store kernel_size, stride, padding, dilation and image_hw as 2-tuples of ints (each
-        given as an int or a pair), and output_hw when image_hw is given. padding None is
-        'same': (k - 1) // 2 on each side, 1 for a 3x3 kernel."""
+        """Store kernel_size, stride, padding, dilation and image_hw as 2-tuples of ints."""
         self.kernel_size = _normalize_tuple(kernel_size, 2, "kernel_size")
         self.stride = _normalize_tuple(stride, 2, "stride")
         self.padding = (tuple((k - 1) // 2 for k in self.kernel_size) if padding is None
@@ -64,14 +57,29 @@ class HomConvBase(HomOp):
         self.output_hw = None if image_hw is None else conv_output_hw(
             self.image_hw, self.kernel_size, self.stride, self.padding, self.dilation)
 
-    def _clear_conv2d(self, maps, stride, padding, groups=1):
-        """torch's conv2d of (batch, C, H, W) maps with this op's weight, and its bias if it has one."""
+    @staticmethod
+    def _fold_batch_norm(weight, bias, mean, var, gamma, beta, eps=1e-5, delta=1.0):
+        """Fold a BatchNorm into the preceding conv:
+
+            W_fused = δ · γ · W / √(σ² + ε)
+            B_fused = δ · (β + γ · (B - μ) / √(σ² + ε))
+
+        with W, B the conv's weight and bias, μ, σ² the BatchNorm's running mean and
+        variance, γ, β its scale and shift, ε its eps and δ an extra rescaling (delta).
+        bias, gamma and beta may be None (0, 1 and 0)."""
+        if bias is None:
+            bias = torch.zeros(mean.shape)
+        if gamma is None:
+            gamma = torch.ones(mean.shape)
+        if beta is None:
+            beta = torch.zeros(mean.shape)
+        scale = gamma / (var + eps) ** 0.5
+        return delta * (weight * scale.view(-1, 1, 1, 1)), delta * (beta + (bias - mean) * scale)
+
+    def _clear_conv2d(self, x, stride, padding, groups=1):
         data = self._require_clear_data()
-        weight = data[0] if isinstance(data, tuple) else data
-        weight = weight.to(dtype=maps.dtype, device=maps.device)
-        bias = data[1].to(dtype=maps.dtype, device=maps.device)\
-            if isinstance(data, tuple) and len(data) > 1 else None
-        return functional.conv2d(maps, weight, bias=bias, stride=stride, padding=padding,
+        weight, *bias = (t.to(x) for t in (data if isinstance(data, tuple) else (data,)))
+        return functional.conv2d(x, weight, *bias, stride=stride, padding=padding,
                                  dilation=self.dilation, groups=groups)
 
 
@@ -237,3 +245,56 @@ class HomConv(HomConvBase):
 
         # Restore the homomorphic packed layout: channels first, then tiles.
         return result.permute(1, 0, 2, 3).reshape(self.out_channels, -1)
+
+
+class HomConvBnFused(HomConv):
+    """Convolution with BatchNorm fused into weight and bias tensors."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int | Tuple[int, int],
+        stride: int | Tuple[int, int],
+        padding: int | Tuple[int, int],
+        groups: int = 1,
+        dilation: Optional[int | Tuple[int, int]] = (1, 1),
+        image_hw: Optional[int | Tuple[int, int]] = None,
+    ):
+        super().__init__(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            padding,
+            groups,
+            bias=True,
+            dilation=dilation,
+            image_hw=image_hw,
+        )
+
+    def set_data(
+        self,
+        weight,
+        bias,
+        mean,
+        var,
+        gamma,
+        beta,
+        eps: float = 1e-5,
+        delta: float = 1.0,
+        **kwargs,
+    ) -> None:
+        """Fuse Conv+BN tensors and store equivalent convolution parameters.
+
+        Args:
+            weight: Convolution weights shaped `[C_out, C_in/groups, kh, kw]`.
+            bias: Convolution bias shaped `[C_out]` (or `None`).
+            mean: BatchNorm running mean (`mu`) shaped `[C_out]`.
+            var: BatchNorm running variance (`sigma^2`) shaped `[C_out]`.
+            gamma: BatchNorm scale (`gamma`) shaped `[C_out]` (or `None`).
+            beta: BatchNorm shift (`beta`) shaped `[C_out]` (or `None`).
+            eps: BatchNorm epsilon for numerical stability.
+            delta: Extra multiplicative factor applied after fusion.
+        """
+        super().set_data(*self._fold_batch_norm(weight, bias, mean, var, gamma, beta, eps, delta))

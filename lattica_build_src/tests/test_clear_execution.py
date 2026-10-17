@@ -195,6 +195,32 @@ def test_mux_conv_clear_matches_torch(c_in, c_out, hw, kernel, stride, padding):
     assert torch.allclose(out[MuxLayout(c_out, *conv.output_hw).slot_map()], expected + bias[:, None, None])
 
 
+@pytest.mark.parametrize("delta", [1.0, 0.25])
+def test_mux_conv_bn_fused_clear_matches_torch(delta):
+    """HomMuxConvBnFused folds the batch norm in set_data: in the clear it is torch's
+    conv then BatchNorm2d, times delta."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConvBnFused, MuxLayout
+
+    torch.manual_seed(0)
+    c_in, c_out, hw = 4, 8, (4, 4)
+    conv = torch.nn.Conv2d(c_in, c_out, 3, stride=2, padding=1, bias=False).double()
+    bn = torch.nn.BatchNorm2d(c_out).double().eval()
+    with torch.no_grad():
+        for tensor, (low, high) in ((bn.running_mean, (-1, 1)), (bn.running_var, (0.5, 2)),
+                                    (bn.weight, (0.5, 2)), (bn.bias, (-1, 1))):
+            tensor.uniform_(low, high)
+    x = torch.randn(c_in, *hw, dtype=torch.float64)
+
+    op = HomMuxConvBnFused(tuple(conv.weight.shape), hw, stride=2, padding=1)
+    op.set_data(conv.weight.detach(), None, bn.running_mean, bn.running_var,
+                bn.weight.detach(), bn.bias.detach(), bn.eps, delta)
+    out = op.forward_clear(MuxLayout(c_in, *hw).pack(x))
+
+    with torch.no_grad():
+        expected = delta * bn(conv(x[None]))[0]
+    assert torch.allclose(out[MuxLayout(c_out, *op.output_hw).slot_map()], expected)
+
+
 def _ciphertext_slot_sums(x, n_slots, ks, internal_n):
     """Independent oracle: x zero-padded to its period n_slots and repeated over the
     ring's internal_n slots; each SumSlots(k) adds the slots rotated by every multiple of

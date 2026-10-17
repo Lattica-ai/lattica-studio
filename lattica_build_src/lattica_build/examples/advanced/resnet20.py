@@ -14,8 +14,7 @@ from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
-from lattica_build.operators.ml.conv_bn_fused import fold_batch_norm
-from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBnFused, MuxLayout
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
@@ -61,16 +60,16 @@ def _conv_bn(conv, bn, layout, delta, *, weight=None):
     """A mux convolution with its batch norm and the next ReLU's 1/delta folded in."""
     _, height, width = layout
     weight = conv.weight if weight is None else weight
-    op = HomMuxConv(
+    op = HomMuxConvBnFused(
         kernel_shape=tuple(weight.shape), image_hw=(height, width),
-        stride=conv.stride, padding=conv.padding, dilation=conv.dilation, bias=True,
+        stride=conv.stride, padding=conv.padding, dilation=conv.dilation,
     )
-    op.set_data(*fold_batch_norm(
+    op.set_data(
         weight.detach().to(torch.float64), None,
         bn.running_mean.detach().to(torch.float64),
         bn.running_var.detach().to(torch.float64),
         bn.weight.detach().to(torch.float64),
-        bn.bias.detach().to(torch.float64), float(bn.eps), delta))
+        bn.bias.detach().to(torch.float64), float(bn.eps), delta)
     return op
 
 
