@@ -195,6 +195,37 @@ def test_mux_conv_clear_matches_torch(c_in, c_out, hw, kernel, stride, padding):
     assert torch.allclose(out[MuxLayout(c_out, *conv.output_hw).slot_map()], expected + bias[:, None, None])
 
 
+def _ciphertext_slot_sums(x, n_slots, ks, internal_n):
+    """Independent oracle: x zero-padded to its period n_slots and repeated over the
+    ring's internal_n slots; each SumSlots(k) adds the slots rotated by every multiple of
+    n_slots / k, leaving period n_slots / k. Read back at x's positions."""
+    slots = torch.nn.functional.pad(x, (0, n_slots - len(x))).repeat(internal_n // n_slots)
+    for k in ks:
+        n_slots //= k
+        slots = sum(slots.roll(-m * n_slots) for m in range(k))
+    return slots[:len(x)]
+
+
+def test_sum_slots_clear_matches_the_ciphertext():
+    """The clear graph sums the slots the ciphertext does: 28 values zero-padded to their
+    32-slot period, so padding and data mix in every sum."""
+    x = torch.randn(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8), input_shape=(28,))
+    params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
+                       pt_scale=2 ** 44, num_special_primes=1, n_slots=32)
+    graph, _ = pipeline.serialize(params)
+    section = json.loads(graph)['pipeline_sections']['hom']
+    result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
+    torch.testing.assert_close(result, _ciphertext_slot_sums(x, 32, (8,), params.internal_n))
+
+
+def test_sum_slots_output_period():
+    """The output's period is the input's (internal_n without one) over k."""
+    value = HomValue(tensor_shape=(32,), n_axis=-1)
+    assert HomSumSlots(k=8).infer_output_shape(value.make_copy(n_slots=4096)).n_slots == 512
+    assert HomSumSlots(k=8).infer_output_shape(value, internal_n=4096).n_slots == 512
+
+
 def test_clear_execution_does_not_trace():
     tensors = {}
     with Tracer(tensors) as tracer:

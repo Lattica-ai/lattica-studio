@@ -2,7 +2,10 @@
 
 from typing import Optional, Sequence
 
+import torch
+
 from lattica_build.base_classes.hom_op import HomOp
+from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 class HomSumSlots(HomOp):
@@ -15,8 +18,8 @@ class HomSumSlots(HomOp):
     consume levels.
 
     Args:
-        k: Optional number of slots each sum adds, n / k apart (defaults to full
-            slot count): slot j gets x[j] + x[j + n / k] + ... for n slots.
+        k: Optional number of slots each sum adds, n_slots / k apart (defaults to
+            n_slots): slot j gets x[j] + x[j + n_slots / k] + ....
         stage_sizes: Optional explicit stage schedule for the summation tree.
     """
 
@@ -31,8 +34,20 @@ class HomSumSlots(HomOp):
         self.k = k
         self.stage_sizes = stage_sizes
 
-    def forward_clear(self, input):
-        n_slots = input.shape[-1]
+    def infer_output_shape(self, input: HomValue, internal_n=None) -> HomValue:
+        """The sum folds the input's period n_slots (internal_n without one) to n_slots / k."""
+        n_slots = input.n_slots if input.n_slots is not None else internal_n
         k = self.k if self.k is not None else n_slots
-        groups = input.reshape(*input.shape[:-1], k, n_slots // k)
-        return groups.sum(dim=-2, keepdim=True).expand_as(groups).reshape(input.shape).clone()
+        return input.make_copy(n_slots=n_slots // k)
+
+    def forward_clear(self, input):
+        """The encrypted sum on the ciphertext's slots, taking the last axis' length rounded
+        up to a power of 2 as its period n_slots: the axis is zero-padded to it, and slot j
+        gets the k slots n_slots / k apart. The result repeats at n_slots / k and is read
+        at the input's positions."""
+        n_slots = 1 << (input.shape[-1] - 1).bit_length()
+        k = self.k if self.k is not None else n_slots
+        period = input[..., :n_slots]
+        period = torch.nn.functional.pad(period, (0, n_slots - period.shape[-1]))
+        sums = period.reshape(*period.shape[:-1], k, n_slots // k).sum(dim=-2)
+        return sums[..., torch.arange(input.shape[-1], device=input.device) % (n_slots // k)]
