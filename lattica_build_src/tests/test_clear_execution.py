@@ -328,10 +328,11 @@ def test_resnet_composite_example_matches_pretrained_model():
             normalized_image.to(torch.float32).reshape(1, 3, 32, 32)
         ).argmax(dim=-1).item()
 
-    # The client packs the normalized image into the mux layout; there is no client_pre.
-    packed_image = MuxLayout(*resnet20.STEM_LAYOUT, resnet20.SUBRING_SLOTS).pack(
-        resnet20.pad_channels(normalized_image, resnet20.STEM_CHANNELS)
-    )
+    # The client zero-pads RGB to the stem's channels and packs the image into the mux
+    # layout; there is no client_pre.
+    padded_image = torch.nn.functional.pad(
+        normalized_image, (0, 0, 0, 0, 0, resnet20.STEM_CHANNELS - normalized_image.shape[0]))
+    packed_image = MuxLayout(*resnet20.STEM_LAYOUT, resnet20.SUBRING_SLOTS).pack(padded_image)
     result = pipeline.forward_clear(
         packed_image,
         hom_params=params,
