@@ -82,7 +82,7 @@ class ModulusChain():
         if params.num_init_rows is not None:
             active_rows = active_rows[:params.num_init_rows]
         active_rows += self.section_rows["boot_base"]
-        if params.slim_boot:
+        if params.boot_params.slim_boot:
             active_rows += self.section_rows["boot_stc"]
         return active_rows
 

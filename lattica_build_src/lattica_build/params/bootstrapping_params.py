@@ -4,8 +4,7 @@ BOOT_CONFIGURATION = {
     # EvalMod and StC prime sizes (bits); the CtS ones and the DFT level counts come
     # per subring from BOOT_PARAMS_PER_SUBRING.
     # Also the size of q0: EvalMod running at scale q0 makes the division by
-    # delta a free scale relabel. 53 is the smallest without losing accuracy
-    # (at 2^12 slots, log_delta 9: 52 errs ~5% more, 50 ~1.7x; same time).
+    # delta a free scale relabel; 53 is the smallest without accuracy loss.
     'eval_mod_scale' : 53,
     'stc_scale' : 30,
 
@@ -91,12 +90,10 @@ class BootstrappingParams:
     
     @classmethod
     def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts) -> "BootstrappingParams":
-        """The chain for bootstraps of these slot counts (one per BOOT_PARAMS_PER_SUBRING entry): as many
-        CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
+        """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_SUBRING entry): as
+        many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use."""
         entries = [cls._subring_entry(n_slots) for n_slots in slot_counts]
-        if not entries:
-            raise ValueError("slot_counts must not be empty")
         return cls(real_boot, slim_boot,
                    dft_levels=max(len(split) for split, _, _ in entries),
                    cts_scale=max(bits for _, bits, _ in entries))
@@ -104,8 +101,8 @@ class BootstrappingParams:
     @classmethod
     def from_chain(cls, real_boot: bool, slim_boot: bool, dft_levels: int | None, cts_scale: int | None,
                    n_slots: int) -> "BootstrappingParams":
-        """The chain HomParams.to_dict records (dft_levels, cts_scale); a dict without it (e.g. written
-        by hand) gets the one for_slot_counts gives n_slots."""
+        """The chain HomParams.to_dict records (dft_levels, cts_scale); without it (direct constructors,
+        e.g. tests) the one for_slot_counts gives n_slots."""
         if dft_levels is not None and cts_scale is not None:
             return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
         return cls.for_slot_counts(real_boot, slim_boot, {n_slots})
@@ -141,7 +138,7 @@ class BootstrappingParams:
         """The headroom q0/|m| of a bootstrap of n_slots slots: SLIM's own (its EvalMod sees the slots),
         else its subring's (fewer slots afford more)."""
         if self.slim_boot:
-            return self.log_delta
+            return BOOT_CONFIGURATION['log_delta_slim']
         return self._subring_entry(n_slots)[2]
 
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int) -> None:
@@ -169,8 +166,6 @@ class BootstrappingParams:
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.dft_levels)
-        # SLIM's headroom; the other variants' comes per subring, see log_delta_for
-        self.log_delta = BOOT_CONFIGURATION['log_delta_slim'] if self.slim_boot else None
         self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']

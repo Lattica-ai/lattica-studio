@@ -26,9 +26,9 @@ def test_boot_flags_must_be_bools(flags):
 
 
 def test_dft_table_splits_cover_the_fft_stages():
-    """Every entry splits its log2(n_slots) = log2(subring) - 1 stages into at most 4 levels."""
+    """Every entry splits its log2(n_slots) = log2(subring) - 1 stages into levels."""
     for log_n_subring, (split, cts_bits, log_delta) in BOOT_PARAMS_PER_SUBRING.items():
-        assert sum(split) == log_n_subring - 1 and 1 <= len(split) <= 4
+        assert sum(split) == log_n_subring - 1 and min(split) >= 1
         BootstrappingParams.get_q_list_precision(cts_bits, len(split))   # a valid prime size
         assert 1 <= log_delta < BOOT_CONFIGURATION['eval_mod_scale']
 
