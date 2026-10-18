@@ -8,6 +8,7 @@ from unittest import SkipTest
 import torch
 import pytest
 
+from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_op_tracer import Tracer
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
@@ -167,6 +168,34 @@ def test_composites_and_pipeline_clear_execution():
     assert torch.equal(pipeline.forward_clear(x), expected)
 
 
+class _ScaleThenAdd(HomOp):
+    """scale(x) + y, y being a second (custom) encrypted input."""
+
+    def __init__(self, scale):
+        super().__init__()
+        self.scale = scale
+
+    def forward(self, x, y):
+        return HomAdd()(self.scale(x), y)
+
+
+def test_pipeline_traced_clear_run_covers_every_section_and_input():
+    """With hom_params the pipeline runs its traced graph: client_pre, hom with the custom
+    input, client_post; the caller's params stay untouched."""
+    scale = HomConstMul(dims=(4,))
+    scale.set_data(torch.tensor([2.0, 3.0, 4.0, 5.0]))
+    pipeline = HomomorphicPipeline(client_pre=[Clamp(0, 2)], hom=_ScaleThenAdd(scale),
+                                   client_post=[Clamp(0, 9)], input_shape={'x': (4,), 'y': (4,)})
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2 ** 30, num_special_primes=1, n_slots=4)
+    x = torch.tensor([1.0, 2.0, 3.0, -1.0])
+    y = torch.tensor([0.5, 0.5, 0.5, 0.5])
+    expected = torch.tensor([2.5, 6.5, 8.5, 0.5])
+    torch.testing.assert_close(pipeline.forward_clear(x, y, hom_params=params), expected)
+    torch.testing.assert_close(pipeline.forward_clear(x=x, y=y, hom_params=params), expected)
+    assert getattr(params, 'mod_chain', None) is None
+
+
 @pytest.mark.parametrize("c_in,c_out,hw,kernel,stride,padding", [
     (4, 4, (4, 4), 3, 1, 1),     # same layout
     (4, 8, (4, 4), 3, 2, 1),     # strided, re-interleaved to 8 channels
@@ -232,17 +261,27 @@ def _ciphertext_slot_sums(x, n_slots, ks, internal_n):
     return slots[:len(x)]
 
 
-def test_sum_slots_clear_matches_the_ciphertext():
-    """The clear graph sums the slots the ciphertext does: 28 values zero-padded to their
-    32-slot period, so padding and data mix in every sum."""
-    x = torch.randn(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8), input_shape=(28,))
+@pytest.mark.parametrize("length,n_slots,ks", [
+    (28, 32, (8,)),       # padding and data mix in every sum
+    (28, 128, (8,)),      # the period is wider than the length rounded up to a power of 2
+    (32, 128, (8,)),      # two of each sum's eight slots hold data
+    (32, 32, (4, 2)),     # the second sum folds the period the first left
+])
+def test_sum_slots_clear_matches_the_ciphertext(length, n_slots, ks):
+    """The clear graph sums the slots the ciphertext does, each period taken from the
+    traced metadata, including one an earlier sum folded."""
+    x = torch.randn(length, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(*(HomSumSlots(k=k) for k in ks)),
+                                   input_shape=(length,))
     params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
-                       pt_scale=2 ** 44, num_special_primes=1, n_slots=32)
+                       pt_scale=2 ** 44, num_special_primes=1, n_slots=n_slots)
     graph, _ = pipeline.serialize(params)
     section = json.loads(graph)['pipeline_sections']['hom']
     result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
-    torch.testing.assert_close(result, _ciphertext_slot_sums(x, 32, (8,), params.internal_n))
+    expected = _ciphertext_slot_sums(x, n_slots, ks, params.internal_n)
+    torch.testing.assert_close(result, expected)
+    # Check that forward_clear with the params gives the same sums.
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), expected)
 
 
 def test_sum_slots_output_period():

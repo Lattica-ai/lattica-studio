@@ -23,9 +23,11 @@ This folder contains operations that act on ciphertext slot structure and slot-w
   uses the input dimension length, without repetition to fill a ciphertext.
 - `HomRunningSum` computes a cumulative sum along `cumsum_axis` (last axis by
   default). Encryption stage schedules do not change that plaintext operation.
-- `HomSumSlots` sums the last axis's `n` elements `n / k` apart, as the slots of
-  a ciphertext whose period is that axis: element `j` gets
-  `x[j] + x[j + n / k] + ...`. Omitted `k` sums the full axis.
+- `HomSumSlots` sums the ciphertext's slots: the last axis is zero-padded to its
+  traced period `n_slots` (untraced, the axis length rounded up to a power of 2),
+  and element `j` gets the `k` slots `n_slots / k` apart:
+  `x[j] + x[j + n_slots / k] + ...`. The result repeats at `n_slots / k`; omitted
+  `k` sums the full period.
 - `HomRotateSum` rotates along the last axis and sums or stacks the requested
   views. Sum mode always includes the original input once; stack mode includes
   it only when `add_identity_rotation` is set.

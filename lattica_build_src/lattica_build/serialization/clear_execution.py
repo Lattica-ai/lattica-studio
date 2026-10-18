@@ -15,7 +15,7 @@ from typing import Any
 
 import torch
 
-from lattica_build.base_classes.hom_op import HomOp
+from lattica_build.base_classes.hom_op import HomOp, clear_options
 from lattica_build.operators.arithmetic.h_add import HomAdd
 from lattica_build.operators.arithmetic.h_axis_sum import HomAxisSum
 from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
@@ -57,13 +57,17 @@ def _constructor(op_type: int) -> tuple[type[HomOp], tuple[str, ...]]:
 
 def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
                       resolve_data: Callable[[tuple[int, ...]], Any],
-                      path: tuple[int, ...] = ()) -> torch.Tensor:
+                      path: tuple[int, ...] = (),
+                      input_values: Sequence[dict[str, Any] | None] | None = None) -> torch.Tensor:
     """Evaluate a traced section with build operators, borrowing leaf weights.
 
     ``path`` consists of child indices, allowing callers to resolve the same leaf
     in a backend graph without storing a second tensor table. Composite scopes
     are independent, and intermediates are released after their final use.
+    ``input_values`` is the traced metadata (serialized HomValues) of ``inputs``.
     """
+    if input_values is None:
+        input_values = graph.get('input_values') or [None] * len(inputs)
     if graph['op'] is not None:
         cls, names = _constructor(graph['op'])
         attrs = graph['op_attrs']
@@ -74,18 +78,25 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         op = cls(**kwargs)
         if graph.get('data_ref') is not None:
             op.data = resolve_data(path)
-        return op.forward_clear(*inputs)
+        # Expose the inputs' traced metadata to the leaf, so its forward_clear can read e.g. its slot period.
+        with clear_options(input_values=input_values):
+            return op.forward_clear(*inputs)
 
     env = dict(zip(graph['body_inputs'], inputs, strict=True))
+    # The traced metadata of each live value, by id.
+    values_by_id = dict(zip(graph['body_inputs'], input_values, strict=True))
     output_id = graph['body_output']['id']
     uses = Counter(name for child in graph['child_ops'] for name in child['inputs'])
     uses[output_id] += 1
     for index, child in enumerate(graph['child_ops']):
         values = [env[name] for name in child['inputs']]
-        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index))
+        child_values = [values_by_id[name] for name in child['inputs']]
+        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index),
+                                                       child_values)
+        values_by_id[child['output']['id']] = child['output']
         del values
         for name in child['inputs']:
             uses[name] -= 1
             if uses[name] == 0:
-                del env[name]
+                del env[name], values_by_id[name]
     return env[output_id]

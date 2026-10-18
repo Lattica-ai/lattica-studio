@@ -10,9 +10,11 @@ and runtime lifecycle operations.
 
 Clear execution is also available locally through `HomOp.forward_clear(...)` and
 `HomomorphicPipeline.forward_clear(...)`. It uses ordinary torch tensors and the
-data attached to operators, and does not modify or serialize the homomorphic graph.
-Pass the same `HomParams` used for the build when clear execution is
-packing-sensitive.
+data attached to operators. Pass the `HomParams` used for the build
+(`pipeline.forward_clear(x, hom_params=params)`): the pipeline then runs the traced
+graph the compiler verifies against, so slot operations such as `HomSumSlots` use
+the slot periods encryption uses. Without them the operator tree runs directly, and
+a slot operation takes its axis length, rounded up to a power of 2, as the period.
 
 ## Installation
 

@@ -41,12 +41,15 @@ class HomSumSlots(HomOp):
         return input.make_copy(n_slots=n_slots // k)
 
     def forward_clear(self, input):
-        """The encrypted sum on the ciphertext's slots, taking the last axis' length rounded
-        up to a power of 2 as its period n_slots: the axis is zero-padded to it, and slot j
-        gets the k slots n_slots / k apart. The result repeats at n_slots / k and is read
-        at the input's positions."""
-        n_slots = 1 << (input.shape[-1] - 1).bit_length()
+        """Sum the slots as the ciphertext does: slot j gets the k slots n_slots / k apart,
+        n_slots being the input's traced period (untraced: its length rounded up to a power of 2)."""
+        # Take the period n_slots from the traced input, or guess it from the axis length when there is none.
+        input_values = self._clear_option("input_values")
+        n_slots = input_values[0].get("n_slots") if input_values and input_values[0] else None
+        if n_slots is None:
+            n_slots = 1 << (input.shape[-1] - 1).bit_length()
         k = self.k if self.k is not None else n_slots
+        # Zero-pad the axis to one period, add the k slots n_slots / k apart, read back at the input's positions.
         period = input[..., :n_slots]
         period = torch.nn.functional.pad(period, (0, n_slots - period.shape[-1]))
         sums = period.reshape(*period.shape[:-1], k, n_slots // k).sum(dim=-2)
