@@ -148,7 +148,7 @@ class HomomorphicPipeline:
         if not all(torch.is_tensor(value) for value in values):
             raise TypeError("forward_clear inputs must be torch.Tensor instances")
 
-        # With hom_params, run the exact graph that the encrypted query runs.
+        # If hom_params was given, run the exact graph that the encrypted query runs.
         if hom_params is not None:
             return self._forward_clear_traced(values, hom_params)
         if self.client_pre is not None:
