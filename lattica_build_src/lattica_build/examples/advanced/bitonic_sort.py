@@ -15,7 +15,7 @@ from lattica_build.params.params import HomParams
 
 
 LOG_N = 16           # ring degree 2**LOG_N, i.e. 2**(LOG_N - 1) slots
-DEG = 119            # Chebyshev degree of the threshold comparator
+DEG = 127            # Chebyshev degree of the threshold comparator: 7 levels on the tree
 MARGIN = 0.04        # comparator don't-care band; entries closer than this may come out unordered
 # Value range of the inputs. Inputs must span < 1 so every comparator
 # input (a difference of two entries) stays inside its [-1, 1] fit domain, with headroom for
