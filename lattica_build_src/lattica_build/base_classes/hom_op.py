@@ -13,7 +13,7 @@ _clear_options = contextvars.ContextVar("hom_clear_options", default={})
 
 @contextlib.contextmanager
 def clear_options(**options):
-    """Give the ops extra settings during a clear run."""
+    """Pass extra settings to the pipeline operators during a plaintext run."""
     token = _clear_options.set({**_clear_options.get(), **options})
     try:
         yield

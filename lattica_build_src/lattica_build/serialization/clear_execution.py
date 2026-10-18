@@ -66,7 +66,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     are independent, and intermediates are released after their final use.
     ``input_values`` is the traced metadata (serialized HomValues) of ``inputs``.
     """
-    # Without input_values, use the ones saved in the graph.
+    # Without input_values, use the input metadata saved in the graph.
     if input_values is None:
         input_values = graph.get('input_values') or [None] * len(inputs)
     if graph['op'] is not None:
@@ -79,12 +79,12 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         op = cls(**kwargs)
         if graph.get('data_ref') is not None:
             op.data = resolve_data(path)
-        # Let the op see its inputs' metadata (e.g. n_slots).
+        # Let the operator read its inputs' metadata (e.g. n_slots).
         with clear_options(input_values=input_values):
             return op.forward_clear(*inputs)
 
     env = dict(zip(graph['body_inputs'], inputs, strict=True))
-    # The traced metadata of each live value, by id.
+    # The saved metadata (n_slots etc.) of each live value, by id.
     values_by_id = dict(zip(graph['body_inputs'], input_values, strict=True))
     output_id = graph['body_output']['id']
     uses = Counter(name for child in graph['child_ops'] for name in child['inputs'])

@@ -31,7 +31,7 @@ from lattica_build.serialization.clear_execution import run_clear_section
 
 
 def _leaf_data(graph, path, tensors):
-    """Return the weights of one leaf op."""
+    """Return the weights (data tensors) of one basic operator in the graph."""
     for index in path:
         graph = graph["child_ops"][index]
     data = tuple(tensors[ref] for ref in graph["data_ref"])
@@ -127,8 +127,8 @@ class HomomorphicPipeline:
         self._get_pipe_section(section).set_data(*data, name=name)
 
     def forward_clear(self, *inputs, hom_params=None, **named_inputs):
-        """Run the complete pipeline on clear torch tensors. Pass hom_params to get the same
-        result as the encrypted run."""
+        """Run the complete pipeline on clear torch tensors. Pass hom_params to get exactly the
+        result the encrypted query gives."""
         input_names = list(inspect.signature(self.hom.forward).parameters)
         if inputs and named_inputs:
             raise TypeError("forward_clear accepts positional or named inputs, not both")
@@ -148,7 +148,7 @@ class HomomorphicPipeline:
         if not all(torch.is_tensor(value) for value in values):
             raise TypeError("forward_clear inputs must be torch.Tensor instances")
 
-        # With hom_params, run the same graph the encrypted pipeline runs.
+        # With hom_params, run the exact graph that the encrypted query runs.
         if hom_params is not None:
             return self._forward_clear_traced(values, hom_params)
         if self.client_pre is not None:
