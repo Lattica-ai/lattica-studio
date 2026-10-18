@@ -41,7 +41,6 @@ class Pipeline(PipelineWrapper):
             sk_hw=192,
             num_special_primes=7,
             num_init_rows=0,
-            real_boot=True,
         )
 
     def verify_results(self, actual: torch.Tensor, expected: torch.Tensor) -> None:

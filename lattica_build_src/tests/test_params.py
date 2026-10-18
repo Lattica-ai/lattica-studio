@@ -41,7 +41,7 @@ def test_dft_table_splits_cover_the_fft_stages():
 def test_chain_serves_every_slot_count(slot_counts, levels, cts_scale):
     """for_slot_counts: the deepest split's levels, the widest CtS prime; the chain round-trips."""
     boot = BootstrappingParams.for_slot_counts(True, False, slot_counts)
-    assert (boot.n_cts_levels, boot.n_stc_levels, boot.cts_scale) == (levels, levels, cts_scale)
+    assert (boot.dft_levels, boot.cts_scale) == (levels, cts_scale)
     params = HomParams.from_dict(_boot_params_dict(n=2 ** 16, n_slots=max(slot_counts)))
     params.boot_params = boot
     loaded = HomParams.from_dict(params.to_dict())
