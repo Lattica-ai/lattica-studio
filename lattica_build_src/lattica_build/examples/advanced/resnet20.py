@@ -56,7 +56,7 @@ class _ReLU(HomOp):
         self.abs = HomPolyEval(func=lambda x: np.abs(x) / (2 * delta), degree=RELU_DEG - 1)
 
     def forward(self, x: HomValue) -> HomValue:
-        return self.abs(x) + self.slope * x   # the add writes into its first operand: keep it the compact one
+        return self.abs(x) + self.slope * x   # the add writes into its first operand: the polynomial's output, at the lower level
 
 
 def make_relu(delta: float) -> HomOp:

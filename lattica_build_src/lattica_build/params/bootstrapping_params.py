@@ -27,7 +27,7 @@ BOOT_CONFIGURATION = {
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
     # Bound on the ModRaise wrap count |I| (at H=32, |I| >= 14 has probability 2**-38.8). Han-Ki's
-    # cosine needs degree 2K-2, so the even degree 30 allows K = 16, as Lattigo and Cheddar use.
+    # cosine needs degree 2K-2, so the even degree 30 allows K = 16, Lattigo's default.
     'k' : 16,
 
     # Headroom q0/|m| for messages bounded by 1:
