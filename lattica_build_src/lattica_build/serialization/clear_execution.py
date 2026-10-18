@@ -27,6 +27,7 @@ from lattica_build.operators.fhe.h_mod_switch import HomModSwitch
 from lattica_build.operators.fhe.h_ring_switch import HomRingSwitch
 from lattica_build.operators.ml.h_conv import HomConv
 from lattica_build.operators.ml.h_mat_mul import HomMatMul
+from lattica_build.operators.ml.h_mux_conv import HomMuxConv
 from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
 from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
@@ -42,7 +43,7 @@ _BUILD_LEAVES = {cls.OP_TYPE: cls for cls in (
     HomAdd, HomAxisSum, HomConstAdd, HomConstMul, HomMul, Clamp, Softmax,
     Bootstrap, HomModSwitch, HomRingSwitch, HomConv, HomMatMul, HomPolyEvalBase,
     HomReshape, HomSlice, HomSqueeze, HomUnsqueeze, HomExpand, HomRotateSum,
-    HomRunningSum, HomSumSlots, HomConj,
+    HomRunningSum, HomSumSlots, HomConj, HomMuxConv,
 )}
 
 
