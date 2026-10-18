@@ -58,7 +58,7 @@ def main() -> None:
     )
 
     # Optional, forward_clear runs the pipeline locally on plaintext tensors for verification.
-    # Pass the build params, so forward_clear uses the same slot layout (n_slots) as the encrypted query.
+    # With the build params, forward_clear gives the same result as the encrypted query.
     clear_result = hom_pipeline.forward_clear(x[0], hom_params=pipeline_definition.build_params())
     clear_prediction = clear_result.argmax(dim=-1)
     clear_accuracy = (clear_prediction == y[0]).sum().item() / mnist_fc.BATCH

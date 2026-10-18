@@ -13,7 +13,7 @@ _clear_options = contextvars.ContextVar("hom_clear_options", default={})
 
 @contextlib.contextmanager
 def clear_options(**options):
-    """Set options (name=value) that ops read with _clear_option() while the block runs."""
+    """Give the ops extra settings during a clear run."""
     token = _clear_options.set({**_clear_options.get(), **options})
     try:
         yield

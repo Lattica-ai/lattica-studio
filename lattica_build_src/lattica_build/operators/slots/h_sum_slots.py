@@ -45,7 +45,7 @@ class HomSumSlots(HomOp):
         period (untraced: the last axis' length rounded up to a power of 2): the axis is
         zero-padded to it, and slot j gets the k slots n_slots / k apart. The result repeats
         at n_slots / k and is read at the input's positions."""
-        # Take the period n_slots from the traced input, or guess it from the axis length when there is none.
+        # Use the real n_slots when known, else guess it from the length.
         input_values = self._clear_option("input_values")
         n_slots = input_values[0].get("n_slots") if input_values and input_values[0] else None
         if n_slots is None:

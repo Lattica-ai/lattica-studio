@@ -66,7 +66,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     are independent, and intermediates are released after their final use.
     ``input_values`` is the traced metadata (serialized HomValues) of ``inputs``.
     """
-    # Default to the input metadata recorded in the section; a graph without it gives the leaves None.
+    # Without input_values, use the ones saved in the graph.
     if input_values is None:
         input_values = graph.get('input_values') or [None] * len(inputs)
     if graph['op'] is not None:
@@ -79,7 +79,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         op = cls(**kwargs)
         if graph.get('data_ref') is not None:
             op.data = resolve_data(path)
-        # Expose the inputs' traced metadata to the leaf, so its forward_clear can read e.g. its slot period.
+        # Let the op see its inputs' metadata (e.g. n_slots).
         with clear_options(input_values=input_values):
             return op.forward_clear(*inputs)
 
