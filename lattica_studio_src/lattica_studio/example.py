@@ -50,17 +50,16 @@ def main() -> None:
     # Build the pipeline locally, then deploy and compile it.
     pipeline_definition = mnist_fc.Pipeline()
     hom_pipeline = pipeline_definition.build_pipeline()
-    hom_params = pipeline_definition.build_params()
     artifact = build(
         hom_pipeline,
-        hom_params,
+        pipeline_definition.build_params(),
         ARTIFACT_PATH,
         display_graph=True,
     )
 
     # Optional, forward_clear runs the pipeline locally on plaintext tensors for verification.
-    # Pass the build params, so the clear run uses the same slot layout as the encrypted one.
-    clear_result = hom_pipeline.forward_clear(x[0], hom_params=hom_params)
+    # Pass the build params, so forward_clear uses the same slot layout (n_slots) as the encrypted query.
+    clear_result = hom_pipeline.forward_clear(x[0], hom_params=pipeline_definition.build_params())
     clear_prediction = clear_result.argmax(dim=-1)
     clear_accuracy = (clear_prediction == y[0]).sum().item() / mnist_fc.BATCH
     print(f"Clear query: accuracy {clear_accuracy * 100:.1f}%")

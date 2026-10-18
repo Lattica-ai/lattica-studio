@@ -13,7 +13,7 @@ _clear_options = contextvars.ContextVar("hom_clear_options", default={})
 
 @contextlib.contextmanager
 def clear_options(**options):
-    """Make these options readable through HomOp._clear_option inside the block."""
+    """Set options (name=value) that ops read with _clear_option() while the block runs."""
     token = _clear_options.set({**_clear_options.get(), **options})
     try:
         yield
@@ -38,11 +38,14 @@ class HomOp:
                 )
             return inputs[0]
 
+        options = dict(_clear_options.get())
+        options.update(kwargs)
         execution_token = _clear_execution.set(True)
+        options_token = _clear_options.set(options)
         try:
-            with clear_options(**kwargs):
-                return self.forward(*inputs)
+            return self.forward(*inputs)
         finally:
+            _clear_options.reset(options_token)
             _clear_execution.reset(execution_token)
 
     @staticmethod

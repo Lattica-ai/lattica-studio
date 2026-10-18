@@ -66,6 +66,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     are independent, and intermediates are released after their final use.
     ``input_values`` is the traced metadata (serialized HomValues) of ``inputs``.
     """
+    # Default to the input metadata recorded in the section; a graph without it gives the leaves None.
     if input_values is None:
         input_values = graph.get('input_values') or [None] * len(inputs)
     if graph['op'] is not None:
