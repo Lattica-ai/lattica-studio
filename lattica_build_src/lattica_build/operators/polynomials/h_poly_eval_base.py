@@ -59,6 +59,7 @@ class HomPolyEvalBase(HomOp):
         b_next = torch.zeros_like(x)
         b_curr = torch.zeros_like(x)
         for coefficient in coefs.unbind(-1):
+            coefficient = coefficient.reshape(coefs.shape[:-1] + (1,) * input.ndim)
             b_next, b_curr = b_curr, 2 * x * b_curr - b_next + coefficient
         return b_curr - x * b_next
 
