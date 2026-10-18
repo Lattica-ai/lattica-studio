@@ -53,7 +53,7 @@ class _ReLU(HomOp):
     def __init__(self, delta: float):
         super().__init__()
         self.slope = 1 / (2 * delta)
-        self.abs = HomPolyEval(func=lambda x: np.abs(x) / (2 * delta), degree=RELU_DEG - 1)
+        self.abs = HomPolyEval(func=lambda x: np.abs(x) / (2 * delta), degree=RELU_DEG)
 
     def forward(self, x: HomValue) -> HomValue:
         return self.abs(x) + self.slope * x   # the add writes into its first operand: the polynomial's output, at the lower level
