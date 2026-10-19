@@ -57,16 +57,20 @@ def _constructor(op_type: int) -> tuple[type[HomOp], tuple[str, ...]]:
 
 def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
                       resolve_data: Callable[[tuple[int, ...]], Any],
-                      path: tuple[int, ...] = (), internal_n: int | None = None) -> torch.Tensor:
+                      path: tuple[int, ...] = ()) -> torch.Tensor:
     """Evaluate a traced section with build operators, borrowing leaf weights.
 
     ``path`` consists of child indices, allowing callers to resolve the same leaf
     in a backend graph without storing a second tensor table. Composite scopes
     are independent, and intermediates are released after their final use.
-    ``internal_n`` is the ring size (slots per ciphertext).
     """
-    if internal_n is None:
-        internal_n = graph.get('internal_n')
+    # Let the operators know the ring size the section saved.
+    options = {'internal_n': graph['internal_n']} if 'internal_n' in graph else {}
+    with clear_options(**options):
+        return _run_clear_section(graph, inputs, resolve_data, path)
+
+
+def _run_clear_section(graph, inputs, resolve_data, path):
     if graph['op'] is not None:
         cls, names = _constructor(graph['op'])
         attrs = graph['op_attrs']
@@ -77,9 +81,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         op = cls(**kwargs)
         if graph.get('data_ref') is not None:
             op.data = resolve_data(path)
-        # Let the operator know the ring size.
-        with clear_options(internal_n=internal_n):
-            return op.forward_clear(*inputs)
+        return op.forward_clear(*inputs)
 
     env = dict(zip(graph['body_inputs'], inputs, strict=True))
     output_id = graph['body_output']['id']
@@ -87,7 +89,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     uses[output_id] += 1
     for index, child in enumerate(graph['child_ops']):
         values = [env[name] for name in child['inputs']]
-        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index), internal_n)
+        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index))
         del values
         for name in child['inputs']:
             uses[name] -= 1
