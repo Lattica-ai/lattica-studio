@@ -90,7 +90,7 @@ class HomOp:
             tracer.serialize_hom_val(value)
             for value in inputs
         ]
-        # The ring size, for operators whose result depends on the whole ciphertext.
+        # Save the ring size (slots per ciphertext), for operators that fill a whole ciphertext.
         if tracer.hom_params is not None:
             serialized_op["internal_n"] = tracer.hom_params.internal_n
 

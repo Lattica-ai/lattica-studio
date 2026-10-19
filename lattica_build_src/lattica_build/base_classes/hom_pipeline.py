@@ -138,7 +138,7 @@ class HomomorphicPipeline:
         if not all(torch.is_tensor(value) for value in values):
             raise TypeError("forward_clear inputs must be torch.Tensor instances")
 
-        # Operators like HomExpand need the ring size to shape their result like the ciphertext.
+        # Give the operators the ring size, so HomExpand can fill a whole ciphertext.
         with clear_options(internal_n=getattr(hom_params, "internal_n", None)):
             if self.client_pre is not None:
                 values[0] = self.client_pre.forward_clear(values[0])

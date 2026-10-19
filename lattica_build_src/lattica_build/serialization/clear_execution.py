@@ -63,7 +63,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     ``path`` consists of child indices, allowing callers to resolve the same leaf
     in a backend graph without storing a second tensor table. Composite scopes
     are independent, and intermediates are released after their final use.
-    ``internal_n`` is the ring size (default: the one saved in the section).
+    ``internal_n`` is the ring size (slots per ciphertext).
     """
     if internal_n is None:
         internal_n = graph.get('internal_n')
