@@ -5,7 +5,8 @@ import torch
 from typing import Optional, Sequence
 
 from lattica_build.base_classes.hom_op import HomOp
-from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.base_classes.hom_value import HomValue, to_pos_axis
+from lattica_build.operators.slots.ring_utils import from_ring, input_layout, to_ring
 from lattica_build.params.level_and_scale_tracing import infer_modswitch_by_num_levels
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
@@ -25,6 +26,10 @@ class HomRunningSum(HomOp):
     """
 
     OP_TYPE = HomOpType.RunningSum
+    # The traced value of the input and its ring size, set by clear execution of a traced graph (run_clear_section)
+    # as it sets `data`. Without them, clear execution takes the input's last axis as one whole ring.
+    input_value: HomValue | None = None
+    internal_n: int | None = None
 
     def __init__(
         self,
@@ -69,5 +74,29 @@ class HomRunningSum(HomOp):
         )
 
     def forward_clear(self, input):
-        dim = self.cumsum_axis if self.cumsum_axis is not None else -1
-        return input.cumsum(dim=dim)
+        """Along another axis than the slot axis, a cumsum. Along the slot axis, the ciphertext views each ring as
+        k rows of internal_n / k columns (slot s at row s // cols, column s % cols) and sums down the rows of all
+        blocks: row r of block 0, row r of block 1, ..., then row r + 1. The blocks are the rings, or the entries of
+        `blocks_axis_external`."""
+        value, internal_n = input_layout(self, input)
+        if self.cumsum_axis is not None and to_pos_axis(self.cumsum_axis, input.shape) != value.n_axis:
+            return input.cumsum(dim=self.cumsum_axis)
+
+        ring = to_ring(input, value, internal_n)  # (..., blocks, internal_n)
+        blocks_axis = None
+        if self.blocks_axis_external is not None:
+            if ring.shape[-2] != 1:
+                raise ValueError("blocks_axis_external needs the slot axis to fit in one ring")
+            # The axis among those to_ring keeps before the slot axis
+            blocks_axis = to_pos_axis(self.blocks_axis_external, value.tensor_shape)
+            blocks_axis -= int(blocks_axis > value.n_axis)
+            ring = ring.squeeze(-2).movedim(blocks_axis, -2)
+
+        k = self.k if self.k is not None else internal_n
+        grid = ring.unflatten(-1, (k, internal_n // k)).transpose(-3, -2)  # (..., k, blocks, cols)
+        sums = grid.flatten(-3, -2).cumsum(dim=-2).unflatten(-2, grid.shape[-3:-1])
+        sums = sums.transpose(-3, -2).flatten(-2)  # (..., blocks, internal_n)
+
+        if blocks_axis is not None:
+            sums = sums.movedim(-2, blocks_axis).unsqueeze(-2)
+        return from_ring(sums, value)
