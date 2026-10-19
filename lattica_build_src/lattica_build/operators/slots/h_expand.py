@@ -78,7 +78,7 @@ class HomExpand(HomOp):
     def forward_clear(self, input):
         # Extract each value on the last axis, broadcasting it across that axis.
         # The extracted-value axis is placed at expand_axis.
-        # How many slots each value fills: the whole ciphertext when the ring size is known.
+        # Number of copies made of each value.
         width = self._clear_option("internal_n") or input.shape[-1]
         expanded = input.unsqueeze(-1).expand(*input.shape, width)
         return expanded.movedim(-2, self.expand_axis).clone()
