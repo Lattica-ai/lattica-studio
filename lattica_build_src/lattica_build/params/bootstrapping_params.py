@@ -98,15 +98,6 @@ class BootstrappingParams:
                    dft_levels=max(len(split) for split, _, _ in entries),
                    cts_scale=max(bits for _, bits, _ in entries))
 
-    @classmethod
-    def from_chain(cls, real_boot: bool, slim_boot: bool, dft_levels: int | None, cts_scale: int | None,
-                   n_slots: int) -> "BootstrappingParams":
-        """The chain HomParams.to_dict records (dft_levels, cts_scale); without it (direct constructors,
-        e.g. tests) the one for_slot_counts gives n_slots."""
-        if dft_levels is not None and cts_scale is not None:
-            return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
-        return cls.for_slot_counts(real_boot, slim_boot, {n_slots})
-
     @staticmethod
     def _subring_entry(n_slots: int):
         log_n_subring = (2 * n_slots).bit_length() - 1
@@ -152,8 +143,12 @@ class BootstrappingParams:
         for name, value in (("real_boot", real_boot), ("slim_boot", slim_boot)):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be a bool; got {value!r}.")
-        if not isinstance(dft_levels, int) or dft_levels < 1:
-            raise ValueError(f"dft_levels must be an int >= 1; got {dft_levels!r}.")
+        for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
+            if not isinstance(value, int) or value < 1:
+                raise ValueError(
+                    f"the bootstrap chain needs {name}, an int >= 1; got {value!r}. A pipeline's serialize sets it "
+                    f"(HomParams.to_dict records it); for params built directly, for_slot_counts with the slot counts "
+                    f"they bootstrap gives it.")
         self.real_boot = real_boot
         self.slim_boot = slim_boot
         self.stc_scale = BOOT_CONFIGURATION['stc_scale']

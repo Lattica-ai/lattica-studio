@@ -154,8 +154,8 @@ class HomParams:
 
         params = cls(**d)
         if bootstrapping:
-            params.boot_params = BootstrappingParams.from_chain(
-                params.real_boot, params.slim_boot, boot_dft_levels, boot_cts_scale, params.n_slots)
+            params.boot_params = BootstrappingParams(
+                params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         return params

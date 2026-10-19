@@ -12,8 +12,17 @@ from lattica_build.params.params import HomParams
 
 
 def _boot_params_dict(n=1024, **extra):
-    return dict(n=n, full_q_list_precision=((60,),), pt_scale=2 ** 30, num_special_primes=7,
-                bootstrapping=True, **extra)
+    """Bootstrapping params with the chain for bootstraps on the whole ring."""
+    boot = BootstrappingParams.for_slot_counts(True, False, {n // 2})
+    return dict(n=n, full_q_list_precision=((60,),), pt_scale=2 ** 30, num_special_primes=7, bootstrapping=True,
+                boot_dft_levels=boot.dft_levels, boot_cts_scale=boot.cts_scale, **extra)
+
+
+def test_bootstrapping_params_without_a_chain_are_refused():
+    d = _boot_params_dict()
+    del d["boot_dft_levels"], d["boot_cts_scale"]
+    with pytest.raises(ValueError, match="the bootstrap chain needs dft_levels"):
+        HomParams.from_dict(d)
 
 
 @pytest.mark.parametrize("flags", [(True, True), (False, False), (True, False)])
