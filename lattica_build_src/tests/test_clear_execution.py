@@ -90,7 +90,8 @@ def test_expand_clear_preserves_batch_dimensions():
         HomExpand(expand_axis=3)(x)
 
 
-def test_serialized_clear_execution_does_not_expand_to_ring_size():
+def test_serialized_clear_execution_expands_to_ring_size():
+    """Each extracted value fills a whole ciphertext: internal_n slots, like the decrypted output."""
     pipeline = HomomorphicPipeline(hom=HomExpand(expand_axis=1), input_shape=(8,))
     params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
                        pt_scale=2**30, num_special_primes=1, n_slots=8)
@@ -98,7 +99,21 @@ def test_serialized_clear_execution_does_not_expand_to_ring_size():
     section = json.loads(graph)['pipeline_sections']['hom']
     x = torch.arange(8.)
     result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
-    torch.testing.assert_close(result, x[None, :].repeat(8, 1))
+    torch.testing.assert_close(result, x[None, :].repeat(params.internal_n, 1))
+
+
+def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
+    """The exact-search shape: Expand feeds a MatMul whose data is one block of internal_n records."""
+    from lattica_build.operators.ml.h_mat_mul import HomMatMul
+
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=8)
+    db = torch.randn(1, params.internal_n, 8, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    matmul = HomMatMul(dims=tuple(db.shape), mul_axis=-1)
+    matmul.set_data(db)
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomExpand(expand_axis=1), matmul), input_shape=(8,))
+    x = torch.randn(8, dtype=torch.float64, generator=torch.Generator().manual_seed(1))
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), db @ x)
 
 
 def test_running_sum_clear_uses_only_the_logical_axis():

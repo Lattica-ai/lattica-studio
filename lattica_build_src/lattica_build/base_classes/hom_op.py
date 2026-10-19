@@ -3,11 +3,22 @@
 import torch
 from torch import Tensor
 from typing import ClassVar
+import contextlib
 import contextvars
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 _clear_execution = contextvars.ContextVar("hom_clear_execution", default=False)
 _clear_options = contextvars.ContextVar("hom_clear_options", default={})
+
+
+@contextlib.contextmanager
+def clear_options(**options):
+    """Pass extra settings to the pipeline operators during a plaintext run."""
+    token = _clear_options.set({**_clear_options.get(), **options})
+    try:
+        yield
+    finally:
+        _clear_options.reset(token)
 
 
 class HomOp:
@@ -79,6 +90,9 @@ class HomOp:
             tracer.serialize_hom_val(value)
             for value in inputs
         ]
+        # The ring size, for operators whose result depends on the whole ciphertext.
+        if tracer.hom_params is not None:
+            serialized_op["internal_n"] = tracer.hom_params.internal_n
 
         tracer.finalize()
         return serialized_op, out_val
