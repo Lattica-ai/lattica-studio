@@ -284,6 +284,24 @@ def test_sum_slots_clear_matches_the_ciphertext(length, n_slots, ks):
     torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), expected)
 
 
+@pytest.mark.parametrize("shape,n_axis", [((28, 5), 0), ((5, 28), 1), ((5, 28), -1)])
+def test_sum_slots_clear_sums_the_slot_axis(shape, n_axis):
+    """The clear sum runs along the traced slot axis, whichever axis that is."""
+    x = torch.randn(shape, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8), input_shape=shape, n_axis=n_axis)
+    params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
+                       pt_scale=2 ** 44, num_special_primes=1, n_slots=128)
+    graph, _ = pipeline.serialize(params)
+    section = json.loads(graph)['pipeline_sections']['hom']
+    columns = x.movedim(n_axis, -1)
+    expected = torch.stack([_ciphertext_slot_sums(column, 128, (8,), params.internal_n)
+                            for column in columns.reshape(-1, 28)])
+    expected = expected.reshape(columns.shape).movedim(-1, n_axis)
+    result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
+    torch.testing.assert_close(result, expected)
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), expected)
+
+
 def test_sum_slots_output_period():
     """The output's period is the input's (internal_n without one) over k."""
     value = HomValue(tensor_shape=(32,), n_axis=-1)
