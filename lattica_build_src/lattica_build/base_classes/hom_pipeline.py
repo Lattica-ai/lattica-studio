@@ -149,7 +149,7 @@ class HomomorphicPipeline:
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
         self.client_preprocessing_data = binary_data
 
-    def _serialize_pipeline_sections(self, tensors, hom_params, **hom_trace_kwargs):
+    def _serialize_pipeline_sections(self, tensors, hom_params, shapes_only=False, on_leaf_op=None):
         """
         Serialize the pipeline into its execution sections.
 
@@ -160,11 +160,12 @@ class HomomorphicPipeline:
 
         :param tensors: Tensor registry used to collect tensors referenced by the pipeline.
         :param hom_params: Homomorphic encryption parameters used during serialization (e.g. internal_n).
-        :param hom_trace_kwargs: extra Tracer options for the homomorphic section (see _bootstrap_slot_counts).
+        :param shapes_only: trace shapes only, without levels and scales, so hom_params needs no modulus chain yet.
+        :param on_leaf_op: called on every leaf op of the homomorphic section (see _bootstrap_slot_counts).
         """
 
         enc_params = hom_params.ring_switch_params or hom_params
-        active_rows, active_cols = init_active_rows_cols(hom_params)
+        active_rows, active_cols = (None, None) if shapes_only else init_active_rows_cols(hom_params)
         hom_input_names = inspect.signature(self.hom.forward).parameters
         hom_inputs = [
             HomValue(
@@ -211,7 +212,7 @@ class HomomorphicPipeline:
 
         ser_sections[PipeSec.HOM], hom_out_val = self.hom.serialize(
             tensors, *hom_inputs, hom_params=hom_params, primary_input_name=self.primary_input_name,
-            **hom_trace_kwargs
+            infer_levels=not shapes_only, on_leaf_op=on_leaf_op,
         )
 
         if self.client_post is not None:
@@ -254,15 +255,15 @@ class HomomorphicPipeline:
         return {'accuracy': float(accuracy)}
 
     def _bootstrap_slot_counts(self, hom_params) -> set:
-        """The input n_slots of every Bootstrap op of the homomorphic section, from a trace of shapes only (levels
-        and scales are not traced, so the chain hom_params has need not fit them)."""
+        """The input n_slots of every Bootstrap op of the homomorphic section, from a trace of shapes only (it needs
+        no modulus chain)."""
         slot_counts = set()
 
         def record(op, inputs):
             if op.OP_TYPE == HomOpType.Bootstrap:
-                slot_counts.add(inputs[0].n_slots or hom_params.internal_n)   # None: the full ring
+                slot_counts.add(inputs[0].n_slots)
 
-        self._serialize_pipeline_sections({}, hom_params, infer_levels=False, on_leaf_op=record)
+        self._serialize_pipeline_sections({}, hom_params, shapes_only=True, on_leaf_op=record)
         return slot_counts
 
     def _serialize_modulus_chain(self, hom_params: HomParams) -> dict:
@@ -297,20 +298,14 @@ class HomomorphicPipeline:
             hom_params.ring_switch_params = None
 
         needs_boot = ring_switch_input or any(op.OP_TYPE == HomOpType.Bootstrap for op in leaves)
-        # the chain serves every slot count a bootstrap may see: the inputs', then the Bootstrap ops' own, which an op
-        # on the way may have changed (e.g. MuxConv); finding those needs a trace, which needs a chain
-        slot_counts = {hom_params.n_slots, *self.custom_n_slots.values()}
-        hom_params.boot_params = (
-            BootstrappingParams.for_slot_counts(hom_params.real_boot, hom_params.slim_boot, slot_counts)
-            if needs_boot else None
-        )
-        hom_params.mod_chain = ModulusChain(hom_params)
+        hom_params.boot_params = None
         if needs_boot:
-            boot_slot_counts = self._bootstrap_slot_counts(hom_params)
-            if not boot_slot_counts <= slot_counts:
-                hom_params.boot_params = BootstrappingParams.for_slot_counts(
-                    hom_params.real_boot, hom_params.slim_boot, slot_counts | boot_slot_counts)
-                hom_params.mod_chain = ModulusChain(hom_params)
+            # the chain serves every slot count a bootstrap may see: the inputs' and the Bootstrap ops' own, which an
+            # op on the way may have changed (e.g. HomSumSlots, HomMuxConv)
+            slot_counts = {hom_params.n_slots, *self.custom_n_slots.values(), *self._bootstrap_slot_counts(hom_params)}
+            hom_params.boot_params = BootstrappingParams.for_slot_counts(
+                hom_params.real_boot, hom_params.slim_boot, slot_counts)
+        hom_params.mod_chain = ModulusChain(hom_params)
 
         tensors = {}
         attributes_dict = {
