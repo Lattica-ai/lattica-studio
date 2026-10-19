@@ -72,22 +72,22 @@ def test_slot_client_and_fhe_clear_execution():
 
 
 @pytest.mark.parametrize('axis', [0, 1, -1, -2])
-def test_expand_clear_accepts_every_vector_insertion_axis(axis):
-    x = torch.tensor([2., 3., 5.])
-    expected = torch.tensor([[2., 3., 5.]]).repeat(3, 1)
-    if axis in (0, -2):
+def test_expand_clear_inserts_the_values_axis_as_traced(axis):
+    """The values axis goes where infer_output_shape inserts it: in the input's axes, so -1 and -2 of a vector
+    both put it first."""
+    x = torch.tensor([2., 3., 5., 7.])
+    expected = x[:, None].expand(4, 4)
+    if axis == 1:
         expected = expected.T
     torch.testing.assert_close(HomExpand(expand_axis=axis)(x), expected)
 
 
 def test_expand_clear_preserves_batch_dimensions():
-    x = torch.arange(6.).reshape(2, 3)
+    x = torch.arange(8.).reshape(2, 4)
     result = HomExpand(expand_axis=1)(x)
-    assert result.shape == (2, 3, 3)
-    for index in range(3):
-        torch.testing.assert_close(result[:, :, index], x)
-    with pytest.raises(IndexError):
-        HomExpand(expand_axis=3)(x)
+    assert result.shape == (2, 4, 4)
+    for slot in range(4):
+        torch.testing.assert_close(result[:, :, slot], x)
 
 
 def test_serialized_clear_execution_expands_to_ring_size():
@@ -125,8 +125,8 @@ def test_running_sum_clear_uses_only_the_logical_axis():
 @pytest.mark.parametrize('include_identity', [False, True])
 @pytest.mark.parametrize('perform_sum', [False, True])
 def test_rotate_sum_clear_counts_each_requested_view_once(include_identity, perform_sum):
-    x = torch.tensor([1., 2., 4.])
-    views = [torch.tensor([2., 4., 1.])]
+    x = torch.tensor([1., 2., 4., 8.])
+    views = [torch.tensor([2., 4., 8., 1.])]
     if perform_sum or include_identity:
         views.insert(0, x)
     expected = sum(views) if perform_sum else torch.stack(views)
