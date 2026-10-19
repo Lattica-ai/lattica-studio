@@ -30,8 +30,9 @@ class ModulusChain():
                 ["boot_stc",  boot_params.stc_q_list_precision],
                 ["boot_base", ((boot_params.q_base_precision,),)]
             ])
+        special_precisions = hom_params.ghs_keyswtich_scale_precision or ()
         self.mod_chain_sections.append(
-            ["special_primes", ((61,),) * hom_params.num_special_primes],
+            ["special_primes", tuple((precision,) for precision in special_precisions)]
         )
 
     def post_init(self):
