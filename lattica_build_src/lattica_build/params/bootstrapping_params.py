@@ -110,7 +110,6 @@ class BootstrappingParams:
         BOOT_PARAMS_PER_SUBRING's split, which the chain must fit: as many levels and CtS primes as wide (for_slot_counts
         with n_slots among its slot counts does). SLIM: equal parts over all the chain's levels, since its StC runs on
         the input's own primes."""
-        log_n_slots = n_slots.bit_length() - 1
         n_levels = self.dft_levels
         if not self.slim_boot:
             split, cts_bits, _ = self._subring_entry(n_slots)
@@ -122,6 +121,7 @@ class BootstrappingParams:
                     f"{n_slots}-slot bootstrap's split {split} ({cts_bits}-bit CtS primes): build it with "
                     f"for_slot_counts including {n_slots}")
             return tuple(split)
+        log_n_slots = n_slots.bit_length() - 1
         if not 1 <= n_levels <= log_n_slots:
             raise ValueError(
                 f"bootstrapping {n_slots} slots needs log2(n_slots) >= the {self.dft_levels} DFT levels")
