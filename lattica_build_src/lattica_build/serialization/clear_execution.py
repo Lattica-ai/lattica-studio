@@ -64,13 +64,10 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     in a backend graph without storing a second tensor table. Composite scopes
     are independent, and intermediates are released after their final use.
     """
-    # Let the operators know the ring size the section saved.
-    options = {'internal_n': graph['internal_n']} if 'internal_n' in graph else {}
-    with clear_options(**options):
-        return _run_clear_section(graph, inputs, resolve_data, path)
-
-
-def _run_clear_section(graph, inputs, resolve_data, path):
+    # If the section saved the ring size, run it with the ring size set.
+    if graph.get('internal_n') is not None:
+        with clear_options(internal_n=graph['internal_n']):
+            return run_clear_section({**graph, 'internal_n': None}, inputs, resolve_data, path)
     if graph['op'] is not None:
         cls, names = _constructor(graph['op'])
         attrs = graph['op_attrs']
