@@ -90,9 +90,6 @@ class HomOp:
             tracer.serialize_hom_val(value)
             for value in inputs
         ]
-        # Save the ring size for the plaintext run.
-        if tracer.hom_params is not None:
-            serialized_op["internal_n"] = tracer.hom_params.internal_n
 
         tracer.finalize()
         return serialized_op, out_val
