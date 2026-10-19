@@ -27,7 +27,7 @@ BOOT_CONFIGURATION = {
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
     # Bound on the ModRaise wrap count |I|. With the H=32 ephemeral secret, K=16 fails with
-    # probability 2^-138.7 for 2^15 slots (eprint 2022/024, Lattigo's default). Han-Ki's cosine
+    # probability 2^-138.7 for 2^15 slots (eprint 2022/024). Han-Ki's cosine
     # needs degree 2K-2 = 30, the largest even degree in 5 levels.
     'k' : 16,
 
