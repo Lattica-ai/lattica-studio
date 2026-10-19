@@ -115,10 +115,10 @@ class BootstrappingParams:
         return BOOT_PARAMS_PER_SUBRING[log_n_subring]
 
     def dft_split(self, n_slots: int) -> tuple[int, ...]:
-        """The StC split (component sizes, stage 0 first; CtS takes it reversed) of a bootstrap of n_slots
-        slots: BOOT_PARAMS_PER_SUBRING's, which the chain must fit (enough levels, CtS primes at least as wide:
-        for_slot_counts with n_slots among the slot counts). SLIM keeps all the chain's levels, its StC runs on the
-        input's own primes: equal parts over them."""
+        """The StC split (component sizes, stage 0 first; CtS takes it reversed) of a bootstrap of n_slots slots.
+        BOOT_PARAMS_PER_SUBRING's split, which the chain must fit: as many levels and CtS primes as wide (for_slot_counts
+        with n_slots among its slot counts does). SLIM: equal parts over all the chain's levels, since its StC runs on
+        the input's own primes."""
         log_n_slots = n_slots.bit_length() - 1
         n_levels = self.dft_levels
         if not self.slim_boot:

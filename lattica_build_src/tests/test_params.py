@@ -73,12 +73,14 @@ def test_dft_split_refuses_a_chain_that_does_not_fit(chain_slots, boot_slots):
         == BOOT_PARAMS_PER_SUBRING[(2 * boot_slots).bit_length() - 1][0]
 
 
-def test_chain_serves_a_bootstrap_after_a_slot_change():
-    """The chain comes from the Bootstrap ops' own slot counts too: here the input has 2^15 slots, but the
-    bootstrap sees 32 after HomSumSlots, whose one-level split needs a wider CtS prime than the input's."""
+def test_chain_serves_the_slot_counts_the_pipeline_bootstraps():
+    """The chain comes from the slot counts the Bootstrap ops see: here the input has 2^15 slots, but the bootstrap
+    sees 32 after HomSumSlots, whose one-level split needs 55-bit CtS primes. The input's 2^15, never bootstrapped,
+    adds no levels."""
     pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(k=2 ** 10), Bootstrap()), input_shape=(32,))
     params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, num_special_primes=7)
     graph, _ = pipeline.serialize(params)
+    expected = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {32})
+    assert (params.boot_params.dft_levels, params.boot_params.cts_scale) == (expected.dft_levels, expected.cts_scale)
     assert params.boot_params.dft_split(32) == BOOT_PARAMS_PER_SUBRING[6][0]
-    assert params.boot_params.dft_split(2 ** 15) == BOOT_PARAMS_PER_SUBRING[16][0]
     assert json.loads(graph)["modulus_chain"]["num_rows"] == ModulusChain(params).num_rows
