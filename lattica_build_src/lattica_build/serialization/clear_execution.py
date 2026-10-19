@@ -15,7 +15,7 @@ from typing import Any
 
 import torch
 
-from lattica_build.base_classes.hom_op import HomOp
+from lattica_build.base_classes.hom_op import HomOp, clear_options
 from lattica_build.operators.arithmetic.h_add import HomAdd
 from lattica_build.operators.arithmetic.h_axis_sum import HomAxisSum
 from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
@@ -74,7 +74,9 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         op = cls(**kwargs)
         if graph.get('data_ref') is not None:
             op.data = resolve_data(path)
-        return op.forward_clear(*inputs)
+        # Let the operator know the ring size.
+        with clear_options(internal_n=graph.get('internal_n')):
+            return op.forward_clear(*inputs)
 
     env = dict(zip(graph['body_inputs'], inputs, strict=True))
     output_id = graph['body_output']['id']
