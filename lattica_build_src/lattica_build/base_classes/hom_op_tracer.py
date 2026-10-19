@@ -95,7 +95,9 @@ class Tracer:
             "op_attrs": _get_hom_op_attributes(op),
             "custom_inputs": {
                 val.id: val.custom_input_ref for val in inputs if val.is_custom
-            }
+            },
+            # The inputs' traced metadata, read by clear execution (e.g. HomSumSlots).
+            "input_values": [self.serialize_hom_val(val) for val in inputs],
         }
 
         data = getattr(op, "data", None)

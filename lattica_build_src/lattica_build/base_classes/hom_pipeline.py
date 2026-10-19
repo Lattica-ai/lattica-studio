@@ -21,13 +21,12 @@ from lattica_build.serialization.hom_op_pb2 import HomOpType
 from dataclasses import dataclass
 import enum
 
-from safetensors.torch import load as safetensors_load, save as safetensors_save
+from safetensors.torch import save as safetensors_save
 
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.params.bootstrapping_params import BootstrappingParams
 from lattica_build.params.params import HomParams, DecompositionType
-from lattica_build.serialization.clear_execution import run_clear_section
 
 
 def _leaf_data(graph, path, tensors):
@@ -126,52 +125,25 @@ class HomomorphicPipeline:
     def set_data(self, name: str | int | tuple[int, ...] | None, *data: Tensor, section: PipeSec = PipeSec.HOM) -> None:
         self._get_pipe_section(section).set_data(*data, name=name)
 
-    def forward_clear(self, *inputs, hom_params=None, **named_inputs):
-        """Run the complete pipeline on clear torch tensors. Pass hom_params to get exactly the
-        result the encrypted query gives."""
-        input_names = list(inspect.signature(self.hom.forward).parameters)
+    def forward_clear(self, *inputs, hom_params, **named_inputs):
+        """Run the pipeline's traced graph on clear torch tensors, as a clear query does."""
+        from lattica_build.serialization.clear_execution import run_clear_pipeline
+
         if inputs and named_inputs:
             raise TypeError("forward_clear accepts positional or named inputs, not both")
-        if named_inputs:
-            unknown = set(named_inputs) - set(input_names)
-            missing = set(input_names) - set(named_inputs)
-            if unknown or missing:
-                raise TypeError(
-                    f"Invalid clear inputs; unknown={sorted(unknown)}, "
-                    f"missing={sorted(missing)}"
-                )
-            values = [named_inputs[name] for name in input_names]
-        else:
-            values = list(inputs)
-            if len(values) != len(input_names):
-                raise TypeError(f"Expected {len(input_names)} clear inputs, got {len(values)}")
-        if not all(torch.is_tensor(value) for value in values):
-            raise TypeError("forward_clear inputs must be torch.Tensor instances")
-
-        # If hom_params was given, run the exact graph that the encrypted query runs.
-        if hom_params is not None:
-            return self._forward_clear_traced(values, hom_params)
-        if self.client_pre is not None:
-            values[0] = self.client_pre.forward_clear(values[0])
-        result = self.hom.forward_clear(*values)
-        if self.client_post is not None:
-            result = self.client_post.forward_clear(result)
-        return result
-
-    def _forward_clear_traced(self, values, hom_params):
-        # Serialize a copy of hom_params, so the caller's params stay untouched.
-        graph_bytes, tensors_bytes = self.serialize(copy.deepcopy(hom_params))
-        sections = json.loads(graph_bytes)["pipeline_sections"]
-        tensors = safetensors_load(tensors_bytes)
-        result = values[0]
-        for section in PipeSec:
-            graph = sections.get(section)
-            if graph is None:
-                continue
-            # Pass the custom inputs (values[1:]) to the hom section only.
-            inputs = [result, *values[1:]] if section == PipeSec.HOM else [result]
-            result = run_clear_section(graph, inputs, lambda path, graph=graph: _leaf_data(graph, path, tensors))
-        return result
+        input_names = list(inspect.signature(self.hom.forward).parameters)
+        if inputs and len(inputs) != len(input_names):
+            raise TypeError(f"Expected {len(input_names)} clear inputs, got {len(inputs)}")
+        # Trace with a copy, so the caller's params stay untouched.
+        hom_params = copy.deepcopy(hom_params)
+        self._prepare_params(hom_params)
+        tensors = {}
+        sections = self._serialize_pipeline_sections(tensors, hom_params)
+        return run_clear_pipeline(
+            {section: (sections[section], lambda path, graph=sections[section]: _leaf_data(graph, path, tensors))
+             for section in PipeSec if section in sections},
+            self.primary_input_name, self.input_shape, sections['input_shape_to_hom_section'],
+            self.as_complex, named_inputs or dict(zip(input_names, inputs)))
 
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
         self.client_preprocessing_data = binary_data
@@ -293,7 +265,8 @@ class HomomorphicPipeline:
             "full_active_cols": mod_chain.full_active_cols.tolist(),
         }
 
-    def serialize(self, hom_params) -> Tuple[bytes, bytes]:
+    def _prepare_params(self, hom_params) -> None:
+        """Set the ring-switch, bootstrapping and modulus-chain params tracing needs."""
         leaves = self.get_leaf_ops(sections=(PipeSec.HOM,))
         first_op = leaves[0] if leaves else None
         ring_switch_input = first_op is not None and first_op.OP_TYPE == HomOpType.RingSwitch
@@ -316,6 +289,8 @@ class HomomorphicPipeline:
         )
         hom_params.mod_chain = ModulusChain(hom_params)
 
+    def serialize(self, hom_params) -> Tuple[bytes, bytes]:
+        self._prepare_params(hom_params)
         tensors = {}
         attributes_dict = {
             "as_complex":                    self.as_complex,

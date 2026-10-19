@@ -3,32 +3,22 @@
 import torch
 from torch import Tensor
 from typing import ClassVar
-import contextlib
 import contextvars
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 _clear_execution = contextvars.ContextVar("hom_clear_execution", default=False)
-_clear_options = contextvars.ContextVar("hom_clear_options", default={})
-
-
-@contextlib.contextmanager
-def clear_options(**options):
-    """Pass extra settings to the pipeline operators during a plaintext run."""
-    token = _clear_options.set({**_clear_options.get(), **options})
-    try:
-        yield
-    finally:
-        _clear_options.reset(token)
 
 
 class HomOp:
     OP_TYPE: ClassVar[HomOpType] = None
     data:    torch.Tensor | tuple[torch.Tensor, ...] | None = None
+    # The inputs' traced metadata (serialized HomValues), set by clear execution of a traced graph.
+    _input_values: list[dict] | None = None
 
     def forward(self, *inputs):
         raise NotImplementedError
 
-    def forward_clear(self, *inputs, **kwargs):
+    def forward_clear(self, *inputs):
         """Evaluate this operator on ordinary clear ``torch.Tensor`` values."""
         if self.is_leaf_op():
             if len(inputs) != 1:
@@ -38,19 +28,11 @@ class HomOp:
                 )
             return inputs[0]
 
-        options = dict(_clear_options.get())
-        options.update(kwargs)
         execution_token = _clear_execution.set(True)
-        options_token = _clear_options.set(options)
         try:
             return self.forward(*inputs)
         finally:
-            _clear_options.reset(options_token)
             _clear_execution.reset(execution_token)
-
-    @staticmethod
-    def _clear_option(name, default=None):
-        return _clear_options.get().get(name, default)
 
     def __call__(self, *inputs):
         from lattica_build.base_classes.hom_op_tracer import Tracer

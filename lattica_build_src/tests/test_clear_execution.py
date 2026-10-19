@@ -61,11 +61,11 @@ def test_slot_client_and_fhe_clear_execution():
     assert torch.equal(HomConj()(z), z.conj())
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
     assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
-    assert torch.equal(HomSumSlots(k=4)(x), x.reshape(4, 2).sum(0).repeat(4))
+    with pytest.raises(ValueError, match="traced slot period"):
+        HomSumSlots(k=4)(x)  # untraced, the slot period is unknown
     assert torch.equal(HomModSwitch()(x), x)
     assert torch.equal(Bootstrap()(x), x)
     assert torch.equal(HomRingSwitch(10)(x), x)
-    assert torch.equal(HomomorphicPipeline(hom=SequentialHomOp(Clamp(0, 8)), input_shape=x.shape).forward_clear(x), x)
 
     probabilities = Softmax(-1)(x)
     assert torch.allclose(probabilities.sum(), torch.tensor(1.0))
@@ -158,15 +158,6 @@ def test_composites_and_pipeline_clear_execution():
     x = torch.tensor([1.0, 2.0])
     assert torch.equal(graph.forward_clear(x), torch.tensor([2.0, 5.0]))
 
-    pipeline = HomomorphicPipeline(
-        client_pre=[Clamp(0, 2)],
-        hom=scale,
-        client_post=[Clamp(0, 3)],
-        input_shape=(2,),
-    )
-    expected = (x.clamp(0, 2) * torch.tensor([2.0, 3.0])).clamp(0, 3)
-    assert torch.equal(pipeline.forward_clear(x), expected)
-
 
 class _ScaleThenAdd(HomOp):
     """scale(x) + y, y being a second (custom) encrypted input."""
@@ -180,8 +171,9 @@ class _ScaleThenAdd(HomOp):
 
 
 def test_pipeline_traced_clear_run_covers_every_section_and_input():
-    """With hom_params the pipeline runs its traced graph: client_pre, hom with the custom
-    input, client_post; the caller's params stay untouched."""
+    """The pipeline runs its traced graph as a clear query does: client_pre,
+    hom with the custom input, client_post, in float64, with the inputs' shapes checked; the
+    caller's params stay untouched."""
     scale = HomConstMul(dims=(4,))
     scale.set_data(torch.tensor([2.0, 3.0, 4.0, 5.0]))
     pipeline = HomomorphicPipeline(client_pre=[Clamp(0, 2)], hom=_ScaleThenAdd(scale),
@@ -190,10 +182,12 @@ def test_pipeline_traced_clear_run_covers_every_section_and_input():
                        pt_scale=2 ** 30, num_special_primes=1, n_slots=4)
     x = torch.tensor([1.0, 2.0, 3.0, -1.0])
     y = torch.tensor([0.5, 0.5, 0.5, 0.5])
-    expected = torch.tensor([2.5, 6.5, 8.5, 0.5])
+    expected = torch.tensor([2.5, 6.5, 8.5, 0.5], dtype=torch.float64)
     torch.testing.assert_close(pipeline.forward_clear(x, y, hom_params=params), expected)
     torch.testing.assert_close(pipeline.forward_clear(x=x, y=y, hom_params=params), expected)
     assert getattr(params, 'mod_chain', None) is None
+    with pytest.raises(ValueError, match="'y' has shape"):
+        pipeline.forward_clear(x, torch.ones(5), hom_params=params)
 
 
 @pytest.mark.parametrize("c_in,c_out,hw,kernel,stride,padding", [
@@ -271,8 +265,9 @@ def test_sum_slots_clear_matches_the_ciphertext(length, n_slots, ks):
     """The clear graph sums the slots the ciphertext does, each period taken from the
     traced metadata, including one an earlier sum folded."""
     x = torch.randn(length, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    pipeline = HomomorphicPipeline(hom=SequentialHomOp(*(HomSumSlots(k=k) for k in ks)),
-                                   input_shape=(length,))
+    # One sum is the section itself; more run inside a composite.
+    hom = HomSumSlots(k=ks[0]) if len(ks) == 1 else SequentialHomOp(*(HomSumSlots(k=k) for k in ks))
+    pipeline = HomomorphicPipeline(hom=hom, input_shape=(length,))
     params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
                        pt_scale=2 ** 44, num_special_primes=1, n_slots=n_slots)
     graph, _ = pipeline.serialize(params)
@@ -300,6 +295,16 @@ def test_sum_slots_clear_sums_the_slot_axis(shape, n_axis):
     result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
     torch.testing.assert_close(result, expected)
     torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), expected)
+
+
+def test_sum_slots_rejects_k_larger_than_the_period():
+    """The second sum's k exceeds the 4-slot period the first one left."""
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(k=8), HomSumSlots(k=8)),
+                                   input_shape=(32,))
+    params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
+                       pt_scale=2 ** 44, num_special_primes=1, n_slots=32)
+    with pytest.raises(ValueError, match="k=8 is larger than the input's 4-slot period"):
+        pipeline.forward_clear(torch.zeros(32), hom_params=params)
 
 
 def test_sum_slots_output_period():
@@ -338,8 +343,8 @@ def test_mnist_composite_example_predicts_known_digits():
     images = images[sample_indices]
     labels = labels[sample_indices]
 
-    pipeline = mnist_fc.Pipeline()
-    predictions = pipeline.build_pipeline().forward_clear(images).argmax(dim=-1)
+    example = mnist_fc.Pipeline()
+    predictions = example.build_pipeline().forward_clear(images, hom_params=example.build_params()).argmax(dim=-1)
     accuracy = (predictions == labels).float().mean()
     assert accuracy >= 0.95, f"clear MNIST accuracy was only {accuracy.item():.1%}"
 

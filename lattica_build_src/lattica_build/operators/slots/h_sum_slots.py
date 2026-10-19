@@ -5,7 +5,7 @@ from typing import Optional, Sequence
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp
-from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.base_classes.hom_value import HomValue, to_neg_axis
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 class HomSumSlots(HomOp):
@@ -38,26 +38,25 @@ class HomSumSlots(HomOp):
         """The sum folds the input's period n_slots (internal_n without one) to n_slots / k."""
         n_slots = input.n_slots if input.n_slots is not None else internal_n
         k = self.k if self.k is not None else n_slots
+        if k > n_slots:
+            raise ValueError(f"k={k} is larger than the input's {n_slots}-slot period.")
         return input.make_copy(n_slots=n_slots // k)
 
     def forward_clear(self, input):
-        """The encrypted sum on the ciphertext's slots, taking the input's traced slot axis and
-        n_slots (untraced: the last axis, with its length rounded up to a power of 2 as the
-        period): the axis is zero-padded to the period, and slot j gets the k slots n_slots / k
-        apart. The result repeats at n_slots / k and is read at the input's positions."""
-        # Use the input's slot axis and n_slots when it has them, else the last axis and a guess from its length.
-        input_values = self._clear_option("input_values")
-        input_value = input_values[0] if input_values and input_values[0] else {}
-        axis = input_value.get("n_axis")
-        if axis is None:
-            axis = -1
-        n_slots = input_value.get("n_slots")
-        if n_slots is None:
-            n_slots = 1 << (input.shape[axis] - 1).bit_length()
+        """The encrypted sum on the ciphertext's slots, along the input's traced slot axis n_axis
+        with its traced period n_slots: the axis is zero-padded to n_slots, and slot j gets the
+        k slots n_slots / k apart. The result repeats at n_slots / k and is read at the input's
+        positions."""
+        if not self._input_values:
+            raise ValueError("HomSumSlots needs its input's traced slot period: run it through "
+                             "HomomorphicPipeline.forward_clear")
+        value = self._input_values[0]
+        n_slots = value["n_slots"]
+        # The slot axis counted from the end, so leading batch axes don't shift it.
+        axis = -1 if value["n_axis"] is None else to_neg_axis(value["n_axis"], value["tensor_shape"])
+        x = input.movedim(axis, -1)
         k = self.k if self.k is not None else n_slots
-        slots = input.movedim(axis, -1)
-        period = slots[..., :n_slots]
+        period = x[..., :n_slots]
         period = torch.nn.functional.pad(period, (0, n_slots - period.shape[-1]))
         sums = period.reshape(*period.shape[:-1], k, n_slots // k).sum(dim=-2)
-        sums = sums[..., torch.arange(slots.shape[-1], device=input.device) % (n_slots // k)]
-        return sums.movedim(-1, axis)
+        return sums[..., torch.arange(x.shape[-1], device=x.device) % (n_slots // k)].movedim(-1, axis)

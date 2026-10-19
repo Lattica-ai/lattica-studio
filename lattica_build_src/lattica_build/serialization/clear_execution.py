@@ -8,14 +8,15 @@ and resolves their borrowed weights.
 """
 
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import lru_cache
 import inspect
 from typing import Any
 
 import torch
 
-from lattica_build.base_classes.hom_op import HomOp, clear_options
+from lattica_build.base_classes.hom_op import HomOp
+from lattica_build.base_classes.hom_pipeline import PipeSec
 from lattica_build.operators.arithmetic.h_add import HomAdd
 from lattica_build.operators.arithmetic.h_axis_sum import HomAxisSum
 from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
@@ -57,18 +58,13 @@ def _constructor(op_type: int) -> tuple[type[HomOp], tuple[str, ...]]:
 
 def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
                       resolve_data: Callable[[tuple[int, ...]], Any],
-                      path: tuple[int, ...] = (),
-                      input_values: Sequence[dict[str, Any] | None] | None = None) -> torch.Tensor:
+                      path: tuple[int, ...] = ()) -> torch.Tensor:
     """Evaluate a traced section with build operators, borrowing leaf weights.
 
     ``path`` consists of child indices, allowing callers to resolve the same leaf
     in a backend graph without storing a second tensor table. Composite scopes
     are independent, and intermediates are released after their final use.
-    ``input_values`` is the traced metadata (serialized HomValues) of ``inputs``.
     """
-    # Without input_values, use the input metadata saved in the graph.
-    if input_values is None:
-        input_values = graph.get('input_values') or [None] * len(inputs)
     if graph['op'] is not None:
         cls, names = _constructor(graph['op'])
         attrs = graph['op_attrs']
@@ -79,25 +75,54 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         op = cls(**kwargs)
         if graph.get('data_ref') is not None:
             op.data = resolve_data(path)
-        # Let the operator read its inputs' metadata (e.g. n_slots).
-        with clear_options(input_values=input_values):
-            return op.forward_clear(*inputs)
+        op._input_values = graph['input_values']
+        return op.forward_clear(*inputs)
 
     env = dict(zip(graph['body_inputs'], inputs, strict=True))
-    # The saved metadata (n_slots etc.) of each live value, by id.
-    values_by_id = dict(zip(graph['body_inputs'], input_values, strict=True))
     output_id = graph['body_output']['id']
     uses = Counter(name for child in graph['child_ops'] for name in child['inputs'])
     uses[output_id] += 1
     for index, child in enumerate(graph['child_ops']):
         values = [env[name] for name in child['inputs']]
-        child_values = [values_by_id[name] for name in child['inputs']]
-        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index),
-                                                       child_values)
-        values_by_id[child['output']['id']] = child['output']
+        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index))
         del values
         for name in child['inputs']:
             uses[name] -= 1
             if uses[name] == 0:
-                del env[name], values_by_id[name]
+                del env[name]
     return env[output_id]
+
+
+def run_clear_pipeline(sections: Mapping[PipeSec, tuple[dict[str, Any], Callable[[tuple[int, ...]], Any]]],
+                       primary_input_name: str, input_shape: Mapping[str, Sequence[int]],
+                       hom_input_shape: Sequence[int], as_complex: bool,
+                       inputs: Mapping[str, torch.Tensor]) -> torch.Tensor:
+    """Run a traced pipeline on clear inputs, as a clear query does.
+
+    ``sections`` maps each present section to its traced graph and the resolver of its
+    leaf weights. ``hom_input_shape`` is the primary input's shape after client
+    preprocessing. Inputs are cast to the weights' float64 (complex128 if any is complex).
+    """
+    sections = [(section, *sections[section]) for section in PipeSec if section in sections]
+    if inputs.keys() != input_shape.keys():
+        raise ValueError(f'Clear queries require plaintext inputs {sorted(input_shape)}.')
+    for name, shape in input_shape.items():
+        if name == primary_input_name:
+            continue  # Client preprocessing may reshape the primary input.
+        if tuple(inputs[name].shape) != tuple(shape):
+            raise ValueError(f"Clear input '{name}' has shape {tuple(inputs[name].shape)}; expected {shape}.")
+    dtype = torch.complex128 if any(value.is_complex() for value in inputs.values()) else torch.float64
+    values = {name: value.to(dtype) for name, value in inputs.items()}
+    result = values[primary_input_name]
+    with torch.no_grad():
+        for section, graph, resolve_data in sections:
+            inputs = [result]
+            if section == PipeSec.HOM:
+                if tuple(result.shape) != tuple(hom_input_shape):
+                    raise ValueError(f"Clear input '{primary_input_name}' after preprocessing "
+                                     f"has shape {tuple(result.shape)}; expected {tuple(hom_input_shape)}.")
+                inputs.extend(values[name] for name in graph['inputs'][1:])
+            result = run_clear_section(graph, inputs, resolve_data)
+            if section == PipeSec.HOM and not as_complex:
+                result = result.real
+    return result
