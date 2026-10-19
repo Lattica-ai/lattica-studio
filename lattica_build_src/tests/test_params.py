@@ -1,5 +1,11 @@
+import json
+
 import pytest
 
+from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
+from lattica_build.operators.composite.sequential import SequentialHomOp
+from lattica_build.operators.fhe.h_bootstrap import Bootstrap
+from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.bootstrapping_params import BOOT_CONFIGURATION, BOOT_PARAMS_PER_SUBRING, BootstrappingParams
 from lattica_build.params.level_and_scale_tracing import ModulusChain
 from lattica_build.params.params import HomParams
@@ -51,3 +57,28 @@ def test_chain_serves_every_slot_count(slot_counts, levels, cts_scale):
 def test_slot_count_without_bootstrap_parameters_is_refused():
     with pytest.raises(ValueError, match="no bootstrap parameters"):
         BootstrappingParams.for_slot_counts(True, False, {2 ** 20})
+
+
+@pytest.mark.parametrize("chain_slots, boot_slots", [
+    ({2 ** 6}, 2 ** 15),    # (3, 3) at 44 bits: the 2^15 split needs 4 levels
+    ({2 ** 6}, 2 ** 7),     # same level count, but the 2^7 split needs a 45-bit CtS prime
+    ({2 ** 15}, 2 ** 5),    # 4 levels at 47 bits: the 32-slot one-level split needs 55
+])
+def test_dft_split_refuses_a_chain_that_does_not_fit(chain_slots, boot_slots):
+    """A bootstrap whose own split the chain does not fit is refused, not squeezed into the chain's levels."""
+    boot = BootstrappingParams.for_slot_counts(True, False, chain_slots)
+    with pytest.raises(ValueError, match="does not fit"):
+        boot.dft_split(boot_slots)
+    assert BootstrappingParams.for_slot_counts(True, False, chain_slots | {boot_slots}).dft_split(boot_slots) \
+        == BOOT_PARAMS_PER_SUBRING[(2 * boot_slots).bit_length() - 1][0]
+
+
+def test_chain_serves_a_bootstrap_after_a_slot_change():
+    """The chain comes from the Bootstrap ops' own slot counts too: here the input has 2^15 slots, but the
+    bootstrap sees 32 after HomSumSlots, whose one-level split needs a wider CtS prime than the input's."""
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(k=2 ** 10), Bootstrap()), input_shape=(32,))
+    params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, num_special_primes=7)
+    graph, _ = pipeline.serialize(params)
+    assert params.boot_params.dft_split(32) == BOOT_PARAMS_PER_SUBRING[6][0]
+    assert params.boot_params.dft_split(2 ** 15) == BOOT_PARAMS_PER_SUBRING[16][0]
+    assert json.loads(graph)["modulus_chain"]["num_rows"] == ModulusChain(params).num_rows

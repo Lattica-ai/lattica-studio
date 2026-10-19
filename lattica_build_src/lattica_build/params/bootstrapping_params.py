@@ -116,18 +116,21 @@ class BootstrappingParams:
 
     def dft_split(self, n_slots: int) -> tuple[int, ...]:
         """The StC split (component sizes, stage 0 first; CtS takes it reversed) of a bootstrap of n_slots
-        slots: BOOT_PARAMS_PER_SUBRING's when the chain fits it (enough levels, CtS primes at least as wide),
-        else equal parts over as many of the chain's levels as there are stages. SLIM keeps all the
-        chain's levels: its StC runs on the input's own primes."""
+        slots: BOOT_PARAMS_PER_SUBRING's, which the chain must fit (enough levels, CtS primes at least as wide:
+        for_slot_counts with n_slots among the slot counts). SLIM keeps all the chain's levels, its StC runs on the
+        input's own primes: equal parts over them."""
         log_n_slots = n_slots.bit_length() - 1
         n_levels = self.dft_levels
         if not self.slim_boot:
-            entry = BOOT_PARAMS_PER_SUBRING.get(log_n_slots + 1)
-            if entry is not None:
-                split, cts_bits, _ = entry
-                if len(split) <= n_levels and cts_bits <= self.cts_scale:
-                    return tuple(split)
-            n_levels = min(n_levels, log_n_slots)
+            split, cts_bits, _ = self._subring_entry(n_slots)
+            if len(split) > n_levels or cts_bits > self.cts_scale:
+                # fewer levels than the split would mean far more diagonals per DFT factor, and a CtS prime
+                # narrower than the split needs loses precision
+                raise ValueError(
+                    f"the bootstrap chain ({n_levels} DFT levels, {self.cts_scale}-bit CtS primes) does not fit the "
+                    f"{n_slots}-slot bootstrap's split {split} ({cts_bits}-bit CtS primes): build it with "
+                    f"for_slot_counts including {n_slots}")
+            return tuple(split)
         if not 1 <= n_levels <= log_n_slots:
             raise ValueError(
                 f"bootstrapping {n_slots} slots needs log2(n_slots) >= the {self.dft_levels} DFT levels")
