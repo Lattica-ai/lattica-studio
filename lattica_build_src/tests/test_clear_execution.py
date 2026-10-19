@@ -103,7 +103,7 @@ def test_serialized_clear_execution_expands_to_ring_size():
 
 
 def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
-    """The exact-search shape: Expand feeds a MatMul whose data is one block of internal_n records."""
+    """Expand feeds a MatMul whose data is one block of internal_n records."""
     from lattica_build.operators.ml.h_mat_mul import HomMatMul
 
     params = HomParams(n=256, full_q_list_precision=((60,),) * 4,

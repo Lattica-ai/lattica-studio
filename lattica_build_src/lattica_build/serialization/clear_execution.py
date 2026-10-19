@@ -64,32 +64,31 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     in a backend graph without storing a second tensor table. Composite scopes
     are independent, and intermediates are released after their final use.
     """
-    # If the section saved the ring size, run it with the ring size set.
-    if graph.get('internal_n') is not None:
-        with clear_options(internal_n=graph['internal_n']):
-            return run_clear_section({**graph, 'internal_n': None}, inputs, resolve_data, path)
-    if graph['op'] is not None:
-        cls, names = _constructor(graph['op'])
-        attrs = graph['op_attrs']
-        kwargs = {name: attrs[name] for name in names if name in attrs}
-        if cls is HomSlice:
-            kwargs['key'] = (attrs['start'] if attrs['drop_dim'] else
-                             slice(attrs['start'], attrs.get('end'), attrs['step']))
-        op = cls(**kwargs)
-        if graph.get('data_ref') is not None:
-            op.data = resolve_data(path)
-        return op.forward_clear(*inputs)
+    # Let the operators know the ring size the section saved.
+    options = {'internal_n': graph['internal_n']} if 'internal_n' in graph else {}
+    with clear_options(**options):
+        if graph['op'] is not None:
+            cls, names = _constructor(graph['op'])
+            attrs = graph['op_attrs']
+            kwargs = {name: attrs[name] for name in names if name in attrs}
+            if cls is HomSlice:
+                kwargs['key'] = (attrs['start'] if attrs['drop_dim'] else
+                                 slice(attrs['start'], attrs.get('end'), attrs['step']))
+            op = cls(**kwargs)
+            if graph.get('data_ref') is not None:
+                op.data = resolve_data(path)
+            return op.forward_clear(*inputs)
 
-    env = dict(zip(graph['body_inputs'], inputs, strict=True))
-    output_id = graph['body_output']['id']
-    uses = Counter(name for child in graph['child_ops'] for name in child['inputs'])
-    uses[output_id] += 1
-    for index, child in enumerate(graph['child_ops']):
-        values = [env[name] for name in child['inputs']]
-        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index))
-        del values
-        for name in child['inputs']:
-            uses[name] -= 1
-            if uses[name] == 0:
-                del env[name]
-    return env[output_id]
+        env = dict(zip(graph['body_inputs'], inputs, strict=True))
+        output_id = graph['body_output']['id']
+        uses = Counter(name for child in graph['child_ops'] for name in child['inputs'])
+        uses[output_id] += 1
+        for index, child in enumerate(graph['child_ops']):
+            values = [env[name] for name in child['inputs']]
+            env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index))
+            del values
+            for name in child['inputs']:
+                uses[name] -= 1
+                if uses[name] == 0:
+                    del env[name]
+        return env[output_id]
