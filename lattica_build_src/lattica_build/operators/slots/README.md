@@ -16,22 +16,45 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 
 ### Plaintext execution
 
-`forward_clear` operates on logical tensor dimensions without ciphertext packing:
+`forward_clear` computes on the input's slot layout, as the ciphertext holds it,
+and returns what decryption reads back:
 
-- `HomExpand` extracts values from the last input dimension onto `expand_axis`,
-  broadcasting each value across the original dimension. Its logical output
-  uses the input dimension length, without repetition to fill a ciphertext.
-- `HomRunningSum` computes a cumulative sum along `cumsum_axis` (last axis by
-  default). Encryption stage schedules do not change that plaintext operation.
-- `HomSumSlots` sums the last axis's `n` elements `n / k` apart, as the slots of
-  a ciphertext whose period is that axis: element `j` gets
-  `x[j] + x[j + n / k] + ...`. Omitted `k` sums the full axis.
-- `HomRotateSum` rotates along the last axis and sums or stacks the requested
-  views. Sum mode always includes the original input once; stack mode includes
-  it only when `add_identity_rotation` is set.
+- The slot axis of a value is laid out in rings of `internal_n` slots. A slot
+  axis of at most `n_slots` values (its period) is zero-padded to `n_slots`, and
+  the period is repeated over the ring. A longer slot axis spans whole rings,
+  the last one zero-padded.
+- The operator acts on those slots, padding and repeats included, so padding
+  can mix into the result (a rotation brings in zeros after the last value, a
+  sum adds the padded slots).
+- Decryption reads back the slots that hold the values, dropping the padding
+  and the repeats, at the input's positions on the slot axis.
 
-The serialized clear graph must retain these logical shapes. Packed homomorphic
-layouts are not a substitute for the logical graph.
+Clear execution of a traced graph (`HomomorphicPipeline.forward_clear` with
+`hom_params`) gives each slot operator its input's traced value (slot axis
+`n_axis`, period `n_slots`) and the ring size `internal_n`. Outside a traced
+graph, the input's last axis is the slot axis and is one whole ring, of its
+length rounded up to a power of 2.
+
+Per operator:
+
+- `HomExpand` puts value `i` of the zero-padded period in every slot of the
+  ring of output `i`: the values go on a new axis inserted at `expand_axis`
+  (in the input's axes; -1 inserts before the last one), and the slot axis has
+  `internal_n` slots. The slot axis must fit in its period. An `expand_axis`
+  outside `[-(rank + 1), rank]` raises `ValueError`.
+- `HomRunningSum` along `cumsum_axis`, when it is not the slot axis, is a
+  cumulative sum. Along the slot axis, each ring is `k` rows of
+  `internal_n / k` columns, and the sum runs down the rows of all blocks (row
+  `r` of every block, then row `r + 1`); the blocks are the rings, or the
+  entries of `blocks_axis_external`. `k` must be a power of 2 dividing
+  `internal_n`.
+- `HomSumSlots` adds, in each period of `n_slots` slots, the `k` slots
+  `n_slots / k` apart: slot `j` gets `x[j] + x[j + n_slots / k] + ...`, and the
+  output's period is `n_slots / k`. `k` (by default `n_slots`) must be a power
+  of 2 dividing `n_slots`.
+- `HomRotateSum` rotates every ring and sums or stacks the requested views.
+  Sum mode always includes the original input once; stack mode includes it
+  only when `add_identity_rotation` is set.
 
 ### Homomorphic execution
 

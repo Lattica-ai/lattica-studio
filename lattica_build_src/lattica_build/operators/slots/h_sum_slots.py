@@ -2,12 +2,11 @@
 
 from typing import Optional, Sequence
 
-from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.slots.ring_utils import from_ring, input_layout, to_ring
+from lattica_build.operators.slots.ring_utils import SlotOp, check_span, from_ring, input_layout, to_ring
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
-class HomSumSlots(HomOp):
+class HomSumSlots(SlotOp):
     """Base slot-axis reduction operator.
 
     Use this operator family for slot-axis summation semantics instead of
@@ -23,10 +22,6 @@ class HomSumSlots(HomOp):
     """
 
     OP_TYPE = HomOpType.SumSlots
-    # The traced value of the input and its ring size, set by clear execution of a traced graph (run_clear_section)
-    # as it sets `data`. Without them, clear execution takes the input's last axis as one whole ring.
-    input_value: HomValue | None = None
-    internal_n: int | None = None
 
     def __init__(
         self,
@@ -50,8 +45,7 @@ class HomSumSlots(HomOp):
         value, internal_n = input_layout(self, input)
         n_slots = value.n_slots
         k = self.k if self.k is not None else n_slots
-        if k > n_slots:
-            raise ValueError(f"k={k} is larger than the {n_slots} slots of the period")
+        check_span(self, k, n_slots, "the period")
         ring = to_ring(input, value, internal_n)
         periods = ring.unflatten(-1, (internal_n // n_slots, k, n_slots // k))
         sums = periods.sum(dim=-2, keepdim=True).expand(periods.shape)

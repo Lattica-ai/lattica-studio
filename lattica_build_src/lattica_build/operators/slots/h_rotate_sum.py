@@ -4,14 +4,13 @@ from typing import Sequence
 
 import torch
 
-from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.slots.ring_utils import from_ring, input_layout, to_ring
+from lattica_build.operators.slots.ring_utils import SlotOp, from_ring, input_layout, to_ring
 
 from lattica_build.params.shape_tracing import infer_insert_axis_output_shape
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
-class HomRotateSum(HomOp):
+class HomRotateSum(SlotOp):
     """Base slot-rotation operator with optional accumulation.
 
     Args:
@@ -22,10 +21,6 @@ class HomRotateSum(HomOp):
     """
 
     OP_TYPE = HomOpType.RotateSum
-    # The traced value of the input and its ring size, set by clear execution of a traced graph (run_clear_section)
-    # as it sets `data`. Without them, clear execution takes the input's last axis as one whole ring.
-    input_value: HomValue | None = None
-    internal_n: int | None = None
 
     def __init__(
         self,
