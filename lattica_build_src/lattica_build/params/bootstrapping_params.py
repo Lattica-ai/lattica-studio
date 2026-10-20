@@ -26,9 +26,10 @@ BOOT_CONFIGURATION = {
     # wrap count |I| depends on it rather than on sk_hw. ModRaise always
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
-    # Bound on the ModRaise wrap count |I|: Han-Ki needs degree 2K-2, so depth 5
-    # (degree 27) allows K <= 14. At H=32, |I| >= 14 has probability 2**-38.8.
-    'k' : 14,
+    # Bound on the ModRaise wrap count |I|. With the H=32 ephemeral secret, K=16 fails with
+    # probability 2^-138.7 for 2^15 slots (eprint 2022/024). Han-Ki's cosine
+    # needs degree 2K-2 = 30, the largest even degree in 5 levels.
+    'k' : 16,
 
     # Headroom q0/|m| for messages bounded by 1:
     # the slots for SLIM, the polynomial coefficients for REAL/COMPLEX. Costs
@@ -45,15 +46,6 @@ BOOT_CONFIGURATION = {
 
 
 class BootstrappingParams:
-
-    @staticmethod
-    def optimal_poly_deg_per_depth(depth):
-        optimal_degs = [2, 3, 5, 13, 27, 59, 119, 243]
-        if depth < 0 or depth > 8:
-            raise ValueError("depth must be in the range [0, 8]")
-        if depth == 0:
-            return 0
-        return optimal_degs[depth - 1]
 
     @staticmethod
     def get_q_list_precision(scale: int, levels: int):
@@ -99,10 +91,12 @@ class BootstrappingParams:
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
         self.q_base_precision = self.get_q_base_precision()
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
-        self.cosine_deg = self.optimal_poly_deg_per_depth(self.n_cosine_levels)
+        # The tree evaluates degree d in ceil(log2(d + 1)) levels: n levels fit degree 2^n - 1.
+        # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so its top degree is 2^n - 2.
+        self.cosine_deg = 2 ** self.n_cosine_levels - 2
         # Han-Ki silently raises a lower degree to 2K-2, deeper than provisioned.
         if 2 * self.k - 2 > self.cosine_deg:
             raise ValueError(
                 f"k={self.k} needs a cosine of degree {2 * self.k - 2}; "
                 f"n_cosine_levels={self.n_cosine_levels} gives degree {self.cosine_deg}.")
-        self.arcsine_deg = self.optimal_poly_deg_per_depth(self.n_arcsine_levels)
+        self.arcsine_deg = 2 ** self.n_arcsine_levels - 1   # 0 without an arcsine

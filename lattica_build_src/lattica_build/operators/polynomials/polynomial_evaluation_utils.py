@@ -261,21 +261,3 @@ def threshold_cheb_coeffs_minimax(deg, margin, out_val=1, domain_start=-1, tol=N
         plt.show()
 
     return cheb_coeffs[::-1].copy()
-
-
-def find_optimal_k_m(deg):
-    """ Compute positive integers k,m such that n < k(2^m-1), k is close to sqrt(n/2)
-    and the depth = ceil(log2(k))+m is minimized. Moreover, for that depth the
-    number of homomorphic multiplications = k+2m+2^(m-1)-4 is minimized.
-    """
-
-    m_list_intervals = [0, 2, 11, 13, 17, 55, 59, 76, 239, 247, 284, 991, 1007, 1083, 2015, 2031, 2204]
-    m_list_values = [1, 2, 3, 2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6]
-
-    if deg < 1 or deg > 2204:
-        raise ValueError("n must be in the range [1, 2204]")
-    for i in range(len(m_list_intervals)):
-        if deg > m_list_intervals[i] and deg <= m_list_intervals[i + 1]:
-            m = m_list_values[i]
-            k = int(np.floor(deg / (2 ** m - 1) + 1))
-            return m, k

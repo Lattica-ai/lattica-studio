@@ -17,9 +17,9 @@ from lattica_build.params.params import HomParams
 N = 2 ** 16
 SUBRING_SLOTS = 2 ** 14                      # stem tile = 32*32*16 = 16384 < N/2
 PT_SCALE = 2 ** 30
-Q_LIST_PRECISION = ((60, 30),) * 4
+Q_LIST_PRECISION = ((60, 30),) * 3 + ((30,),)   # 7 levels after each bootstrap
 N_SPECIAL_PRIMES = 9
-RELU_DEG = 119                               # 7 levels with Paterson-Stockmeyer; relu(7) + conv(1) = 8 exactly
+RELU_DEG = 63                                # 6 levels on the tree; relu(6) + conv(1) = 7 exactly
 STEM_CHANNELS = 16                           # RGB (3) zero-padded up to 16 channels
 
 # Per-stage map (C, H, W) after the stage's downsampling.
@@ -46,8 +46,21 @@ CIFAR10_CLASSES = ('airplane', 'automobile', 'bird', 'cat', 'deer',
                    'dog', 'frog', 'horse', 'ship', 'truck')
 
 
-def make_relu(delta: float) -> HomPolyEval:
-    return HomPolyEval(func=lambda x: np.maximum(0, x / delta), degree=RELU_DEG)
+class _ReLU(HomOp):
+    """max(0, x / delta) = x / (2 delta) + |x| / (2 delta). |x| is even, so the poly eval
+    takes it through z = T2 at half the degree; the linear term is one scalar multiply."""
+
+    def __init__(self, delta: float):
+        super().__init__()
+        self.slope = 1 / (2 * delta)
+        self.abs = HomPolyEval(func=lambda x: np.abs(x) / (2 * delta), degree=RELU_DEG)
+
+    def forward(self, x: HomValue) -> HomValue:
+        return self.abs(x) + self.slope * x   # the add writes into its first operand: the polynomial's output, at the lower level
+
+
+def make_relu(delta: float) -> HomOp:
+    return _ReLU(delta)
 
 
 def _conv_bn(conv, bn, layout, delta, *, weight=None):
@@ -62,8 +75,8 @@ def _conv_bn(conv, bn, layout, delta, *, weight=None):
     return op
 
 
-# A bootstrap sits right before each ReLU: the ReLU takes 7 of its 8 levels and the
-# next conv the last one, so every conv runs on the bottom of the chain (2 limbs).
+# A bootstrap sits right before each ReLU: the ReLU takes 6 of its 7 levels and the
+# next conv the last one, so every conv runs on the bottom of the chain.
 class _MuxStem(HomOp):
     def __init__(self, model):
         super().__init__()
