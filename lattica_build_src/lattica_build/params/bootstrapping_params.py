@@ -140,9 +140,6 @@ class BootstrappingParams:
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them."""
-        for name, value in (("real_boot", real_boot), ("slim_boot", slim_boot)):
-            if not isinstance(value, bool):
-                raise ValueError(f"{name} must be a bool; got {value!r}.")
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(
