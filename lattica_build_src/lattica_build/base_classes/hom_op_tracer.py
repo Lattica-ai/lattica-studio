@@ -101,7 +101,8 @@ class Tracer:
             "op_attrs": _get_hom_op_attributes(op),
             "custom_inputs": {
                 val.id: val.custom_input_ref for val in inputs if val.is_custom
-            }
+            },
+            "internal_n": self.hom_params.internal_n,  # the ring size, for the plaintext run
         }
 
         data = getattr(op, "data", None)
