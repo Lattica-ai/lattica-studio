@@ -19,6 +19,10 @@ class Tracer:
         self.client_mode = kwargs.get("client_mode", False)
         self.primary_input_name = kwargs.get("primary_input_name", None)
         self.custom_input_values = kwargs.get("custom_input_values", {})
+        # shapes_only: trace shapes only, without levels and scales (which need the modulus chain) or op data;
+        # on_leaf_op(op, inputs): called on every leaf op, nested ones included
+        self.shapes_only = kwargs.get("shapes_only", False)
+        self.on_leaf_op = kwargs.get("on_leaf_op", None)
 
     @classmethod
     def current(cls):
@@ -86,8 +90,10 @@ class Tracer:
             inputs[i] = input
             self.custom_input_values[input.custom_input_ref] = input.make_copy()
 
+        if self.on_leaf_op is not None:
+            self.on_leaf_op(op, inputs)
         inferred_output = op.infer_output_shape(*inputs, internal_n=self.hom_params.internal_n)
-        if (not self.client_mode):
+        if not self.client_mode and not self.shapes_only:
             inferred_output = op.infer_output_level_and_scale(inferred_output, *inputs[1:], hom_params=self.hom_params)
 
         op_ir = {
@@ -95,11 +101,12 @@ class Tracer:
             "op_attrs": _get_hom_op_attributes(op),
             "custom_inputs": {
                 val.id: val.custom_input_ref for val in inputs if val.is_custom
-            }
+            },
+            "internal_n": self.hom_params.internal_n,  # the ring size, for the plaintext run
         }
 
         data = getattr(op, "data", None)
-        if data is not None:
+        if data is not None and not self.shapes_only:
             refs = []
             data_tensors = (data,) if torch.is_tensor(data) else data
             for tensor in data_tensors:
@@ -134,6 +141,8 @@ class Tracer:
                 client_mode=self.client_mode,
                 primary_input_name=self.primary_input_name,
                 custom_input_values=self.custom_input_values,
+                shapes_only=self.shapes_only,
+                on_leaf_op=self.on_leaf_op,
         ) as body_tracer:
             body_output = op.forward(*body_input_values)
         body_tracer.finalize()
