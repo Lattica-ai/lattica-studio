@@ -19,7 +19,7 @@ SUBRING_SLOTS = 2 ** 14                      # stem tile = 32*32*16 = 16384 < N/
 PT_SCALE = 2 ** 30
 Q_LIST_PRECISION = ((60, 30),) * 3 + ((30,),)   # 7 levels after each bootstrap
 N_SPECIAL_PRIMES = 9
-RELU_DEG = 63                                # 6 levels on the tree; relu(6) + conv(1) = 7 exactly
+RELU_DEG = 61                                # 6 levels on the tree; relu(6) + conv(1) = 7 exactly
 STEM_CHANNELS = 16                           # RGB (3) zero-padded up to 16 channels
 
 # Per-stage map (C, H, W) after the stage's downsampling.
