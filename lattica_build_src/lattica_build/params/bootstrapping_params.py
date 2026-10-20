@@ -38,10 +38,8 @@ BOOT_CONFIGURATION = {
 # each bit divides the sine's cubic error (~6.6 m**3 / 4**log_delta, m: a coefficient EvalMod
 # sees; for REAL the slots' mean lands on the constant one) by 4 but doubles EvalMod's noise,
 # which StC sums over the coefficients. Fewer slots leave less noise to sum and give larger
-# coefficients, so they take more. Tuned per slot count on zero-mean amplitude-1 data (REAL,
-# RTX 5090, logN 16): the best mean error, about 21 bits from 2**15 to 2**9 slots; data with a
-# large mean needs more for its cubic term. An input with only q0 left must be at most
-# 2 * q0 / 2**log_delta.
+# coefficients, so they take more. Tuned per slot count on zero-mean amplitude-1 data. 
+# An input with only q0 left must be at most 2 * q0 / 2**log_delta.
 BOOT_PARAMS_PER_N_SLOTS = {
     5:  ((5,), 55, 9),
     6:  ((3, 3), 44, 8),
