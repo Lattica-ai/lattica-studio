@@ -2,7 +2,7 @@
 
 BOOT_CONFIGURATION = {
     # EvalMod and StC prime sizes (bits); the CtS ones and the DFT level counts come
-    # per subring from BOOT_PARAMS_PER_SUBRING.
+    # per slot count from BOOT_PARAMS_PER_N_SLOTS.
     # Also the size of q0: EvalMod running at scale q0 makes the division by
     # delta a free scale relabel; 53 is the smallest without accuracy loss.
     'eval_mod_scale' : 53,
@@ -21,8 +21,8 @@ BOOT_CONFIGURATION = {
     # needs degree 2K-2 = 30, the largest even degree in 5 levels.
     'k' : 16,
 
-    # SLIM's headroom q0/|m| (its EvalMod sees the slots); the others take theirs from
-    # BOOT_PARAMS_PER_SUBRING.
+    # SLIM's headroom q0/|m| (its EvalMod sees the slots, and no StC sums its noise): 12 is the best at
+    # every slot count measured (2**15 to 2**9); the others take theirs from BOOT_PARAMS_PER_N_SLOTS.
     'log_delta_slim' : 12,
 
     # SubSum stage size cap and the DFTs' baby-step/giant-step ratio. 4 puts the 15-16
@@ -31,33 +31,32 @@ BOOT_CONFIGURATION = {
     'baby_giant_ratio' : 4,
 }
 
-# Per subring dimension log2(2 * n_slots): the StC split of the log2(n_slots) FFT stages
+# Per number of slots, by log2(n_slots): the StC split of the log2(n_slots) FFT stages
 # (component sizes, stage 0 first; CtS uses the same components in reverse order, so both
 # share their rotation keys) and the smallest CtS prime, in bits, that keeps the bootstrap
 # at its error floor with that split. A component of k stages has 2**(k+1) - 1 diagonals,
 # 2**k if it holds the top stage, and costs about its giant steps; the splits are the
 # fastest measured (RTX 5090, logN 16, REAL, ratio 4). One level needs a wider CtS prime:
 # its single factor takes the whole CtS normalization. Last, log_delta, the headroom q0/|m|:
-# each bit divides the sine's cubic error (~6.6 m**3 / 4**log_delta, m: for REAL the slots'
-# mean) by 4 but doubles EvalMod's noise, and fewer slots leave StC less noise to sum, so they
-# afford more (measured at 2**15, 2**14, 2**13, 2**12, 2**10, 2**8, 2**6 and 2**4 slots, the
-# others in between). An input with only q0 left must be at most 2 * q0 / 2**log_delta.
-BOOT_PARAMS_PER_SUBRING = {
-    2:  ((1,), 48, 10),
-    3:  ((2,), 49, 10),
-    4:  ((3,), 50, 10),
-    5:  ((4,), 54, 10),
-    6:  ((5,), 55, 9),
-    7:  ((3, 3), 44, 9),
-    8:  ((3, 4), 45, 9),
-    9:  ((3, 5), 46, 9),
-    10: ((4, 5), 47, 9),
-    11: ((3, 3, 4), 45, 9),
-    12: ((3, 3, 5), 46, 9),
-    13: ((3, 3, 3, 3), 45, 9),
-    14: ((3, 3, 3, 4), 46, 9),
-    15: ((3, 3, 3, 5), 47, 8),
-    16: ((3, 3, 4, 5), 47, 8),
+# each bit divides the sine's cubic error (~6.6 m**3 / 4**log_delta, m: a coefficient EvalMod
+# sees; for REAL the slots' mean lands on the constant one) by 4 but doubles EvalMod's noise,
+# which StC sums over the coefficients. Fewer slots leave less noise to sum and give larger
+# coefficients, so they take more. Tuned per slot count on zero-mean amplitude-1 data (REAL,
+# RTX 5090, logN 16): the best mean error, about 21 bits from 2**15 to 2**9 slots; data with a
+# large mean needs more for its cubic term. An input with only q0 left must be at most
+# 2 * q0 / 2**log_delta.
+BOOT_PARAMS_PER_N_SLOTS = {
+    5:  ((5,), 55, 9),
+    6:  ((3, 3), 44, 8),
+    7:  ((3, 4), 45, 8),
+    8:  ((3, 5), 46, 7),
+    9:  ((4, 5), 47, 7),
+    10: ((3, 3, 4), 45, 7),
+    11: ((3, 3, 5), 46, 6),
+    12: ((3, 3, 3, 3), 45, 6),
+    13: ((3, 3, 3, 4), 46, 5),
+    14: ((3, 3, 3, 5), 47, 5),
+    15: ((3, 3, 4, 5), 47, 4),
 }
 
 
@@ -82,29 +81,29 @@ class BootstrappingParams:
     
     @classmethod
     def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts) -> "BootstrappingParams":
-        """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_SUBRING entry): as
+        """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_N_SLOTS entry): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use."""
-        entries = [cls._subring_entry(n_slots) for n_slots in slot_counts]
+        entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
         return cls(real_boot, slim_boot,
                    dft_levels=max(len(split) for split, _, _ in entries),
                    cts_scale=max(bits for _, bits, _ in entries))
 
     @staticmethod
-    def _subring_entry(n_slots: int):
-        log_n_subring = (2 * n_slots).bit_length() - 1
-        if log_n_subring not in BOOT_PARAMS_PER_SUBRING:
-            raise ValueError(f"no bootstrap parameters for {n_slots} slots (subring 2**{log_n_subring})")
-        return BOOT_PARAMS_PER_SUBRING[log_n_subring]
+    def _n_slots_entry(n_slots: int):
+        log_n_slots = n_slots.bit_length() - 1
+        if log_n_slots not in BOOT_PARAMS_PER_N_SLOTS:
+            raise ValueError(f"no bootstrap parameters for {n_slots} slots")
+        return BOOT_PARAMS_PER_N_SLOTS[log_n_slots]
 
     def dft_split(self, n_slots: int) -> tuple[int, ...]:
         """The StC split (component sizes, stage 0 first; CtS takes it reversed) of a bootstrap of n_slots slots.
-        BOOT_PARAMS_PER_SUBRING's split, which the chain must fit: as many levels and CtS primes as wide (for_slot_counts
+        BOOT_PARAMS_PER_N_SLOTS's split, which the chain must fit: as many levels and CtS primes as wide (for_slot_counts
         with n_slots among its slot counts does). SLIM: equal parts over all the chain's levels, since its StC runs on
         the input's own primes."""
         n_levels = self.dft_levels
         if not self.slim_boot:
-            split, cts_bits, _ = self._subring_entry(n_slots)
+            split, cts_bits, _ = self._n_slots_entry(n_slots)
             if len(split) > n_levels or cts_bits > self.cts_scale:
                 # fewer levels than the split would mean far more diagonals per DFT factor, and a CtS prime
                 # narrower than the split needs loses precision
@@ -122,19 +121,16 @@ class BootstrappingParams:
 
     def log_delta_for(self, n_slots: int) -> int:
         """The headroom q0/|m| of a bootstrap of n_slots slots: SLIM's own (its EvalMod sees the slots),
-        else its subring's (fewer slots afford more)."""
+        else its slot count's (fewer slots take more)."""
         if self.slim_boot:
             return BOOT_CONFIGURATION['log_delta_slim']
-        return self._subring_entry(n_slots)[2]
+        return self._n_slots_entry(n_slots)[2]
 
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int) -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them."""
-        for name, value in (("real_boot", real_boot), ("slim_boot", slim_boot)):
-            if not isinstance(value, bool):
-                raise ValueError(f"{name} must be a bool; got {value!r}.")
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(

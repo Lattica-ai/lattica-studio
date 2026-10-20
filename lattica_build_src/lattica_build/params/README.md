@@ -188,7 +188,7 @@ During pipeline serialization:
 
 The bootstrap chain (its CtS and StC levels and CtS prime size) serves exactly the slot counts the pipeline
 bootstraps: each `Bootstrap` op's input and a ring-switched input, traced through the graph. A bootstrap after an op
-that changes `n_slots` (e.g. `HomSumSlots`, `HomMuxConv`) gets its subring's split from `BOOT_PARAMS_PER_SUBRING`,
+that changes `n_slots` (e.g. `HomSumSlots`, `HomMuxConv`) gets its slot count's split from `BOOT_PARAMS_PER_N_SLOTS`,
 and an input that is never bootstrapped adds no levels.
 
 For users, the key point is to size initial budget and scale assumptions to the graph you actually build.
