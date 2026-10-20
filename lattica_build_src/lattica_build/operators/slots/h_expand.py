@@ -3,17 +3,14 @@
 import math
 from typing import Sequence
 
-import torch
-
-from lattica_build.base_classes.hom_op import HomOp
-from lattica_build.base_classes.hom_value import HomValue, to_pos_axis
-from lattica_build.operators.slots.ring_utils import input_layout
+from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.operators.slots.ring_utils import SlotOp, input_layout, to_ring
 from lattica_build.params.level_and_scale_tracing import infer_modswitch_by_num_levels
 
-from lattica_build.params.shape_tracing import infer_insert_axis_output_shape
+from lattica_build.params.shape_tracing import infer_insert_axis_output_shape, insert_position
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
-class HomExpand(HomOp):
+class HomExpand(SlotOp):
     """Base slot-expansion operator that inserts a new axis of size `n_slots`.
 
     The expansion span is the input's slot period rather than a constructor
@@ -30,10 +27,6 @@ class HomExpand(HomOp):
     """
 
     OP_TYPE = HomOpType.Expand
-    # The traced value of the input and its ring size, set by clear execution of a traced graph (run_clear_section)
-    # as it sets `data`. Without them, clear execution takes the input's last axis as one whole ring.
-    input_value: HomValue | None = None
-    internal_n: int | None = None
 
     def __init__(
         self,
@@ -51,8 +44,8 @@ class HomExpand(HomOp):
     def infer_output_shape(self, input: HomValue, internal_n: int | None = None, **kwargs) -> HomValue:
         """Infer shape by inserting axis `expand_axis` with dimension `n_slots`. Each output holds one value in
         every slot of the ring (internal_n on the slot axis), so its period is 1."""
-        axis = to_pos_axis(self.expand_axis, input.tensor_shape)
-        output = infer_insert_axis_output_shape(input, axis, input.n_slots)
+        position = insert_position(self.expand_axis, len(input.tensor_shape))
+        output = infer_insert_axis_output_shape(input, position, input.n_slots)
         if internal_n is None or output.n_axis is None:
             return output
 
@@ -71,7 +64,10 @@ class HomExpand(HomOp):
         Expand stages include masked multiplications, so they consume levels.
         """
         if self.stage_sizes is None:
-            num_levels = int(math.log2(input.n_slots))
+            # The tracer passes the inferred output, whose slot axis holds one value repeated over the ring: the
+            # number of values expanded is the size of the inserted values axis.
+            expanded = input.tensor_shape[insert_position(self.expand_axis, len(input.tensor_shape) - 1)]
+            num_levels = int(math.log2(expanded))
         else:
             num_levels = len(self.stage_sizes)
         if self.stages_per_level is not None:
@@ -90,11 +86,11 @@ class HomExpand(HomOp):
         length = value.tensor_shape[value.n_axis]
         if length > value.n_slots:
             raise ValueError(f"Expand needs the slot axis ({length}) to fit in its period ({value.n_slots})")
-        period = torch.nn.functional.pad(input.movedim(value.n_axis, -1), (0, value.n_slots - length))
+        period = to_ring(input, value, value.n_slots).squeeze(-2)  # (..., n_slots)
         expanded = period.unsqueeze(-1).expand(*period.shape, internal_n)  # (..., values, slots)
 
         # Order the axes as the traced output: the input's, with the values axis inserted at expand_axis
         axes = [axis for axis in range(input.dim()) if axis != value.n_axis] + ['values', value.n_axis]
         output_axes = list(range(input.dim()))
-        output_axes.insert(to_pos_axis(self.expand_axis, input.shape), 'values')
+        output_axes.insert(insert_position(self.expand_axis, input.dim()), 'values')
         return expanded.permute([axes.index(axis) for axis in output_axes]).clone()

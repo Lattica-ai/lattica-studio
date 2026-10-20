@@ -40,6 +40,7 @@ from lattica_build.operators.slots.h_conj import HomConj
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
+from lattica_build.operators.slots.ring_utils import SlotOp
 
 _BUILD_LEAVES = {cls.OP_TYPE: cls for cls in (
     HomAdd, HomAxisSum, HomConstAdd, HomConstMul, HomMul, Clamp, Softmax,
@@ -68,9 +69,9 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     are independent, and intermediates are released after their final use.
 
     ``input_values`` are the traced values of ``inputs`` (serialized HomValues), by
-    default the section root's. Each leaf gets the traced value of its first input and its ring
-    size (``op.input_value``, ``op.internal_n``, which only the slot operators read), and every
-    child's result is checked against its traced shape.
+    default the section root's. Each slot operator gets the traced value of its first input and
+    its ring size (``op.input_value``, ``op.internal_n``). The result of every section, the root
+    and each child, is checked against its traced shape.
     """
     if input_values is None:
         input_values = graph.get('input_values')
@@ -84,11 +85,14 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         op = cls(**kwargs)
         if graph.get('data_ref') is not None:
             op.data = resolve_data(path)
-        if input_values:
-            op.input_value, op.internal_n = HomValue(**input_values[0]), graph.get('internal_n')
+        if input_values and isinstance(op, SlotOp):
+            traced = input_values[0]
+            op.input_value = HomValue(tensor_shape=tuple(traced['tensor_shape']), n_axis=traced.get('n_axis'),
+                                      n_slots=traced.get('n_slots'))
+            op.internal_n = graph.get('internal_n')
         # Let the operator know the ring size.
         with clear_options(internal_n=graph.get('internal_n')):
-            return op.forward_clear(*inputs)
+            return _check_shape(op.forward_clear(*inputs), graph.get('output'), path)
 
     env = dict(zip(graph['body_inputs'], inputs, strict=True))
     values_env = dict(zip(graph['body_inputs'], input_values, strict=True)) if input_values is not None else None
@@ -98,12 +102,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
     for index, child in enumerate(graph['child_ops']):
         values = [env[name] for name in child['inputs']]
         traced = [values_env[name] for name in child['inputs']] if values_env is not None else None
-        output = run_clear_section(child, values, resolve_data, (*path, index), traced)
-        traced_shape = tuple(child['output']['tensor_shape'])
-        if tuple(output.shape) != traced_shape:
-            raise ValueError(f'Clear execution of child {index} gives shape {tuple(output.shape)}; '
-                             f'the traced shape is {traced_shape}')
-        env[child['output']['id']] = output
+        env[child['output']['id']] = run_clear_section(child, values, resolve_data, (*path, index), traced)
         if values_env is not None:
             values_env[child['output']['id']] = child['output']
         del values, traced
@@ -113,12 +112,25 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
                 del env[name]
                 if values_env is not None:
                     del values_env[name]
-    return env[output_id]
+    return _check_shape(env[output_id], graph['body_output'], path)
+
+
+def _check_shape(result: torch.Tensor, traced: Mapping[str, Any] | None, path: tuple[int, ...]) -> torch.Tensor:
+    """The result of the section at ``path``, checked against the shape of its traced value ``traced`` (a
+    serialized HomValue) when one is recorded."""
+    if traced is not None and tuple(result.shape) != tuple(traced['tensor_shape']):
+        raise ValueError(f'Clear execution of the section at {path} gives shape {tuple(result.shape)}; '
+                         f'the traced shape is {tuple(traced["tensor_shape"])}')
+    return result
 
 
 def run_clear_graph(graph: Mapping[str, Any], primary: torch.Tensor, custom: Mapping[str, torch.Tensor],
-                    resolve_data: Callable[[str, tuple[int, ...]], Any], as_complex: bool) -> torch.Tensor:
-    """Evaluate the traced sections of a pipeline (its serialized ``pipeline_sections``) on clear tensors."""
+                    resolve_data: Callable[[PipeSec, tuple[int, ...]], Any], as_complex: bool) -> torch.Tensor:
+    """Evaluate the traced sections of a pipeline (its serialized ``pipeline_sections``) on clear tensors.
+
+    ``resolve_data(section, path)`` returns the data of the leaf at ``path`` (child indices, as in
+    ``run_clear_section``) in the pipeline section ``section``.
+    """
     result = primary
     with torch.no_grad():
         for section in (PipeSec.CLIENT_PRE, PipeSec.HOM, PipeSec.CLIENT_POST):

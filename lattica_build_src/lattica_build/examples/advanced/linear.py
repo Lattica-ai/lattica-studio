@@ -28,7 +28,8 @@ class Pipeline(PipelineWrapper):
         """Create params with row/col precision structure for a tiny quickstart build."""
         return HomParams(
             n=2 ** 14,
-            full_q_list_precision=((61, 35), (55,)),
+            full_q_list_precision=((61, 35), (55,), (61,)),
             pt_scale=2 ** 30,
-            decomposition_type=DecompositionType.BV,
+            num_special_primes=1,
+            decomposition_type=DecompositionType.HYBRID,
         )
