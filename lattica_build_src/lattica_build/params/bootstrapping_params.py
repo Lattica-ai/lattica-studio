@@ -33,9 +33,7 @@ BOOT_CONFIGURATION = {
 # Per number of slots, by log2(n_slots): the StC split of the log2(n_slots) FFT stages
 # (component sizes, stage 0 first; CtS uses the same components in reverse order, so both
 # share their rotation keys) and the smallest CtS prime, in bits, that keeps the bootstrap
-# at its error floor with that split. A component of k stages has 2**(k+1) - 1 diagonals,
-# 2**k if it holds the top stage, and costs about its giant steps; the splits are the
-# fastest measured (RTX 5090, logN 16, REAL, ratio 4). One level needs a wider CtS prime:
+# at its error floor with that split. One level needs a wider CtS prime:
 # its single factor takes the whole CtS normalization. Last, log_delta, the headroom q0/|m|:
 # each bit divides the sine's cubic error (~6.6 m**3 / 4**log_delta, m: a coefficient EvalMod
 # sees; for REAL the slots' mean lands on the constant one) by 4 but doubles EvalMod's noise,
