@@ -42,10 +42,6 @@ BOOT_CONFIGURATION = {
 # afford more (measured at 2**15, 2**14, 2**13, 2**12, 2**10, 2**8, 2**6 and 2**4 slots, the
 # others in between). An input with only q0 left must be at most 2 * q0 / 2**log_delta.
 BOOT_PARAMS_PER_SUBRING = {
-    2:  ((1,), 48, 10),
-    3:  ((2,), 49, 10),
-    4:  ((3,), 50, 10),
-    5:  ((4,), 54, 10),
     6:  ((5,), 55, 9),
     7:  ((3, 3), 44, 9),
     8:  ((3, 4), 45, 9),
