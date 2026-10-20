@@ -101,7 +101,7 @@ class HomOp:
         if not self.is_leaf_op():
             raise RuntimeError("data should only be set directly on base ops")
 
-        # complex data (e.g. a complex-packed db) keeps its imaginary parts
+        # complex data keeps its imaginary parts
         def convert(item):
             if not torch.is_tensor(item):
                 item = torch.tensor(item)
