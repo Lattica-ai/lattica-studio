@@ -1,6 +1,7 @@
 import json
 import os
 import time
+from pathlib import PurePosixPath
 from typing import Self, TypeAlias
 
 import requests
@@ -218,8 +219,37 @@ class BackendAPI:
         upload_url, file_key = self._request_upload_target(endpoint, params)
         file_size = os.path.getsize(file_path)
         with open(file_path, "rb") as file:
-            self._put_upload(upload_url, file, file_size)
+            if os.getenv("LATTICA_RUN_MODE") == "LOCAL":
+                self._post_local_upload(endpoint, file_key, file)
+            else:
+                self._put_upload(upload_url, file, file_size)
         return file_key
+
+    def _post_local_upload(self, endpoint: str, file_key: str, stream) -> None:
+        local_endpoints = {
+            "api/model/get_model_upload_url": "api/files/dev_save_model_local",
+            "api/token/get_pk_upload_url": "api/files/dev_save_ek_local",
+            "api/token/get_custom_data_upload_url": "api/files/dev_save_custom_data_local",
+        }
+        try:
+            local_endpoint = local_endpoints[endpoint]
+        except KeyError as exc:
+            raise ProtocolError(endpoint, "no local upload route for this file type") from exc
+
+        file_name = PurePosixPath(file_key).name
+        if file_name in {"", ".", ".."}:
+            raise ProtocolError(endpoint, "upload response has an invalid file key")
+        log_status("uploading to local backend")
+        response = self._transport.request(
+            "POST",
+            f"{self.config.backend_url}/{local_endpoint}",
+            "upload file",
+            headers={"Authorization": f"Bearer {self.session_token}"},
+            files={file_name: (file_name, stream)},
+        )
+        if not response.ok:
+            self._transport.raise_response_error(response, "upload file")
+        log_status("upload complete")
 
     def _request_upload_target(self, endpoint: str, params: dict | None) -> tuple[str, str]:
         response = self.call(endpoint, params)

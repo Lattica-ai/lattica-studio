@@ -1,9 +1,12 @@
+import itertools
+import json
 import pickle
 import random
 from pathlib import Path
 from unittest import SkipTest
 
 import torch
+import pytest
 
 from lattica_build.base_classes.hom_op_tracer import Tracer
 from lattica_build.base_classes.hom_value import HomValue
@@ -16,6 +19,8 @@ from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.fhe.h_mod_switch import HomModSwitch
 from lattica_build.operators.fhe.h_ring_switch import HomRingSwitch
+from lattica_build.operators.ml.h_conv import HomConv
+from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
 from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
@@ -25,6 +30,8 @@ from lattica_build.operators.slots.h_expand import HomExpand
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
+from lattica_build.params.params import HomParams
+from lattica_build.serialization.clear_execution import run_clear_section
 
 
 def test_leaf_clear_execution_and_data():
@@ -48,12 +55,12 @@ def test_leaf_clear_execution_and_data():
 
 def test_slot_client_and_fhe_clear_execution():
     x = torch.arange(8, dtype=torch.float32)
-    assert torch.equal(HomExpand()(x), x.unsqueeze(0).expand(8, 8))
+    assert torch.equal(HomExpand()(x), x.unsqueeze(1).expand(8, 8))
     z = torch.complex(x, -x)
     assert torch.equal(HomConj()(z), z.conj())
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
     assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
-    assert torch.equal(HomSumSlots(k=3)(x), x[:3].sum().expand_as(x))
+    assert torch.equal(HomSumSlots(k=4)(x), x.reshape(4, 2).sum(0).repeat(4))
     assert torch.equal(HomModSwitch()(x), x)
     assert torch.equal(Bootstrap()(x), x)
     assert torch.equal(HomRingSwitch(10)(x), x)
@@ -62,6 +69,100 @@ def test_slot_client_and_fhe_clear_execution():
     probabilities = Softmax(-1)(x)
     assert torch.allclose(probabilities.sum(), torch.tensor(1.0))
     assert torch.equal(Clamp(2, 5)(x), x.clamp(2, 5))
+
+
+@pytest.mark.parametrize('axis', [0, 1, -1, -2])
+def test_expand_clear_accepts_every_vector_insertion_axis(axis):
+    x = torch.tensor([2., 3., 5.])
+    expected = torch.tensor([[2., 3., 5.]]).repeat(3, 1)
+    if axis in (0, -2):
+        expected = expected.T
+    torch.testing.assert_close(HomExpand(expand_axis=axis)(x), expected)
+
+
+def test_expand_clear_preserves_batch_dimensions():
+    x = torch.arange(6.).reshape(2, 3)
+    result = HomExpand(expand_axis=1)(x)
+    assert result.shape == (2, 3, 3)
+    for index in range(3):
+        torch.testing.assert_close(result[:, :, index], x)
+    with pytest.raises(IndexError):
+        HomExpand(expand_axis=3)(x)
+
+
+def test_serialized_clear_execution_expands_to_ring_size():
+    """Each extracted value fills a whole ciphertext: internal_n slots, like the decrypted output."""
+    pipeline = HomomorphicPipeline(hom=HomExpand(expand_axis=1), input_shape=(8,))
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=8)
+    graph, _ = pipeline.serialize(params)
+    section = json.loads(graph)['pipeline_sections']['hom']
+    x = torch.arange(8.)
+    result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
+    torch.testing.assert_close(result, x[None, :].repeat(params.internal_n, 1))
+
+
+def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
+    """Expand feeds a MatMul whose data is one block of internal_n records."""
+    from lattica_build.operators.ml.h_mat_mul import HomMatMul
+
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=8)
+    db = torch.randn(1, params.internal_n, 8, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    matmul = HomMatMul(dims=tuple(db.shape), mul_axis=-1)
+    matmul.set_data(db)
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomExpand(expand_axis=1), matmul), input_shape=(8,))
+    x = torch.randn(8, dtype=torch.float64, generator=torch.Generator().manual_seed(1))
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), db @ x)
+
+
+def test_running_sum_clear_uses_only_the_logical_axis():
+    x = torch.tensor([[1., 2., 3.], [4., 5., 6.]])
+    op = HomRunningSum(cumsum_axis=0, k=64, stage_sizes=[8, 8])
+    torch.testing.assert_close(op(x), torch.tensor([[1., 2., 3.], [5., 7., 9.]]))
+
+
+@pytest.mark.parametrize('include_identity', [False, True])
+@pytest.mark.parametrize('perform_sum', [False, True])
+def test_rotate_sum_clear_counts_each_requested_view_once(include_identity, perform_sum):
+    x = torch.tensor([1., 2., 4.])
+    views = [torch.tensor([2., 4., 1.])]
+    if perform_sum or include_identity:
+        views.insert(0, x)
+    expected = sum(views) if perform_sum else torch.stack(views)
+    torch.testing.assert_close(HomRotateSum([1], perform_sum, include_identity)(x), expected)
+
+
+@pytest.mark.parametrize('batched', [False, True])
+def test_convolution_clear_requires_packed_images(batched):
+    image = torch.ones((1, 5, 5), dtype=torch.float64)
+    op = HomConv(1, 1, kernel_size=3, stride=2, padding=1)
+    op.set_data(torch.ones((1, 1, 3, 3), dtype=torch.float64))
+    if batched:
+        image = image.unsqueeze(0)
+    with pytest.raises(ValueError, match='unbatched packed tensor'):
+        op(image)
+
+
+def test_convolution_clear_groups_dilation_and_bias():
+    image = torch.arange(2 * 6 * 8., dtype=torch.float64).reshape(2, 6, 8)
+    weight = torch.arange(18., dtype=torch.float64).reshape(2, 1, 3, 3)
+    bias = torch.tensor([2., -3.], dtype=torch.float64)
+    op = HomConv(2, 2, 3, stride=(2, 1), padding=1, groups=2, bias=True,
+                 dilation=2, image_hw=(6, 8))
+    op.set_data(weight, bias)
+    dense = torch.nn.functional.conv2d(image, weight, bias, padding=2,
+                                       dilation=2, groups=2)
+    expected = torch.zeros_like(dense)
+    expected[:, ::4, ::2] = dense[:, ::4, ::2]
+    torch.testing.assert_close(op(image.flatten(1)), expected.flatten(1))
+
+
+def test_polynomial_clear_prepends_coefficient_batch_dimensions():
+    x = torch.tensor([[0., .25], [.5, 1.]], dtype=torch.float64)
+    # Descending Chebyshev coefficients for x and 2*x**2 - 1.
+    op = HomPolyEvalBase([[0., 1., 0.], [1., 0., 0.]])
+    torch.testing.assert_close(op(x), torch.stack((x, 2 * x.square() - 1)))
 
 
 def test_composites_and_pipeline_clear_execution():
@@ -79,6 +180,91 @@ def test_composites_and_pipeline_clear_execution():
     )
     expected = (x.clamp(0, 2) * torch.tensor([2.0, 3.0])).clamp(0, 3)
     assert torch.equal(pipeline.forward_clear(x), expected)
+
+
+@pytest.mark.parametrize("c_in,c_out,hw,kernel,stride,padding", [
+    (4, 4, (4, 4), 3, 1, 1),     # same layout
+    (4, 8, (4, 4), 3, 2, 1),     # strided, re-interleaved to 8 channels
+    (8, 10, (1, 1), 1, 1, 0),    # the FC head: 10 channels in 16 slots
+])
+def test_mux_conv_clear_matches_torch(c_in, c_out, hw, kernel, stride, padding):
+    """HomMuxConv in the clear: unpack, conv2d, pack into the output layout."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    torch.manual_seed(0)
+    x = torch.randn(c_in, *hw, dtype=torch.float64)
+    weight = torch.randn(c_out, c_in, kernel, kernel, dtype=torch.float64)
+    bias = torch.randn(c_out, dtype=torch.float64)
+    conv = HomMuxConv((c_out, c_in, kernel, kernel), hw, stride=stride, padding=padding)
+    conv.set_data(weight)
+    vec = MuxLayout(c_in, *hw).pack(x)
+
+    expected = torch.nn.functional.conv2d(x[None], weight, stride=stride, padding=padding)[0]
+    out = conv.forward_clear(vec)
+    assert torch.allclose(out[MuxLayout(c_out, *conv.output_hw).slot_map()], expected)
+    assert int((out != 0).sum()) <= expected.numel()
+
+    conv_bias = HomMuxConv((c_out, c_in, kernel, kernel), hw, stride=stride, padding=padding, bias=True)
+    conv_bias.set_data(weight, bias)
+    out = conv_bias.forward_clear(vec)
+    assert torch.allclose(out[MuxLayout(c_out, *conv.output_hw).slot_map()], expected + bias[:, None, None])
+
+
+@pytest.mark.parametrize("delta", [1.0, 0.25])
+def test_mux_conv_bn_fused_clear_matches_torch(delta):
+    """HomMuxConvBnFused folds the batch norm in set_data: in the clear it is torch's
+    conv then BatchNorm2d, times delta."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConvBnFused, MuxLayout
+
+    torch.manual_seed(0)
+    c_in, c_out, hw = 4, 8, (4, 4)
+    conv = torch.nn.Conv2d(c_in, c_out, 3, stride=2, padding=1, bias=False).double()
+    bn = torch.nn.BatchNorm2d(c_out).double().eval()
+    with torch.no_grad():
+        for tensor, (low, high) in ((bn.running_mean, (-1, 1)), (bn.running_var, (0.5, 2)),
+                                    (bn.weight, (0.5, 2)), (bn.bias, (-1, 1))):
+            tensor.uniform_(low, high)
+    x = torch.randn(c_in, *hw, dtype=torch.float64)
+
+    op = HomMuxConvBnFused(tuple(conv.weight.shape), hw, stride=2, padding=1)
+    op.set_data(conv.weight.detach(), None, bn.running_mean, bn.running_var,
+                bn.weight.detach(), bn.bias.detach(), bn.eps, delta)
+    out = op.forward_clear(MuxLayout(c_in, *hw).pack(x))
+
+    with torch.no_grad():
+        expected = delta * bn(conv(x[None]))[0]
+    assert torch.allclose(out[MuxLayout(c_out, *op.output_hw).slot_map()], expected)
+
+
+def _ciphertext_slot_sums(x, n_slots, ks, internal_n):
+    """Independent oracle: x zero-padded to its period n_slots and repeated over the
+    ring's internal_n slots; each SumSlots(k) adds the slots rotated by every multiple of
+    n_slots / k, leaving period n_slots / k. Read back at x's positions."""
+    slots = torch.nn.functional.pad(x, (0, n_slots - len(x))).repeat(internal_n // n_slots)
+    for k in ks:
+        n_slots //= k
+        slots = sum(slots.roll(-m * n_slots) for m in range(k))
+    return slots[:len(x)]
+
+
+def test_sum_slots_clear_matches_the_ciphertext():
+    """The clear graph sums the slots the ciphertext does: 28 values zero-padded to their
+    32-slot period, so padding and data mix in every sum."""
+    x = torch.randn(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8), input_shape=(28,))
+    params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
+                       pt_scale=2 ** 44, num_special_primes=1, n_slots=32)
+    graph, _ = pipeline.serialize(params)
+    section = json.loads(graph)['pipeline_sections']['hom']
+    result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
+    torch.testing.assert_close(result, _ciphertext_slot_sums(x, 32, (8,), params.internal_n))
+
+
+def test_sum_slots_output_period():
+    """The output's period is the input's (internal_n without one) over k."""
+    value = HomValue(tensor_shape=(32,), n_axis=-1)
+    assert HomSumSlots(k=8).infer_output_shape(value.make_copy(n_slots=4096)).n_slots == 512
+    assert HomSumSlots(k=8).infer_output_shape(value, internal_n=4096).n_slots == 512
 
 
 def test_clear_execution_does_not_trace():
@@ -128,6 +314,7 @@ def test_bitonic_sort_composite_example_sorts_input():
 
 def test_resnet_composite_example_matches_pretrained_model():
     from lattica_build.examples.advanced import resnet20
+    from lattica_build.operators.ml.h_mux_conv import MuxLayout
 
     examples_data = (
         Path(__file__).resolve().parents[1]
@@ -141,9 +328,7 @@ def test_resnet_composite_example_matches_pretrained_model():
         batch = pickle.load(batch_file, encoding="bytes")
 
     sample_index = random.Random(0).randrange(len(batch[b"labels"]))
-    raw_image = torch.tensor(
-        batch[b"data"][sample_index], dtype=torch.float32
-    ).reshape(3, 32, 32)
+    normalized_image, _ = resnet20.Pipeline.load_cifar_sample(sample_index)
     reference_model = torch.hub.load(
         "chenyaofo/pytorch-cifar-models",
         "cifar10_resnet20",
@@ -154,19 +339,34 @@ def test_resnet_composite_example_matches_pretrained_model():
     pipeline = example.build_pipeline()
     params = example.build_params()
     with torch.no_grad():
-        normalized_image = pipeline.client_pre.forward_clear(
-            raw_image, internal_n=params.internal_n
-        )
         expected_class = reference_model(
-            normalized_image.reshape(1, 3, 32, 32)
+            normalized_image.to(torch.float32).reshape(1, 3, 32, 32)
         ).argmax(dim=-1).item()
 
+    # The client zero-pads RGB to the stem's channels and packs the image into the mux
+    # layout; there is no client_pre.
+    padded_image = torch.nn.functional.pad(
+        normalized_image, (0, 0, 0, 0, 0, resnet20.STEM_CHANNELS - normalized_image.shape[0]))
+    packed_image = MuxLayout(*resnet20.STEM_LAYOUT, resnet20.SUBRING_SLOTS).pack(padded_image)
     result = pipeline.forward_clear(
-        raw_image,
+        packed_image,
         hom_params=params,
     )
-    predicted_class = result[..., 0].argmax().item()
+    # The head's 1x1 output layout puts logit c at slot c.
+    predicted_class = result[..., :10].argmax().item()
     assert predicted_class == expected_class, (
         f"clear ResNet predicted {predicted_class} for CIFAR sample "
         f"{sample_index}, expected pretrained-model class {expected_class}"
     )
+
+
+def test_mux_layout_packs_each_channel_at_its_slot():
+    """Sides that are not powers of 2: the width pads to 8."""
+    from lattica_build.operators.ml.h_mux_conv import MuxLayout
+
+    x = torch.arange(1, 4 * 3 * 5 + 1, dtype=torch.float64).reshape(4, 3, 5)
+    vec = MuxLayout(4, 3, 5, 128).pack(x)
+    for c, i, j in itertools.product(range(4), range(3), range(5)):
+        assert vec[(i * 8 + j) * 4 + c] == x[c, i, j]
+    assert int((vec != 0).sum()) == x.numel()
+
