@@ -6,6 +6,7 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue, TensorShape
+from lattica_build.operators.ml.h_mux_conv import next_pow2
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 
 from lattica_build.params.shape_tracing import infer_broadcast_output_shape, infer_remove_axis_output_shape, \
@@ -135,7 +136,7 @@ class HomMatMul(HomOp):
             n_slots = input.n_slots
             if internal_n is not None:
                 output_size = after_mul.tensor_shape[chosen_axis]
-                n_slots = (min(internal_n, 1 << (output_size - 1).bit_length())
+                n_slots = (min(internal_n, next_pow2(output_size))
                            if impl_kind == 'diags' else internal_n)
         return after_mul.make_copy(
             tensor_shape=after_mul.tensor_shape[:mul_axis] + after_mul.tensor_shape[mul_axis + 1:],

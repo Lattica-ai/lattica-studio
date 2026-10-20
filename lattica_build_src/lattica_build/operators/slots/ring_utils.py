@@ -11,10 +11,21 @@ one zero-padded. Decryption reads back the slots that hold the values, dropping 
 
 import torch
 
+from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.operators.ml.h_mux_conv import next_pow2
 
 
-def input_layout(op, x: torch.Tensor) -> tuple[HomValue, int]:
+class SlotOp(HomOp):
+    """A slot operator: its clear execution computes on the slot layout of its input."""
+
+    # The traced value of the input and its ring size, set by clear execution of a traced graph (run_clear_section)
+    # as it sets `data`. Without them, clear execution takes the input's last axis as one whole ring.
+    input_value: HomValue | None = None
+    internal_n: int | None = None
+
+
+def input_layout(op: SlotOp, x: torch.Tensor) -> tuple[HomValue, int]:
     """The traced value of the slot operator's input and its ring size `internal_n`, as clear execution of a traced
     graph sets them on the op (`op.input_value`, `op.internal_n`), with its period `n_slots` set (internal_n when the
     value has none). Outside a traced graph, the input's last axis is one whole ring, of its length rounded up to a
@@ -22,8 +33,14 @@ def input_layout(op, x: torch.Tensor) -> tuple[HomValue, int]:
     value, internal_n = op.input_value, op.internal_n
     if value is not None and value.n_axis is not None and internal_n is not None:
         return (value if value.n_slots is not None else value.make_copy(n_slots=internal_n)), internal_n
-    ring = 1 << (x.shape[-1] - 1).bit_length()
+    ring = next_pow2(x.shape[-1])
     return HomValue(tensor_shape=tuple(x.shape), n_axis=x.dim() - 1, n_slots=ring), ring
+
+
+def check_span(op: SlotOp, k: int, slots: int, where: str) -> None:
+    """Raise ValueError unless the span `k` of `op` is a power of 2 dividing the `slots` slots of `where`."""
+    if k < 1 or k & (k - 1) or slots % k:
+        raise ValueError(f"{type(op).__name__} needs k={k} to be a power of 2 dividing the {slots} slots of {where}")
 
 
 def to_ring(x: torch.Tensor, value: HomValue, internal_n: int) -> torch.Tensor:

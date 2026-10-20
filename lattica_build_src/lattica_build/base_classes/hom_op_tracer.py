@@ -99,7 +99,6 @@ class Tracer:
         op_ir = {
             "op": int(op.OP_TYPE),
             "op_attrs": _get_hom_op_attributes(op),
-            "internal_n": self.hom_params.internal_n if self.hom_params is not None else None,
             "custom_inputs": {
                 val.id: val.custom_input_ref for val in inputs if val.is_custom
             },
@@ -217,7 +216,7 @@ def _get_hom_op_attributes(op):
     for name, value in op.__dict__.items():
         if not (
                 name.startswith("_") or
-                name in ('data', 'input_value', 'internal_n') or
+                name == 'data'       or
                 value is None        or
                 callable(value)
         ):
