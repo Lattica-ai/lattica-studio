@@ -8,7 +8,6 @@ from lattica_build.base_classes.hom_value import HomValue
 from typing import Sequence, Tuple
 from decimal import Decimal
 
-from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.primes_utils import get_primes_from_precisions_list
 
 
@@ -83,7 +82,7 @@ class ModulusChain():
         if params.num_init_rows is not None:
             active_rows = active_rows[:params.num_init_rows]
         active_rows += self.section_rows["boot_base"]
-        if params.bootstrapping_variant == BootstrappingVariant.SLIM:
+        if params.boot_params.slim_boot:
             active_rows += self.section_rows["boot_stc"]
         return active_rows
 
@@ -251,7 +250,7 @@ def init_levels_after_bootstrap(input, hom_params):
     """Initialize the active rows and cols for a fresh ciphertext."""
     mod_chain = hom_params.mod_chain
     rows = copy.deepcopy(mod_chain.section_rows["pipeline"])
-    if hom_params.bootstrapping_variant == BootstrappingVariant.SLIM:
+    if hom_params.slim_boot:
         rows += mod_chain.section_rows["boot_stc"]
     rows += mod_chain.section_rows["boot_base"]
     return input.make_copy(

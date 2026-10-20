@@ -150,7 +150,7 @@ class HomomorphicPipeline:
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
         self.client_preprocessing_data = binary_data
 
-    def _serialize_pipeline_sections(self, tensors, hom_params):
+    def _serialize_pipeline_sections(self, tensors, hom_params, shapes_only=False, on_leaf_op=None):
         """
         Serialize the pipeline into its execution sections.
 
@@ -161,10 +161,13 @@ class HomomorphicPipeline:
 
         :param tensors: Tensor registry used to collect tensors referenced by the pipeline.
         :param hom_params: Homomorphic encryption parameters used during serialization (e.g. internal_n).
+        :param shapes_only: trace the client preprocessing and homomorphic sections for shapes only (no levels, scales
+            or op data), so hom_params needs no modulus chain yet; returns after the homomorphic section.
+        :param on_leaf_op: called on every leaf op of the homomorphic section (see _bootstrap_slot_counts).
         """
 
         enc_params = hom_params.ring_switch_params or hom_params
-        active_rows, active_cols = init_active_rows_cols(hom_params)
+        active_rows, active_cols = (None, None) if shapes_only else init_active_rows_cols(hom_params)
         hom_input_names = inspect.signature(self.hom.forward).parameters
         hom_inputs = [
             HomValue(
@@ -210,8 +213,11 @@ class HomomorphicPipeline:
         ser_sections['input_shape_to_hom_section'] = hom_inputs[0].tensor_shape
 
         ser_sections[PipeSec.HOM], hom_out_val = self.hom.serialize(
-            tensors, *hom_inputs, hom_params=hom_params, primary_input_name=self.primary_input_name
+            tensors, *hom_inputs, hom_params=hom_params, primary_input_name=self.primary_input_name,
+            shapes_only=shapes_only, on_leaf_op=on_leaf_op,
         )
+        if shapes_only:
+            return ser_sections
 
         if self.client_post is not None:
             hom_out_val = copy.deepcopy(hom_out_val)
@@ -252,6 +258,19 @@ class HomomorphicPipeline:
             )
         return {'accuracy': float(accuracy)}
 
+    def _bootstrap_slot_counts(self, hom_params) -> set:
+        """The slot counts the pipeline bootstraps: the input n_slots of every Bootstrap op and of a RingSwitch (which
+        bootstraps the switched ciphertext at its own n_slots), from a trace of shapes only (it needs no modulus
+        chain)."""
+        slot_counts = set()
+
+        def record(op, inputs):
+            if op.OP_TYPE in (HomOpType.Bootstrap, HomOpType.RingSwitch):
+                slot_counts.add(inputs[0].n_slots)
+
+        self._serialize_pipeline_sections({}, hom_params, shapes_only=True, on_leaf_op=record)
+        return slot_counts
+
     def _serialize_modulus_chain(self, hom_params: HomParams) -> dict:
         """Serialize modulus-chain metadata into JSON-friendly lists."""
         mod_chain = getattr(hom_params, "mod_chain", None)
@@ -284,10 +303,12 @@ class HomomorphicPipeline:
             hom_params.ring_switch_params = None
 
         needs_boot = ring_switch_input or any(op.OP_TYPE == HomOpType.Bootstrap for op in leaves)
-        hom_params.boot_params = (
-            BootstrappingParams(hom_params.bootstrapping_variant)
-            if needs_boot else None
-        )
+        hom_params.boot_params = None
+        if needs_boot:
+            # the chain serves exactly the slot counts the pipeline bootstraps, which ops on the way may have changed
+            # from the inputs' (e.g. HomSumSlots, HomMuxConv)
+            hom_params.boot_params = BootstrappingParams.for_slot_counts(
+                hom_params.real_boot, hom_params.slim_boot, self._bootstrap_slot_counts(hom_params))
         hom_params.mod_chain = ModulusChain(hom_params)
 
         tensors = {}
