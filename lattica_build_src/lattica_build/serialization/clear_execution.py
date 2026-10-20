@@ -8,7 +8,7 @@ and resolves their borrowed weights.
 """
 
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import lru_cache
 import inspect
 from typing import Any
@@ -16,6 +16,7 @@ from typing import Any
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp, clear_options
+from lattica_build.base_classes.hom_pipeline import PipeSec
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.arithmetic.h_add import HomAdd
 from lattica_build.operators.arithmetic.h_axis_sum import HomAxisSum
@@ -113,3 +114,25 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
                 if values_env is not None:
                     del values_env[name]
     return env[output_id]
+
+
+def run_clear_graph(graph: Mapping[str, Any], primary: torch.Tensor, custom: Mapping[str, torch.Tensor],
+                    resolve_data: Callable[[str, tuple[int, ...]], Any], as_complex: bool) -> torch.Tensor:
+    """Evaluate the traced sections of a pipeline (its serialized ``pipeline_sections``) on clear tensors."""
+    result = primary
+    with torch.no_grad():
+        for section in (PipeSec.CLIENT_PRE, PipeSec.HOM, PipeSec.CLIENT_POST):
+            if section not in graph:
+                continue
+            inputs = [result]
+            if section == PipeSec.HOM:
+                names = graph[section]['inputs']
+                shape = tuple(graph['input_shape_to_hom_section'])
+                if tuple(result.shape) != shape:
+                    raise ValueError(f"Clear input '{names[0]}' after preprocessing "
+                                     f"has shape {tuple(result.shape)}; expected {shape}.")
+                inputs.extend(custom[name] for name in names[1:])
+            result = run_clear_section(graph[section], inputs, lambda path, s=section: resolve_data(s, path))
+            if section == PipeSec.HOM and not as_complex:
+                result = result.real
+    return result

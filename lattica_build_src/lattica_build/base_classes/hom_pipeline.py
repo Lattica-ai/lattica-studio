@@ -21,7 +21,7 @@ from lattica_build.serialization.hom_op_pb2 import HomOpType
 from dataclasses import dataclass
 import enum
 
-from safetensors.torch import save as safetensors_save
+from safetensors.torch import load as safetensors_load, save as safetensors_save
 
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
@@ -118,12 +118,7 @@ class HomomorphicPipeline:
         self._get_pipe_section(section).set_data(*data, name=name)
 
     def forward_clear(self, *inputs, hom_params=None, **named_inputs):
-        """Run the complete pipeline on clear torch tensors.
-
-        With `hom_params`, the pipeline is traced and its graph runs on the clear tensors, so that the slot
-        operators compute on the slot layout of their inputs. Without, the ops run directly, and a slot operator takes its input's last axis
-        as one whole ring.
-        """
+        """Run the complete pipeline on clear torch tensors."""
         input_names = list(inspect.signature(self.hom.forward).parameters)
         if inputs and named_inputs:
             raise TypeError("forward_clear accepts positional or named inputs, not both")
@@ -144,7 +139,21 @@ class HomomorphicPipeline:
             raise TypeError("forward_clear inputs must be torch.Tensor instances")
 
         if hom_params is not None:
-            return self._forward_clear_traced(values, hom_params)
+            from lattica_build.serialization.clear_execution import run_clear_graph
+
+            graph_bytes, tensors_bytes = self.serialize(hom_params)
+            graph = json.loads(graph_bytes)['pipeline_sections']
+            tensors = safetensors_load(tensors_bytes)
+
+            def resolve_data(section, path):
+                node = graph[section]
+                for index in path:
+                    node = node['child_ops'][index]
+                data = tuple(tensors[ref] for ref in node['data_ref'])
+                return data[0] if len(data) == 1 else data
+
+            return run_clear_graph(graph, values[0], dict(zip(input_names[1:], values[1:])), resolve_data,
+                                   self.as_complex)
         # Let the operators know the ring size.
         with clear_options(internal_n=getattr(hom_params, "internal_n", None)):
             if self.client_pre is not None:
@@ -152,32 +161,6 @@ class HomomorphicPipeline:
             result = self.hom.forward_clear(*values)
             if self.client_post is not None:
                 result = self.client_post.forward_clear(result)
-        return result
-
-    def _forward_clear_traced(self, values: list[Tensor], hom_params) -> Tensor:
-        """Trace the pipeline and run each of its sections on the clear tensors with run_clear_section."""
-        from lattica_build.serialization.clear_execution import run_clear_section
-
-        self._prepare_hom_params(hom_params)
-        tensors = {}
-        graph = self._serialize_pipeline_sections(tensors, hom_params)
-
-        def resolve_data(section_graph, path):
-            for index in path:
-                section_graph = section_graph['child_ops'][index]
-            data = tuple(tensors[ref] for ref in section_graph['data_ref'])
-            return data[0] if len(data) == 1 else data
-
-        result = values[0]
-        with torch.no_grad():
-            for section in (PipeSec.CLIENT_PRE, PipeSec.HOM, PipeSec.CLIENT_POST):
-                if section not in graph:
-                    continue
-                section_inputs = [result, *values[1:]] if section == PipeSec.HOM else [result]
-                result = run_clear_section(graph[section], section_inputs,
-                                           lambda path, g=graph[section]: resolve_data(g, path))
-                if section == PipeSec.HOM and not self.as_complex:
-                    result = result.real
         return result
 
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
@@ -312,8 +295,7 @@ class HomomorphicPipeline:
             "full_active_cols": mod_chain.full_active_cols.tolist(),
         }
 
-    def _prepare_hom_params(self, hom_params) -> None:
-        """Set the ring switch, bootstrapping and modulus chain parameters that tracing the pipeline needs."""
+    def serialize(self, hom_params) -> Tuple[bytes, bytes]:
         leaves = self.get_leaf_ops(sections=(PipeSec.HOM,))
         first_op = leaves[0] if leaves else None
         ring_switch_input = first_op is not None and first_op.OP_TYPE == HomOpType.RingSwitch
@@ -338,8 +320,6 @@ class HomomorphicPipeline:
                 hom_params.real_boot, hom_params.slim_boot, self._bootstrap_slot_counts(hom_params))
         hom_params.mod_chain = ModulusChain(hom_params)
 
-    def serialize(self, hom_params) -> Tuple[bytes, bytes]:
-        self._prepare_hom_params(hom_params)
         tensors = {}
         attributes_dict = {
             "as_complex":                    self.as_complex,
