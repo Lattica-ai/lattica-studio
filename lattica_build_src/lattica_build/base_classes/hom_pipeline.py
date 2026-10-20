@@ -137,6 +137,10 @@ class HomomorphicPipeline:
                 raise TypeError(f"Expected {len(input_names)} clear inputs, got {len(values)}")
         if not all(torch.is_tensor(value) for value in values):
             raise TypeError("forward_clear inputs must be torch.Tensor instances")
+        for name, value in zip(input_names[1:], values[1:]):
+            if tuple(value.shape) != tuple(self.input_shape[name]):
+                raise ValueError(f"Clear input '{name}' has shape {tuple(value.shape)}; "
+                                 f"expected {tuple(self.input_shape[name])}.")
 
         if hom_params is not None:
             from lattica_build.serialization.clear_execution import run_clear_graph
