@@ -4,7 +4,6 @@ from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
-from lattica_build.params.bootstrapping_params import BootstrappingVariant
 from lattica_build.params.params import HomParams
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 
@@ -42,7 +41,6 @@ class Pipeline(PipelineWrapper):
             sk_hw=192,
             num_special_primes=7,
             num_init_rows=0,
-            bootstrapping_variant=BootstrappingVariant.REAL,
         )
 
     def verify_results(self, actual: torch.Tensor, expected: torch.Tensor) -> None:

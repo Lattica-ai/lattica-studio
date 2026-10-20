@@ -34,7 +34,8 @@ Main fields you will tune:
 | `err_std` | Encryption noise standard deviation. |
 | `sk_hw` | Secret-key hamming weight (also used when bootstrapping params are created). |
 | `num_init_rows` | Bootstrap-oriented starting-budget cap for the primary input: initialize fewer active rows up front when the input is expected to be bootstrapped later. |
-| `bootstrapping_variant` | Bootstrapping flavor used when bootstrap is present. |
+| `real_boot` | Bootstrap real slots: one EvalMod over the real part (complex slots take two). Default `True`. |
+| `slim_boot` | Bootstrap StC first, at the bottom of the chain, then ModRaise, CtS and EvalMod. Default `False`. |
 
 Fields populated during serialization:
 - `boot_params`,
@@ -184,6 +185,11 @@ You do not usually set `boot_params`/`ring_switch_params` directly.
 During pipeline serialization:
 - presence of bootstrap or ring-switch ops can trigger internal derived params,
 - the active mod chain is built from your `HomParams` plus those derived sections.
+
+The bootstrap chain (its CtS and StC levels and CtS prime size) serves exactly the slot counts the pipeline
+bootstraps: each `Bootstrap` op's input and a ring-switched input, traced through the graph. A bootstrap after an op
+that changes `n_slots` (e.g. `HomSumSlots`, `HomMuxConv`) gets its subring's split from `BOOT_PARAMS_PER_SUBRING`,
+and an input that is never bootstrapped adds no levels.
 
 For users, the key point is to size initial budget and scale assumptions to the graph you actually build.
 
