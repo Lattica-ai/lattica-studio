@@ -117,9 +117,7 @@ class HomMatMul(HomOp):
         return max(candidates, key=lambda ax: broadcasted_shape[ax]), impl_kind
 
     def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
-        """Infer output shape after broadcast and `mul_axis` elimination, and the output's period: on another axis
-        than the slot axis, the period with the constant (`infer_constant_packing_n_slots`); on the slot axis, the
-        next power of 2 of the new slot axis' size (at most internal_n) with diagonals, and internal_n with masks."""
+        """Infer output shape after broadcast and `mul_axis` elimination."""
         after_mul = infer_broadcast_output_shape(input, dims=self.dims)
 
         if input.n_axis is None:
