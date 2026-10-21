@@ -320,9 +320,10 @@ backend rejected it. The exception message includes the backend's compilation
 error. Check FHE parameter budgets first, see
 [`params/README.md`](./lattica_build_src/lattica_build/params/README.md).
 
-**`WorkerStartupTimeoutError`.** A worker normally becomes ready in roughly 20
-seconds. If it times out, retry, or raise the timeout with
-`studio.workers.start(model_id, timeout=1200)`.
+**`WorkerStartupTimeoutError`.** A worker on a running box is ready in roughly 20
+seconds; a new box can take up to 30 minutes, which is how long `start` waits by
+default. On timeout the worker is stopped and its credits come back; retry, or set
+`studio.workers.start(model_id, timeout=...)`.
 
 **Queries fail after a redeploy.** Changing the pipeline invalidates the key
 context. Create a fresh token and regenerate keys.
