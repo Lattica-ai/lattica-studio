@@ -26,6 +26,10 @@ from .resources.workers import WorkersAPI
 from .types import ModelId
 
 
+def _default_instance_type(num_devices: int) -> InstanceType:
+    return InstanceType.G7E_12XLARGE if num_devices > 1 else InstanceType.G4DN_XLARGE
+
+
 class DeploymentAPI:
     def __init__(
         self,
@@ -42,13 +46,13 @@ class DeploymentAPI:
             self,
             artifact: BuildArtifact,
             model_name: str,
-            instance_type: InstanceType = InstanceType.G7E_2XLARGE,
+            instance_type: InstanceType | None = None,
             num_devices: int = 1,
     ) -> ModelId:
 
         model_id = self._prepare_model(
             model_name=model_name,
-            instance_type=instance_type,
+            instance_type=instance_type or _default_instance_type(num_devices),
             num_devices=num_devices,
         )
 
@@ -65,7 +69,7 @@ class DeploymentAPI:
         hom_pipeline: "HomomorphicPipeline",
         hom_params: "HomParams",
         model_name: str,
-        instance_type: InstanceType = InstanceType.G6E_2XLARGE,
+        instance_type: InstanceType | None = None,
         num_devices: int = 1,
         display_graph: bool = False,
     ) -> ModelId:
