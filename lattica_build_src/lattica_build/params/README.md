@@ -29,7 +29,7 @@ Main fields you will tune:
 | `full_q_list_precision` | Level-budget blueprint (rows/cols structure). |
 | `pt_scale` | Default plaintext scale for the primary encrypted input. |
 | `decomposition_type` | Key-switch decomposition mode (`BV` or `HYBRID`). |
-| `num_special_primes` | Required for `HYBRID`; must be `0` for `BV`. |
+| `dnum` | `HYBRID`: the number of digits the whole chain (pipeline and bootstrap) is split into; required, `0` for `BV`. |
 | `bv_gadget_bits` | Gadget base bits for `BV`. |
 | `err_std` | Encryption noise standard deviation. |
 | `sk_hw` | Secret-key hamming weight (also used when bootstrapping params are created). |
@@ -153,12 +153,16 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
 `decomposition_type` chooses key-switch decomposition mode:
 
 - `BV`:
-  - `num_special_primes` must be `0`,
+  - `dnum` must be `0`,
   - uses `bv_gadget_bits`.
 
 - `HYBRID`:
-  - requires `num_special_primes > 0`,
-  - derives `g_base_bits` from special-prime count.
+  - requires `dnum > 0`: the ciphertext primes of the whole chain (the pipeline's, then the bootstrap's once
+    `serialize` has chosen them) are split greedily, in chain order, into at most `dnum` digits,
+  - `num_special_primes` is derived: the fewest 61-bit special primes whose product bounds each digit
+    (`g_base_bits = 61 * num_special_primes`). Fewer digits mean fewer key products per key switch but a larger P,
+    and a larger log PQ to check against the security bound.
+  - Each key switch then uses only the special primes its own largest digit needs (toolkit).
 
 Pick decomposition settings with your backend performance profile in mind.
 
