@@ -139,3 +139,30 @@ def test_slim_bootstrap_rescales_drop_the_leading_limb():
     raised = [row for name, rows in mod_chain.section_rows.items() if name != "special_primes" for row in rows]
     _drop_levels(mod_chain, raised, ["boot_cts", "boot_eval", "pipeline"], dropped)
     assert all(rel_row == 0 for rel_row, _ in dropped)
+
+
+@pytest.mark.parametrize("slot_counts, lcr", [
+    ({2 ** 15}, True),
+    ({2 ** 14, 2 ** 13, 2 ** 12}, True),     # ResNet-20's bootstraps: 64 terms each
+    ({2 ** 14, 2 ** 11}, False),             # 2**11: 32 diagonals x 16 trace rotations
+], ids=["full", "resnet", "too-sparse"])
+def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(monkeypatch, slot_counts, lcr):
+    """With LATTICA_LCR_FIRST_CTS=1, for_slot_counts drops one CtS prime only if every slot count's level-conserving
+    first CtS level (its diagonals times the SubSum trace's rotations) fits the kernel, and to_dict carries it."""
+    n = 2 ** 16
+    monkeypatch.setenv("LATTICA_LCR_FIRST_CTS", "0")
+    plain = BootstrappingParams.for_slot_counts(True, False, slot_counts, n=n)
+    monkeypatch.setenv("LATTICA_LCR_FIRST_CTS", "1")
+    boot = BootstrappingParams.for_slot_counts(True, False, slot_counts, n=n)
+    assert boot.lcr_first_cts == lcr and not plain.lcr_first_cts
+    assert len(boot.cts_q_list_precision) == len(plain.cts_q_list_precision) - int(lcr)
+    assert [boot.lcr_first_cts_terms(s, n) for s in (2 ** 15, 2 ** 14, 2 ** 13, 2 ** 12, 2 ** 11)] == \
+        [32, 64, 64, 64, 512]
+    params = HomParams(n=n, full_q_list_precision=((30,),) + ((60, 30),) * 3, pt_scale=2 ** 30, dnum=3,
+                       n_slots=min(slot_counts))
+    params.boot_params = boot
+    d = params.to_dict()
+    assert d["boot_lcr_first_cts"] == lcr
+    monkeypatch.setenv("LATTICA_LCR_FIRST_CTS", "0")
+    back = HomParams.from_dict({**d, "bootstrapping": True})
+    assert back.boot_params.lcr_first_cts == lcr

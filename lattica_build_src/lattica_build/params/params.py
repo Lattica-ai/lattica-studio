@@ -211,6 +211,7 @@ class HomParams:
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
             "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
+            "boot_lcr_first_cts": self.boot_params.lcr_first_cts if self.boot_params is not None else None,
         }
 
     @classmethod
@@ -221,6 +222,7 @@ class HomParams:
         bootstrapping = d.pop("bootstrapping", False)
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
+        boot_lcr_first_cts = d.pop("boot_lcr_first_cts", None)
 
         # the special primes are derived from dnum and the chain; only BV's gadget bits are an input
         g_base_bits = d.pop("g_base_bits", None)
@@ -234,7 +236,8 @@ class HomParams:
         params = cls(**d)
         if bootstrapping:
             params.boot_params = BootstrappingParams(
-                params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
+                params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale,
+                lcr_first_cts=boot_lcr_first_cts)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         return params
