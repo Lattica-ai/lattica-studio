@@ -8,7 +8,7 @@ from lattica_build.params.params import HomParams
 LOG_N = 13
 # The logical input period, which can be smaller than the slots of the
 # sub-ring the client encrypts in (HomRingSwitch's default, 2**11).
-N_SLOTS = 2 ** 3
+N_SLOTS = 2 ** 5   # the fewest slots a bootstrap takes (BOOT_PARAMS_PER_N_SLOTS)
 INPUT_SCALE = 2 ** 30
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 
@@ -37,7 +37,7 @@ class Pipeline(PipelineWrapper):
             n_slots=N_SLOTS,
             sk_hw=192,
             pt_scale=INPUT_SCALE,
-            num_special_primes=6,
+            dnum=2,
         )
 
     def _set_example_pt(self) -> torch.Tensor:

@@ -39,7 +39,7 @@ class Pipeline(PipelineWrapper):
             pt_scale=INPUT_SCALE,
             err_std=3.19,
             sk_hw=192,
-            num_special_primes=7,
+            dnum=3,
             num_init_rows=0,
         )
 

@@ -19,6 +19,26 @@ class DecompositionType(enum.StrEnum):
 def _is_power_of_two(x: int) -> bool:
     return x > 0 and (x & (x - 1)) == 0
 
+
+SPECIAL_PRIME_BITS = 61
+
+
+def _prime_bits(q_list_precision: QListNorm) -> list[int]:
+    """Each prime's bits, in chain order: a row lists cumulative precisions, so (60, 30) holds two 30-bit primes."""
+    return [bits for row in q_list_precision
+            for bits in (*(row[i] - row[i + 1] for i in range(len(row) - 1)), row[-1])]
+
+
+def _num_digits(prime_bits: Sequence[int], cap: int) -> int:
+    """The digits of the toolkit's hybrid split: consecutive primes, greedily, at most cap bits each."""
+    digits, acc = 1, 0
+    for bits in prime_bits:
+        if acc + bits > cap:
+            digits, acc = digits + 1, bits
+        else:
+            acc += bits
+    return digits
+
 @dataclass(kw_only=True)
 class HomParams:
     n: int
@@ -27,7 +47,8 @@ class HomParams:
     err_std: float = 3.19
     sk_hw: int = 0
     bv_gadget_bits: int = 4
-    num_special_primes: int = 0
+    # HYBRID: the digits the whole chain (pipeline and bootstrap) is split into; the special primes follow from it
+    dnum: int = 0
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
     num_init_rows: int | None = None
     # Bootstrapping: real slots (one EvalMod) or complex; StC first (slim) or last.
@@ -43,6 +64,38 @@ class HomParams:
     def bootstrapping(self) -> bool:
         return self.boot_params is not None
 
+    @property
+    def chain_q_list_precision(self) -> QListNorm:
+        """The ciphertext primes: the pipeline's, then the bootstrap's (once the pipeline has set boot_params)."""
+        if self.boot_params is None:
+            return self.full_q_list_precision
+        return (self.full_q_list_precision + self.boot_params.cts_q_list_precision
+                + self.boot_params.eval_mod_q_list_precision + self.boot_params.stc_q_list_precision
+                + ((self.boot_params.q_base_precision,),))
+
+    @property
+    def num_special_primes(self) -> int:
+        """HYBRID: the fewest special primes P whose digit cap, |P|, splits the chain into at most dnum digits."""
+        if self.decomposition_type != DecompositionType.HYBRID:
+            return 0
+        bits = _prime_bits(self.chain_q_list_precision)
+        num = -(-max(bits) // SPECIAL_PRIME_BITS)
+        while _num_digits(bits, SPECIAL_PRIME_BITS * num) > self.dnum:
+            num += 1
+        return num
+
+    @property
+    def g_base_bits(self) -> int:
+        if self.decomposition_type == DecompositionType.HYBRID:
+            return SPECIAL_PRIME_BITS * self.num_special_primes
+        return self.bv_gadget_bits
+
+    @property
+    def ghs_keyswtich_scale_precision(self) -> tuple[int, ...] | None:
+        if self.decomposition_type == DecompositionType.HYBRID:
+            return (SPECIAL_PRIME_BITS,) * self.num_special_primes
+        return None
+
     def __post_init__(self) -> None:
         self.boot_params = None
         self.ring_switch_params = None
@@ -54,28 +107,17 @@ class HomParams:
         if not isinstance(self.err_std, Real) or self.err_std < 0:
             raise ValueError(f"err_std must be a non-negative number; got {self.err_std!r}.")
 
-        if not isinstance(self.num_special_primes, int) or self.num_special_primes < 0:
-            raise ValueError(f"num_special_primes must be an int >= 0; got {self.num_special_primes!r}.")
+        if not isinstance(self.dnum, int) or self.dnum < 0:
+            raise ValueError(f"dnum must be an int >= 0; got {self.dnum!r}.")
 
-        if self.decomposition_type == DecompositionType.BV and self.num_special_primes > 0:
-            raise ValueError(
-                "num_special_primes must be 0 when using BV decomposition; "
-                f"got {self.num_special_primes}"
-            )
-        
-        if self.decomposition_type == DecompositionType.HYBRID: 
-            if self.num_special_primes == 0:
-                raise ValueError(
-                    "num_special_primes must be greater than 0 when using HYBRID decomposition; "
-                    f"got {self.num_special_primes}"
-                )
-            self.ghs_keyswtich_scale_precision = (61,) * self.num_special_primes
-            self.g_base_bits = 61 * self.num_special_primes
-        else:
-            if not isinstance(self.bv_gadget_bits, int) or self.bv_gadget_bits < 1:
-                raise ValueError(f"bv_gadget_bits must be an int >= 1; got {self.bv_gadget_bits!r}.")
-            self.g_base_bits = self.bv_gadget_bits
-            self.ghs_keyswtich_scale_precision = None
+        if self.decomposition_type == DecompositionType.BV and self.dnum > 0:
+            raise ValueError(f"dnum must be 0 when using BV decomposition; got {self.dnum}")
+
+        if self.decomposition_type == DecompositionType.HYBRID:
+            if self.dnum == 0:
+                raise ValueError(f"dnum must be greater than 0 when using HYBRID decomposition; got {self.dnum}")
+        elif not isinstance(self.bv_gadget_bits, int) or self.bv_gadget_bits < 1:
+            raise ValueError(f"bv_gadget_bits must be an int >= 1; got {self.bv_gadget_bits!r}.")
 
         if not isinstance(self.sk_hw, int) or self.sk_hw < 0:
             raise ValueError(f"sk_hw must be an int >= 0; got {self.sk_hw!r}.")
@@ -118,6 +160,7 @@ class HomParams:
             "n": self.n,
             "err_std": self.err_std,
             "sk_hw": self.sk_hw,
+            "dnum": self.dnum,
             "g_base_bits": self.g_base_bits,
             "ghs_keyswtich_scale_precision": self.ghs_keyswtich_scale_precision or (),
             "decomposition_type": self.decomposition_type,
@@ -145,11 +188,13 @@ class HomParams:
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
 
-        if "g_base_bits" in d:
-            if d["decomposition_type"]==DecompositionType.BV:
-                d["bv_gadget_bits"] = d.pop("g_base_bits")
-            else:
-                d["num_special_primes"] = d.pop("g_base_bits") // 61
+        # the special primes are derived from dnum and the chain; only BV's gadget bits are an input
+        g_base_bits = d.pop("g_base_bits", None)
+        if d["decomposition_type"] == DecompositionType.BV and g_base_bits is not None:
+            d["bv_gadget_bits"] = g_base_bits
+        elif "dnum" not in d:
+            raise ValueError("HYBRID params saved without dnum (from before it replaced num_special_primes): recompile "
+                             "the pipeline")
         d.pop("ghs_keyswtich_scale_precision", None)
 
         params = cls(**d)

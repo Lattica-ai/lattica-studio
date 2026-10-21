@@ -18,7 +18,7 @@ N = 2 ** 16
 SUBRING_SLOTS = 2 ** 14                      # stem tile = 32*32*16 = 16384 < N/2
 PT_SCALE = 2 ** 30
 Q_LIST_PRECISION = ((60, 30),) * 3 + ((30,),)   # 7 levels after each bootstrap
-N_SPECIAL_PRIMES = 9
+DNUM = 2                                     # hybrid digits over the chain
 RELU_DEG = 63                                # 6 levels on the tree; relu(6) + conv(1) = 7 exactly
 STEM_CHANNELS = 16                           # RGB (3) zero-padded up to 16 channels
 
@@ -196,7 +196,7 @@ class Pipeline(PipelineWrapper):
             n=N,
             pt_scale=PT_SCALE,
             sk_hw=192,
-            num_special_primes=N_SPECIAL_PRIMES,
+            dnum=DNUM,
             n_slots=SUBRING_SLOTS,
         )
 

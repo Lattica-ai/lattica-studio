@@ -19,7 +19,7 @@ class Pipeline(PipelineWrapper):
             n=2 ** 13,
             full_q_list_precision=((61,), (61, 30), (61,)),
             pt_scale=2 ** 44,
-            num_special_primes=1,
+            dnum=3,
             # 28 values in 32 slots: slots 28..31 are zero padding, so the last of
             # each sum's K slots adds nothing
             n_slots=32,
