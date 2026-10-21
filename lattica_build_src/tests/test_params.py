@@ -5,7 +5,7 @@ from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.bootstrapping_params import BootstrappingParams
-from lattica_build.params.params import DEFAULT_DNUM, DecompositionType, HomParams
+from lattica_build.params.params import DecompositionType, HomParams
 
 
 def test_chain_serves_the_slot_counts_the_pipeline_bootstraps():
@@ -36,8 +36,28 @@ def test_hybrid_params_saved_without_dnum_are_refused():
         HomParams.from_dict(d)
 
 
-@pytest.mark.parametrize("decomposition_type, dnum", [(DecompositionType.HYBRID, DEFAULT_DNUM), (DecompositionType.BV, 0)])
-def test_dnum_defaults_by_decomposition_type(decomposition_type, dnum):
-    params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40,
-                       decomposition_type=decomposition_type)
-    assert params.dnum == dnum
+@pytest.mark.parametrize("q_list, dnum", [(((60, 30),) * 5, 2), (((40,),) * 10, 3)])
+def test_unset_dnum_is_the_fewest_128_bit_secure_digits(q_list, dnum):
+    """The 2^16 bootstrap chains: 2 digits keep 5x(60,30) within 1638 bits of QP; 10x40 needs 3 (2 would be 1795)."""
+    boot = BootstrappingParams.for_slot_counts(True, False, {2 ** 15})
+    params = HomParams.from_dict({**HomParams(n=2 ** 16, full_q_list_precision=q_list, pt_scale=2 ** 30, sk_hw=192,
+                                              n_slots=2 ** 15).to_dict(),
+                                  'bootstrapping': True, 'boot_dft_levels': boot.dft_levels,
+                                  'boot_cts_scale': boot.cts_scale})
+    assert params.dnum is None and params.resolved_dnum == dnum
+
+
+def test_unset_dnum_without_a_bootstrap_is_one_digit():
+    params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, sk_hw=192)
+    assert (params.resolved_dnum, params.num_special_primes) == (1, 4)
+
+
+def test_unset_dnum_without_a_security_bound_is_refused():
+    params = HomParams(n=2 ** 12, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40)
+    with pytest.raises(ValueError, match="No 128-bit bound"):
+        params.num_special_primes
+
+
+def test_unset_dnum_with_bv_is_zero():
+    params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, decomposition_type=DecompositionType.BV)
+    assert (params.resolved_dnum, params.num_special_primes) == (0, 0)

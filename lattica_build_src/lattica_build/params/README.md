@@ -29,7 +29,7 @@ Main fields you will tune:
 | `full_q_list_precision` | Level-budget blueprint (rows/cols structure). |
 | `pt_scale` | Default plaintext scale for the primary encrypted input. |
 | `decomposition_type` | Key-switch decomposition mode (`BV` or `HYBRID`). |
-| `dnum` | `HYBRID`: the number of digits the whole chain (pipeline and bootstrap) is split into; required, `0` for `BV`. |
+| `dnum` | `HYBRID`: the number of digits the whole chain (pipeline and bootstrap) is split into; unset, the fewest that keep the chain 128-bit secure (`resolved_dnum`); `0` or unset for `BV`. |
 | `bv_gadget_bits` | Gadget base bits for `BV`. |
 | `err_std` | Encryption noise standard deviation. |
 | `sk_hw` | Secret-key hamming weight (also used when bootstrapping params are created). |
@@ -157,7 +157,9 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
   - uses `bv_gadget_bits`.
 
 - `HYBRID`:
-  - requires `dnum > 0`: the ciphertext primes of the whole chain (the pipeline's, then the bootstrap's once
+  - `dnum > 0`, or unset: then `resolved_dnum` is the fewest digits whose special primes keep the chain's
+    log2(QP) within `MAX_LOG_QP_128` (lattice-estimator's 128-bit bound for the ring size and `sk_hw`) and whose
+    digits fit `MAX_DIGIT_PRIMES`; no table entry, or no such dnum, raises. The ciphertext primes of the whole chain (the pipeline's, then the bootstrap's once
     `serialize` has chosen them) are split greedily, in chain order, into at most `dnum` digits,
   - `num_special_primes` is derived: the fewest 61-bit special primes whose product bounds each digit
     (`g_base_bits = 61 * num_special_primes`). Fewer digits mean fewer key products per key switch but a larger P,
