@@ -159,8 +159,10 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
 - `HYBRID`:
   - `dnum > 0`, or unset: then `resolved_dnum` is the fewest digits whose special primes keep the chain's
     log2(QP) within `MAX_LOG_QP_128` (lattice-estimator's 128-bit bound for the ring size and `sk_hw`) and whose
-    digits fit `MAX_DIGIT_PRIMES`; no table entry, or no such dnum, raises. The ciphertext primes of the whole chain (the pipeline's, then the bootstrap's once
-    `serialize` has chosen them) are split greedily, in chain order, into at most `dnum` digits,
+    digits fit `MAX_DIGIT_PRIMES`; no table entry, or no such dnum, raises. The ciphertext primes of the whole chain (the pipeline's, and the bootstrap's once
+    `serialize` has chosen them) are split greedily, in chain order, into at most `dnum` digits. With a bootstrap the
+    chain order is the order its rescales consume the primes (`BootstrappingParams.chain_sections`): CtS, EvalMod,
+    StC, the pipeline's, then q0 (SLIM: the pipeline's before StC's),
   - `num_special_primes` is derived: the fewest 61-bit special primes whose product bounds each digit
     (`g_base_bits = 61 * num_special_primes`). Fewer digits mean fewer key products per key switch but a larger P,
     and a larger log PQ to check against the security bound.

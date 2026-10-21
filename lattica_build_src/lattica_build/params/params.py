@@ -84,12 +84,11 @@ class HomParams:
 
     @property
     def chain_q_list_precision(self) -> QListNorm:
-        """The ciphertext primes: the pipeline's, then the bootstrap's (once the pipeline has set boot_params)."""
+        """The ciphertext primes in chain order: the pipeline's, and the bootstrap's once the pipeline has set
+        boot_params (BootstrappingParams.chain_sections)."""
         if self.boot_params is None:
             return self.full_q_list_precision
-        return (self.full_q_list_precision + self.boot_params.cts_q_list_precision
-                + self.boot_params.eval_mod_q_list_precision + self.boot_params.stc_q_list_precision
-                + ((self.boot_params.q_base_precision,),))
+        return sum((q_list for _, q_list in self.boot_params.chain_sections(self.full_q_list_precision)), ())
 
     @property
     def resolved_dnum(self) -> int:

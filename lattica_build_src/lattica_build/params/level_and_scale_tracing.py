@@ -18,18 +18,11 @@ class ModulusChain():
         self.post_init()
 
     def _set_pipeline_sections(self, hom_params):
-        self.mod_chain_sections = []
-        self.mod_chain_sections.append(
-            ["pipeline", hom_params.full_q_list_precision]
-        )
         boot_params = hom_params.boot_params
-        if boot_params is not None:
-            self.mod_chain_sections.extend([
-                ["boot_cts",  boot_params.cts_q_list_precision],
-                ["boot_eval", boot_params.eval_mod_q_list_precision],
-                ["boot_stc",  boot_params.stc_q_list_precision],
-                ["boot_base", ((boot_params.q_base_precision,),)]
-            ])
+        if boot_params is None:
+            self.mod_chain_sections = [["pipeline", hom_params.full_q_list_precision]]
+        else:
+            self.mod_chain_sections = [list(s) for s in boot_params.chain_sections(hom_params.full_q_list_precision)]
         self.mod_chain_sections.append(
             ["special_primes", ((61,),) * hom_params.num_special_primes],
         )
@@ -84,7 +77,7 @@ class ModulusChain():
         active_rows += self.section_rows["boot_base"]
         if params.boot_params.slim_boot:
             active_rows += self.section_rows["boot_stc"]
-        return active_rows
+        return sorted(active_rows)   # a ciphertext's limbs are its rows in chain order
 
 
 def init_active_rows_cols(hom_params):

@@ -115,6 +115,20 @@ class BootstrappingParams:
         q, r = divmod(log_n_slots, n_levels)
         return (q + 1,) * r + (q,) * (n_levels - r)
 
+    def chain_sections(self, pipeline_q_list_precision) -> list[tuple[str, tuple]]:
+        """The chain's ciphertext sections, (name, q_list_precision), in row order.
+
+        A ciphertext's limbs are its active rows in row order, and a rescale drops the first active row of its rows
+        budget. So each section comes before every row still active while it is consumed: every rescale then
+        drops the leading limb, and a level drop is a slice view rather than a gather. After ModRaise the
+        bootstrap consumes its CtS rows, then its EvalMod rows, then (StC last) its StC rows; the pipeline's are
+        consumed after that, and q0 stays last. SLIM's StC runs on the input, after the pipeline's rows."""
+        pipeline = ("pipeline", pipeline_q_list_precision)
+        stc = ("boot_stc", self.stc_q_list_precision)
+        consumed = [pipeline, stc] if self.slim_boot else [stc, pipeline]
+        return ([("boot_cts", self.cts_q_list_precision), ("boot_eval", self.eval_mod_q_list_precision)]
+                + consumed + [("boot_base", ((self.q_base_precision,),))])
+
     def log_delta_for(self, n_slots: int) -> int:
         """The headroom q0/|m| of a bootstrap of n_slots slots: SLIM's own (its EvalMod sees the slots),
         else its slot count's (fewer slots take more)."""
