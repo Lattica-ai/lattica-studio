@@ -21,6 +21,9 @@ def _is_power_of_two(x: int) -> bool:
 
 
 SPECIAL_PRIME_BITS = 61
+# HYBRID digits when dnum is not given: the fastest bootstrap measured with the smallest keys (2^16, 10x40 and
+# 5x(60,30) after it); 1-2 put a digit over the fused ModUp's 12 primes or log QP over 128-bit security there.
+DEFAULT_DNUM = 3
 
 
 def _prime_bits(q_list_precision: QListNorm) -> list[int]:
@@ -47,8 +50,9 @@ class HomParams:
     err_std: float = 3.19
     sk_hw: int = 0
     bv_gadget_bits: int = 4
-    # HYBRID: the digits the whole chain (pipeline and bootstrap) is split into; the special primes follow from it
-    dnum: int = 0
+    # HYBRID: the digits the whole chain (pipeline and bootstrap) is split into; the special primes follow from it.
+    # None: DEFAULT_DNUM with HYBRID, 0 with BV.
+    dnum: int | None = None
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
     num_init_rows: int | None = None
     # Bootstrapping: real slots (one EvalMod) or complex; StC first (slim) or last.
@@ -107,6 +111,8 @@ class HomParams:
         if not isinstance(self.err_std, Real) or self.err_std < 0:
             raise ValueError(f"err_std must be a non-negative number; got {self.err_std!r}.")
 
+        if self.dnum is None:
+            self.dnum = 0 if self.decomposition_type == DecompositionType.BV else DEFAULT_DNUM
         if not isinstance(self.dnum, int) or self.dnum < 0:
             raise ValueError(f"dnum must be an int >= 0; got {self.dnum!r}.")
 

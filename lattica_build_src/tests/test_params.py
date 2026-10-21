@@ -5,7 +5,7 @@ from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.bootstrapping_params import BootstrappingParams
-from lattica_build.params.params import HomParams
+from lattica_build.params.params import DEFAULT_DNUM, DecompositionType, HomParams
 
 
 def test_chain_serves_the_slot_counts_the_pipeline_bootstraps():
@@ -34,3 +34,10 @@ def test_hybrid_params_saved_without_dnum_are_refused():
     del d["dnum"]
     with pytest.raises(ValueError, match="recompile"):
         HomParams.from_dict(d)
+
+
+@pytest.mark.parametrize("decomposition_type, dnum", [(DecompositionType.HYBRID, DEFAULT_DNUM), (DecompositionType.BV, 0)])
+def test_dnum_defaults_by_decomposition_type(decomposition_type, dnum):
+    params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40,
+                       decomposition_type=decomposition_type)
+    assert params.dnum == dnum
