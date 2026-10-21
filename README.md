@@ -258,13 +258,13 @@ Pass an `InstanceType` to `deploy`,
 ```python
 from lattica_studio import InstanceType
 
-studio.deploy(artifact, "my-model", instance_type=InstanceType.G7E_12XLARGE)
+studio.deploy(artifact, "my-model", instance_type=InstanceType.G7E_2XLARGE)
 ```
 
-| Instance type | GPUs |
+| Instance type | Compute class |
 | --- | --- |
-| `G4DN_XLARGE` | 1 (default for `num_devices=1`) |
-| `G7E_12XLARGE` | 2 (default for `num_devices > 1`) |
+| `G4DN_XLARGE` | GPU |
+| `G7E_2XLARGE` | GPU (default) |
 
 `num_devices` defaults to `1` and is fixed when a model is created. Redeploying
 an existing model name with a different value raises `ValueError`; use a new

@@ -37,22 +37,16 @@ class DeploymentPreparationTests(unittest.TestCase):
             deployment.deploy(mock.Mock(), "MNIST_FC", **kwargs)
         return deployment._models.create
 
-    def test_single_device_defaults_to_g4dn(self):
+    def test_deploy_defaults_to_g7e_2xlarge(self):
         create = self._deploy_new_model()
         create.assert_called_once_with(
-            "MNIST_FC", InstanceType.G4DN_XLARGE, num_devices=1
-        )
-
-    def test_multi_device_defaults_to_g7e_12xlarge(self):
-        create = self._deploy_new_model(num_devices=2)
-        create.assert_called_once_with(
-            "MNIST_FC", InstanceType.G7E_12XLARGE, num_devices=2
+            "MNIST_FC", InstanceType.G7E_2XLARGE, num_devices=1
         )
 
     def test_explicit_instance_type_is_kept(self):
-        create = self._deploy_new_model(instance_type=InstanceType.G7E_12XLARGE)
+        create = self._deploy_new_model(instance_type=InstanceType.G4DN_XLARGE)
         create.assert_called_once_with(
-            "MNIST_FC", InstanceType.G7E_12XLARGE, num_devices=1
+            "MNIST_FC", InstanceType.G4DN_XLARGE, num_devices=1
         )
 
 

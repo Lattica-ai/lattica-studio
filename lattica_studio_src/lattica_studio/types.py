@@ -131,4 +131,4 @@ class InstanceType(StrEnum):
     """Instance types a model can be deployed on."""
 
     G4DN_XLARGE = "G4DN_XLARGE"
-    G7E_12XLARGE = "G7E_12XLARGE"
+    G7E_2XLARGE = "G7E_2XLARGE"
