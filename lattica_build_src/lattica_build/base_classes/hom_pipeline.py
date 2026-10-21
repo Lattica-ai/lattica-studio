@@ -188,17 +188,12 @@ class HomomorphicPipeline:
 
         enc_params = hom_params.ring_switch_params or hom_params
         active_rows, active_cols = (None, None) if shapes_only else init_active_rows_cols(hom_params)
-        hom_input_names = inspect.signature(self.hom.forward).parameters
+        hom_input_names = list(inspect.signature(self.hom.forward).parameters)
+        # Without n_axis: it is resolved below, on the shape the homomorphic section receives.
         hom_inputs = [
             HomValue(
                 id=name,
                 tensor_shape=self.input_shape[name],
-                n_axis=resolve_n_axis(
-                    tensor_shape=self.input_shape[name],
-                    n_axis=self.n_axis,
-                    internal_n=(enc_params if name == self.primary_input_name else hom_params).internal_n,
-                    n_slots=self.custom_n_slots.get(name, hom_params.n_slots),
-                ),
                 active_rows=copy.deepcopy(active_rows),
                 active_cols=copy.deepcopy(active_cols),
                 pt_scale=self.custom_scales.get(name, hom_params.pt_scale),
@@ -210,22 +205,20 @@ class HomomorphicPipeline:
         ser_sections = {}
 
         if self.client_pre is not None:
-            first_input = hom_inputs[0]
-            # Preprocessing is performed on the first (main) input only,
-            # and without n_axis.
-            first_input.n_axis = None
-            ser_sections[PipeSec.CLIENT_PRE], first_input = self.client_pre.serialize(
-                tensors, first_input, hom_params=enc_params, client_mode=True
+            # Preprocessing is performed on the first (main) input only, and without n_axis.
+            ser_sections[PipeSec.CLIENT_PRE], hom_inputs[0] = self.client_pre.serialize(
+                tensors, hom_inputs[0], hom_params=enc_params, client_mode=True
             )
-            # Resolve the n_axis to be used for the homomorphic
-            # section based on the output of the client_pre section.
-            first_input.n_axis = resolve_n_axis(
-                    tensor_shape=first_input.tensor_shape,
-                    n_axis=self.n_axis,
-                    internal_n=enc_params.internal_n,
-                    n_slots=first_input.n_slots
-                )
-            hom_inputs[0] = first_input
+
+        # The slot axis of each input, from the shape the homomorphic section receives: client_pre's output for the
+        # primary input, which is encrypted under enc_params.
+        for name, hom_input in zip(hom_input_names, hom_inputs):
+            hom_input.n_axis = resolve_n_axis(
+                tensor_shape=hom_input.tensor_shape,
+                n_axis=self.n_axis,
+                internal_n=(enc_params if name == self.primary_input_name else hom_params).internal_n,
+                n_slots=hom_input.n_slots,
+            )
 
         # Save the tensor_shape produced by client_pre to determine the
         # shape of the input ciphertexts. This is sent to the query client
