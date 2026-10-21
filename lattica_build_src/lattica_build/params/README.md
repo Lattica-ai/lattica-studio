@@ -29,13 +29,16 @@ Main fields you will tune:
 | `full_q_list_precision` | Level-budget blueprint (rows/cols structure). |
 | `pt_scale` | Default plaintext scale for the primary encrypted input. |
 | `decomposition_type` | Key-switch decomposition mode (`BV` or `HYBRID`). |
-| `num_special_primes` | Required for `HYBRID`; must be `0` for `BV`. |
+| `num_special_primes` | Number of special primes for `HYBRID`, defaulting to 61-bit precision. Inferred when explicit precisions are supplied; must be `0` for `BV`. |
+| `ghs_keyswtich_scale_precision` | Explicit special-prime precisions for `HYBRID`, e.g. `(29, 29, 29, 29)` for GPU32. |
 | `bv_gadget_bits` | Gadget base bits for `BV`. |
 | `err_std` | Encryption noise standard deviation. |
 | `sk_hw` | Secret-key hamming weight (also used when bootstrapping params are created). |
 | `num_init_rows` | Bootstrap-oriented starting-budget cap for the primary input: initialize fewer active rows up front when the input is expected to be bootstrapped later. |
 | `real_boot` | Bootstrap real slots: one EvalMod over the real part (complex slots take two). Default `True`. |
 | `slim_boot` | Bootstrap StC first, at the bottom of the chain, then ModRaise, CtS and EvalMod. Default `False`. |
+
+For GPU32, every RNS row modulus (including products within a row and special primes) must be below `2**30`. For example, use `full_q_list_precision=((29,),) * 7` and `ghs_keyswtich_scale_precision=(29,) * 4`. Explicit special-prime precisions and the gadget budget survive `to_dict` / `from_dict`; GPU width is selected separately when constructing the backend engine.
 
 Fields populated during serialization:
 - `boot_params`,
@@ -158,7 +161,7 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
 
 - `HYBRID`:
   - requires `num_special_primes > 0`,
-  - derives `g_base_bits` from special-prime count.
+  - derives `g_base_bits` from the sum of the special-prime precisions.
 
 Pick decomposition settings with your backend performance profile in mind.
 
