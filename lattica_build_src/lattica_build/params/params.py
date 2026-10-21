@@ -28,6 +28,7 @@ class HomParams:
     sk_hw: int = 0
     bv_gadget_bits: int = 4
     num_special_primes: int = 0
+    ghs_keyswtich_scale_precision: GHSInput | None = None
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
     num_init_rows: int | None = None
     # Bootstrapping: real slots (one EvalMod) or complex; StC first (slim) or last.
@@ -57,6 +58,10 @@ class HomParams:
         if not isinstance(self.num_special_primes, int) or self.num_special_primes < 0:
             raise ValueError(f"num_special_primes must be an int >= 0; got {self.num_special_primes!r}.")
 
+        if self.ghs_keyswtich_scale_precision is not None:
+            self.ghs_keyswtich_scale_precision = tuple(self.ghs_keyswtich_scale_precision)
+            self.num_special_primes = len(self.ghs_keyswtich_scale_precision)
+
         if self.decomposition_type == DecompositionType.BV and self.num_special_primes > 0:
             raise ValueError(
                 "num_special_primes must be 0 when using BV decomposition; "
@@ -69,8 +74,9 @@ class HomParams:
                     "num_special_primes must be greater than 0 when using HYBRID decomposition; "
                     f"got {self.num_special_primes}"
                 )
-            self.ghs_keyswtich_scale_precision = (61,) * self.num_special_primes
-            self.g_base_bits = 61 * self.num_special_primes
+            if self.ghs_keyswtich_scale_precision is None:
+                self.ghs_keyswtich_scale_precision = (61,) * self.num_special_primes
+            self.g_base_bits = sum(self.ghs_keyswtich_scale_precision)
         else:
             if not isinstance(self.bv_gadget_bits, int) or self.bv_gadget_bits < 1:
                 raise ValueError(f"bv_gadget_bits must be an int >= 1; got {self.bv_gadget_bits!r}.")
@@ -145,14 +151,13 @@ class HomParams:
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
 
-        if "g_base_bits" in d:
-            if d["decomposition_type"]==DecompositionType.BV:
-                d["bv_gadget_bits"] = d.pop("g_base_bits")
-            else:
-                d["num_special_primes"] = d.pop("g_base_bits") // 61
-        d.pop("ghs_keyswtich_scale_precision", None)
+        g_base_bits = d.pop("g_base_bits", None)
+        if g_base_bits is not None and d["decomposition_type"] == DecompositionType.BV:
+            d["bv_gadget_bits"] = g_base_bits
 
         params = cls(**d)
+        if g_base_bits is not None:
+            params.g_base_bits = g_base_bits
         if bootstrapping:
             params.boot_params = BootstrappingParams(
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
