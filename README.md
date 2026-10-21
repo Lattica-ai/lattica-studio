@@ -264,10 +264,7 @@ studio.deploy(artifact, "my-model", instance_type=InstanceType.G7E_2XLARGE)
 | Instance type | Compute class |
 | --- | --- |
 | `G4DN_XLARGE` | GPU |
-| `G5_2XLARGE` | GPU |
-| `G6E_2XLARGE` | GPU |
 | `G7E_2XLARGE` | GPU (default) |
-| `G7E_12XLARGE` | GPU |
 
 `num_devices` defaults to `1` and is fixed when a model is created. Redeploying
 an existing model name with a different value raises `ValueError`; use a new

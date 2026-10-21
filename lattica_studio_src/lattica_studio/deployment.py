@@ -65,7 +65,7 @@ class DeploymentAPI:
         hom_pipeline: "HomomorphicPipeline",
         hom_params: "HomParams",
         model_name: str,
-        instance_type: InstanceType = InstanceType.G6E_2XLARGE,
+        instance_type: InstanceType = InstanceType.G7E_2XLARGE,
         num_devices: int = 1,
         display_graph: bool = False,
     ) -> ModelId:
