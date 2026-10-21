@@ -12,8 +12,8 @@ class Bootstrap(HomOp):
 
     Args:
         target_output_scale: Optional output plaintext scale override.
-        drop_levels: The last pipeline rows to leave out of the output, for a consumer that needs fewer levels;
-            the whole bootstrap then runs without them.
+        drop_levels: The first pipeline rows to leave out of the output (the ones its rescales would consume
+            first), for a consumer that needs fewer levels; the whole bootstrap then runs without them.
     """
 
     OP_TYPE = HomOpType.Bootstrap

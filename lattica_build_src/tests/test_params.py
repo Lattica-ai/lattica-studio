@@ -1,10 +1,12 @@
 import pytest
 
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
+from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.level_and_scale_tracing import ModulusChain, infer_modswitch_by_num_levels
 from lattica_build.params.params import DecompositionType, HomParams
 
 
@@ -61,3 +63,24 @@ def test_unset_dnum_without_a_security_bound_is_refused():
 def test_unset_dnum_with_bv_is_zero():
     params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, decomposition_type=DecompositionType.BV)
     assert (params.resolved_dnum, params.num_special_primes) == (0, 0)
+
+
+@pytest.mark.parametrize("q_list, drop_levels, levels_of_dropped_rows", [
+    (((30,),) + ((60, 30),) * 3, 1, 1),   # ResNet-20's chain: its (30,) row
+    (((60, 30),) * 4, 2, 4),
+])
+def test_bootstrap_drop_levels_leaves_out_the_rows_the_full_output_consumes_first(
+        q_list, drop_levels, levels_of_dropped_rows):
+    """Bootstrap(drop_levels) outputs every pipeline row but the first drop_levels: the full output once its rescales
+    have consumed those rows, so the lighter one's limbs are a contiguous run of the full one's."""
+    params = HomParams(n=2 ** 16, full_q_list_precision=q_list, pt_scale=2 ** 30, dnum=2, n_slots=2 ** 14)
+    params.boot_params = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {2 ** 14})
+    params.mod_chain = ModulusChain(params)
+    pipeline = params.mod_chain.section_rows["pipeline"]
+    value = HomValue(tensor_shape=(2 ** 14,), n_axis=0, pt_scale=2 ** 30, n_slots=2 ** 14)
+    full = Bootstrap().infer_output_level_and_scale(value, hom_params=params)
+    lighter = Bootstrap(drop_levels=drop_levels).infer_output_level_and_scale(value, hom_params=params)
+
+    assert lighter.active_rows == pipeline[drop_levels:] + params.mod_chain.section_rows["boot_base"]
+    consumed = infer_modswitch_by_num_levels(params, full, levels_of_dropped_rows, rows_budget=None)
+    assert (consumed.active_rows, consumed.active_cols) == (lighter.active_rows, lighter.active_cols)

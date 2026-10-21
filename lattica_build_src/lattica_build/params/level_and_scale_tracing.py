@@ -247,10 +247,12 @@ def infer_adjust_levels_and_scale(input_1: HomValue, input_2: HomValue) -> HomVa
     return unchanged_input.make_copy()
 
 def init_levels_after_bootstrap(input, hom_params, drop_levels=0):
-    """Initialize the active rows and cols for a fresh ciphertext: every pipeline row but the last drop_levels."""
+    """Initialize the active rows and cols for a fresh ciphertext: every pipeline row but the first drop_levels.
+    Rescales consume rows first-row-first, so these are the rows the full output would consume first: the output
+    is the full one after its first drop_levels rows' levels, and its limbs stay a contiguous run of the full ones."""
     mod_chain = hom_params.mod_chain
     rows = copy.deepcopy(mod_chain.section_rows["pipeline"])
-    rows = rows[:len(rows) - drop_levels]
+    rows = rows[drop_levels:]
     if hom_params.slim_boot:
         rows += mod_chain.section_rows["boot_stc"]
     rows += mod_chain.section_rows["boot_base"]
