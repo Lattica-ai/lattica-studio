@@ -1,5 +1,7 @@
 """See `params/README.md` for usage details."""
 
+import os
+
 BOOT_CONFIGURATION = {
     # EvalMod and StC prime sizes (bits); the CtS ones and the DFT level counts come
     # per slot count from BOOT_PARAMS_PER_N_SLOTS.
@@ -158,10 +160,14 @@ class BootstrappingParams:
         self.arcsine_correction = BOOT_CONFIGURATION['n_arcsine_levels'] > 0
 
         self.dft_levels = dft_levels
+        # The level-conserving first CtS level (toolkit BackendHomLcrMatMul) consumes no prime, so the chain carries one
+        # CtS prime fewer. Only for pipelines whose bootstraps are all full-slot (sparse ones keep the regular level):
+        # for now an A/B switch, the environment's LATTICA_LCR_FIRST_CTS, which the toolkit reads too.
+        self.lcr_first_cts = os.environ.get("LATTICA_LCR_FIRST_CTS") == "1"
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
-        self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.dft_levels)
+        self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.dft_levels - int(self.lcr_first_cts))
         self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']
