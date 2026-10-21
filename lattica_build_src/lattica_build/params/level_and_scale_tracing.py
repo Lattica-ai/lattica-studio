@@ -246,10 +246,11 @@ def infer_adjust_levels_and_scale(input_1: HomValue, input_2: HomValue) -> HomVa
 
     return unchanged_input.make_copy()
 
-def init_levels_after_bootstrap(input, hom_params):
-    """Initialize the active rows and cols for a fresh ciphertext."""
+def init_levels_after_bootstrap(input, hom_params, drop_levels=0):
+    """Initialize the active rows and cols for a fresh ciphertext: every pipeline row but the last drop_levels."""
     mod_chain = hom_params.mod_chain
     rows = copy.deepcopy(mod_chain.section_rows["pipeline"])
+    rows = rows[:len(rows) - drop_levels]
     if hom_params.slim_boot:
         rows += mod_chain.section_rows["boot_stc"]
     rows += mod_chain.section_rows["boot_base"]
