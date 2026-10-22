@@ -48,7 +48,7 @@ class HomSign(HomOp):
         coefs = [*coefs[:-1], coefs[-1] * scale]
         self.h_poly_ops = ModuleListHomOp(
             HomPolyEvalBase(
-                cheb_coefs=coef,
+                coefs=coef,
                 left=left if i == 0 else -1,
                 right=right if i == 0 else 1,
                 tol=tol,

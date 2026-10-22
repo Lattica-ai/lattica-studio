@@ -41,7 +41,7 @@ class HomPolyEval(HomPolyEvalBase):
             plot=plot,
         )
         super().__init__(
-            cheb_coefs=coefs,
+            coefs=coefs,
             left=left,
             right=right,
             tol=tol,
