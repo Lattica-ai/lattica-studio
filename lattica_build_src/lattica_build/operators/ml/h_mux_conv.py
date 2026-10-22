@@ -96,6 +96,9 @@ class HomMuxConv(HomConvBase):
     with_modswitch: rescale after the product. pt_scale: the scale the weight is encoded at;
     None is the rescale's factor (the output keeps the input's scale), or without the rescale
     hom_params.pt_scale.
+    drop_rows: the conv first drops the input's first drop_rows rows, the ones rescales would consume next, without
+    a rescale (the scale is unchanged): an output used only at a lower level, e.g. a residual block's downsample
+    shortcut, is computed there, on fewer limbs, with a plaintext of fewer limbs.
     """
 
     OP_TYPE = HomOpType.MuxConv
@@ -106,13 +109,15 @@ class HomMuxConv(HomConvBase):
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
                  with_modswitch: bool = True,
                  bias: bool = False,
-                 pt_scale: Optional[int] = None) -> None:
+                 pt_scale: Optional[int] = None,
+                 drop_rows: int = 0) -> None:
         super().__init__()
         self.kernel_shape = tuple(kernel_shape)
         self._set_geometry(self.kernel_shape[2:], stride, padding, dilation, image_hw)
         self.with_modswitch = with_modswitch
         self.bias = bias
         self.pt_scale = pt_scale
+        self.drop_rows = drop_rows
 
     def _layouts(self):
         """The input and output maps' layouts, each at its own period."""
@@ -124,6 +129,11 @@ class HomMuxConv(HomConvBase):
         return _infer_mux_output(input, input_layout.period, output_layout.period, internal_n)
 
     def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
+        if self.drop_rows:
+            assert self.drop_rows < len(input.active_rows), (
+                f"drop_rows {self.drop_rows} leaves none of the input's {len(input.active_rows)} rows")
+            input = input.make_copy(active_rows=input.active_rows[self.drop_rows:],
+                                    active_cols=input.active_cols[self.drop_rows:])
         return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
                                         rows_budget=None, op_scale_up=self.pt_scale)
 
@@ -163,9 +173,10 @@ class HomMuxConvBnFused(HomMuxConv):
                  padding: Union[int, Tuple[int, int]] = (0, 0),
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
                  with_modswitch: bool = True,
-                 pt_scale: Optional[int] = None) -> None:
+                 pt_scale: Optional[int] = None,
+                 drop_rows: int = 0) -> None:
         super().__init__(kernel_shape, image_hw, stride, padding, dilation, with_modswitch, bias=True,
-                         pt_scale=pt_scale)
+                         pt_scale=pt_scale, drop_rows=drop_rows)
 
     def set_data(self, weight, bias, mean, var, gamma, beta, eps: float = 1e-5,
                  delta: float = 1.0, **kwargs) -> None:
