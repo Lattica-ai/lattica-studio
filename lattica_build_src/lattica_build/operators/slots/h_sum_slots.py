@@ -2,13 +2,11 @@
 
 from typing import Optional, Sequence
 
-import torch
-
-from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.operators.slots.ring_utils import SlotOp, check_span, from_ring, input_layout, to_ring
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
-class HomSumSlots(HomOp):
+class HomSumSlots(SlotOp):
     """Base slot-axis reduction operator.
 
     Use this operator family for slot-axis summation semantics instead of
@@ -41,13 +39,14 @@ class HomSumSlots(HomOp):
         return input.make_copy(n_slots=n_slots // k)
 
     def forward_clear(self, input):
-        """The encrypted sum on the ciphertext's slots, taking the last axis' length rounded
-        up to a power of 2 as its period n_slots: the axis is zero-padded to it, and slot j
-        gets the k slots n_slots / k apart. The result repeats at n_slots / k and is read
-        at the input's positions."""
-        n_slots = 1 << (input.shape[-1] - 1).bit_length()
+        """The encrypted sum on the ciphertext's slots: in each period of n_slots slots (zero padding included),
+        slot j gets the k slots n_slots / k apart. The result repeats at n_slots / k and is read at the input's
+        positions."""
+        value, internal_n = input_layout(self, input)
+        n_slots = value.n_slots
         k = self.k if self.k is not None else n_slots
-        period = input[..., :n_slots]
-        period = torch.nn.functional.pad(period, (0, n_slots - period.shape[-1]))
-        sums = period.reshape(*period.shape[:-1], k, n_slots // k).sum(dim=-2)
-        return sums[..., torch.arange(input.shape[-1], device=input.device) % (n_slots // k)]
+        check_span(self, k, n_slots, "the period")
+        ring = to_ring(input, value, internal_n)
+        periods = ring.unflatten(-1, (internal_n // n_slots, k, n_slots // k))
+        sums = periods.sum(dim=-2, keepdim=True).expand(periods.shape)
+        return from_ring(sums.flatten(-3), value)

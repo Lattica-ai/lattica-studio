@@ -68,6 +68,30 @@ def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape 
 
     return inputs[0].make_copy(tensor_shape=output_shape, n_axis=n_axis_neg)
 
+def infer_constant_packing_n_slots(input: HomValue, dims: TensorShape, internal_n: int | None) -> int | None:
+    """The period of `input` combined with a constant of shape `dims` (ConstAdd, ConstMul, a MatMul on another
+    axis than the slot axis): a constant spanning more slots than the input's period holds a different value per
+    repeat, so it is packed over the whole ring and the result's period becomes internal_n."""
+    if input.n_axis is None or input.n_slots is None or internal_n is None:
+        return input.n_slots
+    slot_axis = to_neg_axis(input.n_axis, input.tensor_shape)
+    constant_slots = dims[slot_axis] if len(dims) >= -slot_axis else 1
+    return internal_n if constant_slots > input.n_slots else input.n_slots
+
+def insert_position(axis: int, rank: int) -> int:
+    """The position, among the `rank` axes of a tensor, where an axis inserted at `axis` goes (it then sits before
+    the axis that was at that position). A non-negative axis is its own position, up to `rank` (after the last
+    axis). A negative axis counts from the end of the existing axes: -1 inserts before the last axis, -rank before
+    the first, and -(rank + 1) before the last axis again. Any other axis raises ValueError."""
+    if not -(rank + 1) <= axis <= rank:
+        raise ValueError(f"Cannot insert an axis at {axis} in a tensor of rank {rank}: "
+                         f"expected an axis in [{-(rank + 1)}, {rank}].")
+    if axis >= 0:
+        return axis
+    if axis >= -rank:
+        return axis + rank
+    return max(rank - 1, 0)
+
 def infer_insert_axis_output_shape(input: HomValue, axis: int, size: int) -> HomValue:
     output_shape = (*input.tensor_shape[:axis], size, *input.tensor_shape[axis:])
 

@@ -86,7 +86,7 @@ class HomPolyEvalBase(HomOp):
             m, k = find_optimal_k_m(degree)
             num_levels = math.ceil(math.log2(k)) + m
         else:  # direct
-            num_levels = degree - 1
+            num_levels = max(degree, 0).bit_length()
         input = infer_modswitch_by_num_levels(
             hom_params,
             input,
