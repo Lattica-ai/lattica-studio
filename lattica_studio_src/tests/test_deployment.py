@@ -14,14 +14,14 @@ class DeploymentPreparationTests(unittest.TestCase):
         existing_model = Model(
             id="model-1",
             name="MNIST_FC",
-            instance_type=InstanceType.G6E_2XLARGE.value,
+            instance_type=InstanceType.G7E_2XLARGE.value,
             num_devices=1,
         )
         deployment._models.find_by_name.return_value = existing_model
 
         model_id = deployment._prepare_model(
             model_name="MNIST_FC",
-            instance_type=InstanceType.G6E_2XLARGE,
+            instance_type=InstanceType.G7E_2XLARGE,
             num_devices=1,
         )
 
