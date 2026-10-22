@@ -3,7 +3,7 @@ import * as toolkitWrapper from '../src/toolkitWrapper';
 import * as serverApi from '../src/serverApi';
 import * as inference from '../src/inference';
 import { Tensor, vecToTensor, dumps_proto_tensor } from '../src/tensorUtils';
-import { ClientData, ClientModel, ClientBlock } from '../src/serialization/hom_op';
+import { ClientData, ClientModel, ClientBlock } from '../lattica_query/serialization/generated/hom_op';
 
 (global as any).URL.createObjectURL = jest.fn(() => 'blob://dummy');
 
@@ -24,8 +24,8 @@ jest.mock('../src/wasm/wasm_worker_manager', () => ({
 jest.mock('../src/toolkitWrapper', () => ({
   generateKey: jest.fn(async () => {
     // Create mock ExtendedSecretKey structure  
-    const { ExtendedSecretKey } = await import('../src/serialization/hom_op');
-    const { DataType } = await import('../src/serialization/generic');
+    const { ExtendedSecretKey } = await import('../lattica_query/serialization/generated/hom_op');
+    const { DataType } = await import('../lattica_query/serialization/generated/generic');
     const mockExtendedSecretKey = {
       secretKey: {
         sk: { 

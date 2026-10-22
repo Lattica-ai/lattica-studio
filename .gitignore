@@ -149,4 +149,5 @@ CLAUDE.md
 **/*.egg-info/
 
 lattica_build_src/build/
+lattica_query_src/build/
 lattica_studio_src/build/

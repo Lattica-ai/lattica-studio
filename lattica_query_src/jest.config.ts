@@ -3,6 +3,8 @@ import type { Config } from 'jest';
 
 const config: Config = {
   preset: 'ts-jest',
+  // Only the JS client: skip the Python package and any venv next to it.
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
   testEnvironment: 'jsdom',
   setupFiles: ['./jest.setup.ts'],
   moduleNameMapper: {
