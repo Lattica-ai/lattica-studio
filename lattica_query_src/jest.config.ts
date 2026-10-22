@@ -3,7 +3,7 @@ import type { Config } from 'jest';
 
 const config: Config = {
   preset: 'ts-jest',
-  // Folders jest scans, so the Python package next to them is skipped.
+  // Folders with the JS tests and code.
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testEnvironment: 'jsdom',
   setupFiles: ['./jest.setup.ts'],
