@@ -26,7 +26,7 @@ jobs:
           cache: npm
           cache-dependency-path: lattica_query_src/package-lock.json
 
-      # npm ci also builds dist/ (the package's prepare script).
+      # npm ci also builds dist/.
       - name: Install the dependencies
         run: npm ci
 
