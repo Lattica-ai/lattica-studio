@@ -93,6 +93,9 @@ class HomMuxConv(HomConvBase):
     conv also re-interleaves its output to the C_out channels, in the same level.
     bias: a per-channel bias after the weight, added at every slot of
     its channel.
+    with_modswitch: rescale after the product. pt_scale: the scale the weight is encoded at;
+    None is the rescale's factor (the output keeps the input's scale), or without the rescale
+    hom_params.pt_scale.
     """
 
     OP_TYPE = HomOpType.MuxConv
@@ -102,12 +105,14 @@ class HomMuxConv(HomConvBase):
                  padding: Union[int, Tuple[int, int]] = (0, 0),
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
                  with_modswitch: bool = True,
-                 bias: bool = False) -> None:
+                 bias: bool = False,
+                 pt_scale: Optional[int] = None) -> None:
         super().__init__()
         self.kernel_shape = tuple(kernel_shape)
         self._set_geometry(self.kernel_shape[2:], stride, padding, dilation, image_hw)
         self.with_modswitch = with_modswitch
         self.bias = bias
+        self.pt_scale = pt_scale
 
     def _layouts(self):
         """The input and output maps' layouts, each at its own period."""
@@ -120,7 +125,7 @@ class HomMuxConv(HomConvBase):
 
     def infer_output_level_and_scale(self, input: HomValue, hom_params=None, **kwargs) -> HomValue:
         return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
-                                        rows_budget=None, op_scale_up=None)
+                                        rows_budget=None, op_scale_up=self.pt_scale)
 
     def set_data(self, weight: torch.Tensor, bias: Optional[torch.Tensor] = None, **kwargs) -> None:
         assert tuple(weight.shape) == self.kernel_shape, (
@@ -157,8 +162,10 @@ class HomMuxConvBnFused(HomMuxConv):
                  stride: Union[int, Tuple[int, int]] = (1, 1),
                  padding: Union[int, Tuple[int, int]] = (0, 0),
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
-                 with_modswitch: bool = True) -> None:
-        super().__init__(kernel_shape, image_hw, stride, padding, dilation, with_modswitch, bias=True)
+                 with_modswitch: bool = True,
+                 pt_scale: Optional[int] = None) -> None:
+        super().__init__(kernel_shape, image_hw, stride, padding, dilation, with_modswitch, bias=True,
+                         pt_scale=pt_scale)
 
     def set_data(self, weight, bias, mean, var, gamma, beta, eps: float = 1e-5,
                  delta: float = 1.0, **kwargs) -> None:
