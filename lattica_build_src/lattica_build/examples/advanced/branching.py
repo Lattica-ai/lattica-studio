@@ -30,5 +30,5 @@ class Pipeline(PipelineWrapper):
             full_q_list_precision=((60, 30),) * 10,
             pt_scale=2 ** 30,
             decomposition_type=DecompositionType.HYBRID,
-            num_special_primes=2,
+            dnum=5,
         )

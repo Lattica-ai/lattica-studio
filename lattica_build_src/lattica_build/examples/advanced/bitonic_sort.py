@@ -26,7 +26,7 @@ SORT_TOLERANCE = 0.05        # max per-entry error against the true sort
 LOG_SCALE = 30
 BOOT_EVERY = 1
 Q_ROWS = 4
-SPECIAL_PRIMES = 6
+DNUM = 3
 
 
 def _get_masks(array_len: int, k: int, j: int) -> list[torch.Tensor]:
@@ -124,7 +124,7 @@ class Pipeline(PipelineWrapper):
             full_q_list_precision=Q_ROWS * ((LOG_SCALE * 2, LOG_SCALE),),
             pt_scale=2 ** LOG_SCALE,
             sk_hw=192,
-            num_special_primes=SPECIAL_PRIMES,
+            dnum=DNUM,
             n_slots=self.array_len,
         )
 
