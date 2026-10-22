@@ -69,4 +69,4 @@ class HomPolyThreshold(HomPolyEvalBase):
             )
         else:
             raise ValueError(f"Unknown variant: {variant}")
-        super().__init__(coefs=coefs, tol=tol, rows_budget=rows_budget)
+        super().__init__(cheb_coefs=coefs, tol=tol, rows_budget=rows_budget)

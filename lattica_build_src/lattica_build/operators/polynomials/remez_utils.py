@@ -968,8 +968,8 @@ class Polynomial:
         return sum(_bucket_depth(len(s) - 1) for s in self.stages)
 
     def coefs(self):
-        """List of ndarrays of coefficients of each stage, in reverse order"""
-        return [np.array(f[::-1], dtype=np.float64) for f in self.stages]
+        """List of ndarrays of coefficients of each stage, lowest degree first"""
+        return [np.array(f, dtype=np.float64) for f in self.stages]
 
     # ---- refinement ----
     def refine(self, times=1, order=3):
@@ -1464,7 +1464,7 @@ def arcsin_minimax_coefs(degree, eps, delta=1, tol=1e-7, precision=None):
     c_as  = np.array([np.float64(c) for c in asin.coeffs])
     c_as *= delta
     d_asin = poly2cheb(cheb2poly(c_as) / (asin.hull_hi ** np.arange(len(c_as))))
-    f_arcsin = d_asin[::-1].astype(np.float64)
+    f_arcsin = d_asin.astype(np.float64)
     if tol is not None:                                   # None = keep every coefficient
         f_arcsin[np.abs(f_arcsin) < tol] = 0.0
     return f_arcsin

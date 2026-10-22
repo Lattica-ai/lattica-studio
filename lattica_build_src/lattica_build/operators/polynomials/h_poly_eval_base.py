@@ -17,7 +17,7 @@ class HomPolyEvalBase(HomOp):
     input ciphertext and infers level consumption from polynomial degree.
 
     Args:
-        coefs: Polynomial coefficients. Leading dimensions are treated as batch
+        cheb_coefs: Chebyshev coefficients, lowest degree first. Leading dimensions are treated as batch
             dimensions and are prepended to the output shape.
         left: Lower bound of the approximation interval.
         right: Upper bound of the approximation interval.
@@ -29,21 +29,21 @@ class HomPolyEvalBase(HomOp):
 
     def __init__(
         self,
-        coefs,
+        cheb_coefs,
         left: float = -1,
         right: float = 1,
         tol: float = 1e-8,
         rows_budget: Sequence[int] | None = None,
     ) -> None:
         super().__init__()
-        self.coefs = coefs
+        self.cheb_coefs = cheb_coefs
         self.left = left
         self.right = right
         self.tol = tol
         self.rows_budget = rows_budget
 
     def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
-        coef_batch_shape = tuple(torch.as_tensor(self.coefs).shape[:-1])
+        coef_batch_shape = tuple(torch.as_tensor(self.cheb_coefs).shape[:-1])
         output_shape = coef_batch_shape + input.tensor_shape
         if input.n_axis is None:
             return input.make_copy(tensor_shape=output_shape)
@@ -55,10 +55,10 @@ class HomPolyEvalBase(HomOp):
     def forward_clear(self, input):
         x = input * (2 / (self.right - self.left))
         x = x + (-(self.right + self.left) / (self.right - self.left))
-        coefs = torch.as_tensor(self.coefs, dtype=input.dtype, device=input.device)
+        coefs = torch.as_tensor(self.cheb_coefs, dtype=input.dtype, device=input.device)
         b_next = torch.zeros_like(x)
         b_curr = torch.zeros_like(x)
-        for coefficient in coefs.unbind(-1):
+        for coefficient in reversed(coefs.unbind(-1)):   # Clenshaw: highest degree first
             coefficient = coefficient.reshape(coefs.shape[:-1] + (1,) * input.ndim)
             b_next, b_curr = b_curr, 2 * x * b_curr - b_next + coefficient
         return b_curr - x * b_next
@@ -80,7 +80,7 @@ class HomPolyEvalBase(HomOp):
                 op_scale_up=None,
             )
 
-        degree = self.coefs.shape[-1] - 1
+        degree = self.cheb_coefs.shape[-1] - 1
         # the backend's depth-optimal tree, at every degree
         num_levels = math.ceil(math.log2(degree + 1))
         input = infer_modswitch_by_num_levels(
