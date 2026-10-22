@@ -116,7 +116,8 @@ class BootstrappingParams:
 
     def lcr_first_cts_fits(self, n_slots: int, n: int) -> bool:
         """Whether that level fits the toolkit's kernel (LCR_MAX_TERMS), with another CtS level after it: 2**12 slots
-        and up at N = 2**16."""
+        and up at N = 2**16, at most 8 trace rotations. Where it fits, it is also faster: RTX 5090, complex, 2 to 8
+        trace rotations -3..-8%; 16 (a 2**11-slot split with a 3-stage last component) was +8%."""
         return len(self.dft_split(n_slots)) > 1 and self.lcr_first_cts_terms(n_slots, n) <= LCR_MAX_TERMS
 
     @staticmethod
@@ -129,25 +130,18 @@ class BootstrappingParams:
     def dft_split(self, n_slots: int) -> tuple[int, ...]:
         """The StC split (component sizes, stage 0 first; CtS takes it reversed) of a bootstrap of n_slots slots.
         BOOT_PARAMS_PER_N_SLOTS's split, which the chain must fit: as many levels and CtS primes as wide (for_slot_counts
-        with n_slots among its slot counts does). SLIM: equal parts over all the chain's levels, since its StC runs on
-        the input's own primes."""
+        with n_slots among its slot counts does). SLIM takes the same split: its StC and CtS are the same transforms,
+        at other levels."""
         n_levels = self.dft_levels
-        if not self.slim_boot:
-            split, cts_bits, _ = self._n_slots_entry(n_slots)
-            if len(split) > n_levels or cts_bits > self.cts_scale:
-                # fewer levels than the split would mean far more diagonals per DFT factor, and a CtS prime
-                # narrower than the split needs loses precision
-                raise ValueError(
-                    f"the bootstrap chain ({n_levels} DFT levels, {self.cts_scale}-bit CtS primes) does not fit the "
-                    f"{n_slots}-slot bootstrap's split {split} ({cts_bits}-bit CtS primes): build it with "
-                    f"for_slot_counts including {n_slots}")
-            return tuple(split)
-        log_n_slots = n_slots.bit_length() - 1
-        if not 1 <= n_levels <= log_n_slots:
+        split, cts_bits, _ = self._n_slots_entry(n_slots)
+        if len(split) > n_levels or cts_bits > self.cts_scale:
+            # fewer levels than the split would mean far more diagonals per DFT factor, and a CtS prime
+            # narrower than the split needs loses precision
             raise ValueError(
-                f"bootstrapping {n_slots} slots needs log2(n_slots) >= the {self.dft_levels} DFT levels")
-        q, r = divmod(log_n_slots, n_levels)
-        return (q + 1,) * r + (q,) * (n_levels - r)
+                f"the bootstrap chain ({n_levels} DFT levels, {self.cts_scale}-bit CtS primes) does not fit the "
+                f"{n_slots}-slot bootstrap's split {split} ({cts_bits}-bit CtS primes): build it with "
+                f"for_slot_counts including {n_slots}")
+        return tuple(split)
 
     def chain_sections(self, pipeline_q_list_precision) -> list[tuple[str, tuple]]:
         """The chain's ciphertext sections, (name, q_list_precision), in row order.
