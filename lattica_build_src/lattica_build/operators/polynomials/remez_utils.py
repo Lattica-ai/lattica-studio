@@ -95,14 +95,15 @@ except Exception:
 # ======================================================================
 # Degree / depth model
 # ----------------------------------------------------------------------
-# A degree-d polynomial is evaluated with a Paterson-Stockmeyer / BSGS scheme
-# whose multiplicative depth is ceil(log2(d)) once d is rounded up to one of the
-# supported "bucket" degrees below. POLY_EVAL_DEG are the only degrees we ever
-# instantiate; each costs DEPTH_OF_DEGREE[d] levels.
+# A degree-d polynomial is evaluated on the backend's depth-optimal tree, whose
+# multiplicative depth is ceil(log2(d + 1)) once d is rounded up to one of the
+# supported "bucket" degrees below: the largest degree of each depth, 2^depth - 1.
+# POLY_EVAL_DEG are the only degrees we ever instantiate; each costs
+# DEPTH_OF_DEGREE[d] levels.
 # ======================================================================
-POLY_EVAL_DEG = [5, 13, 27, 59, 119, 247]                    # supported per-stage degrees
-DEPTH_OF_DEGREE = {d: int(math.ceil(math.log2(d))) for d in POLY_EVAL_DEG}
-#   {5:3, 13:4, 27:5, 59:6, 119:7, 247:8}
+POLY_EVAL_DEG = [7, 15, 31, 63, 127, 255]                    # supported per-stage degrees
+DEPTH_OF_DEGREE = {d: int(math.ceil(math.log2(d + 1))) for d in POLY_EVAL_DEG}
+#   {7:3, 15:4, 31:5, 63:6, 127:7, 255:8}
 DEPTH_TO_DEGREE = {depth: d for d, depth in DEPTH_OF_DEGREE.items()}
 
 
@@ -967,8 +968,8 @@ class Polynomial:
         return sum(_bucket_depth(len(s) - 1) for s in self.stages)
 
     def coefs(self):
-        """List of ndarrays of coefficients of each stage, in reverse order"""
-        return [np.array(f[::-1], dtype=np.float64) for f in self.stages]
+        """List of ndarrays of coefficients of each stage, lowest degree first"""
+        return [np.array(f, dtype=np.float64) for f in self.stages]
 
     # ---- refinement ----
     def refine(self, times=1, order=3):
@@ -1078,7 +1079,7 @@ def enumerate_degree_lists(total_depth, min_depth_part=3):
     to its bucket degree via DEPTH_TO_DEGREE.
 
     Example: enumerate_degree_lists(10) yields (as degree lists)
-             [5,119], [5,5,13], [13,59], [27,27]
+             [7,127], [7,7,15], [15,63], [31,31]
              with depths (3,7), (3,3,4), (4,6), (5,5).
     """
     available = sorted(DEPTH_TO_DEGREE)                       # [3,4,5,6,7,8]
@@ -1237,7 +1238,7 @@ def sign_minimax(x_accuracy, y_accuracy, *, use_refinement=False,
                         polynomials (always last) to reach y_accuracy cheaply. Each
                         refinement of order o multiplies the correct digits by (o+1).
     refinement_orders : refinement orders the search may use (default 2 and 3:
-                        order 2 = degree 5 / depth 3, order 3 = degree 7 / depth 4).
+                        order 2 = degree 5, order 3 = degree 7, both depth 3).
     max_refinements   : cap on number of appended refinement polynomials.
     accuracy_epsilon  : a candidate passes if its y-accuracy >= y_accuracy - this
                         (absorbs measurement noise / near-ties).
@@ -1463,7 +1464,7 @@ def arcsin_minimax_coefs(degree, eps, delta=1, tol=1e-7, precision=None):
     c_as  = np.array([np.float64(c) for c in asin.coeffs])
     c_as *= delta
     d_asin = poly2cheb(cheb2poly(c_as) / (asin.hull_hi ** np.arange(len(c_as))))
-    f_arcsin = d_asin[::-1].astype(np.float64)
+    f_arcsin = d_asin.astype(np.float64)
     if tol is not None:                                   # None = keep every coefficient
         f_arcsin[np.abs(f_arcsin) < tol] = 0.0
     return f_arcsin
