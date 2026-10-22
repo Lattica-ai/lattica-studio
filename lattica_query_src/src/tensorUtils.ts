@@ -1,4 +1,4 @@
-import { DataType, TensorHolder } from "./serialization/generic";
+import { DataType, TensorHolder } from "../lattica_query/serialization/generated/generic";
 import ndarray from "ndarray";
 export type Tensor = import("ndarray").NdArray;
 

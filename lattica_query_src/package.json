@@ -8,7 +8,8 @@
   "homepage": "https://www.lattica.ai/platform/",
   "repository": {
     "type": "git",
-    "url": "git://github.com/Lattica-ai/lattica-query-client.git"
+    "url": "git+https://github.com/Lattica-ai/lattica-studio.git",
+    "directory": "lattica_query_src"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",

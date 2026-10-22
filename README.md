@@ -16,7 +16,7 @@ This repository contains three Python packages:
 | --- | --- |
 | [`lattica-build`](./lattica_build_src) | Define a homomorphic computation graph, bind weights, plan FHE parameters, and emit a deployable artifact. Runs entirely locally. |
 | [`lattica-studio`](./lattica_studio_src) | Deploy and compile that artifact on the platform, then manage models, workers, and query tokens. |
-| [`lattica-query`](./lattica_query_src) | Generate keys, encrypt inputs, execute encrypted queries, and decrypt results locally. |
+| [`lattica-query`](./lattica_query_src) | Generate keys, encrypt inputs, execute encrypted queries, and decrypt results locally. The same folder holds the JavaScript client, `@lattica-ai/query` on npm. |
 
 Both require **Python 3.11+**.
 
@@ -293,6 +293,11 @@ lattica_build_src/          # lattica-build package
     params/                 # FHE parameter planning, level/scale budgeting
     examples/               # runnable pipeline definitions
     build.py                # build() API and lattica-build CLI
+
+lattica_query_src/          # lattica-query package (Python) + @lattica-ai/query (JavaScript)
+  lattica_query/            # the Python client; serialization/generated/ = protobuf code for both clients
+  src/                      # the JavaScript client
+  package.json              # npm package next to pyproject.toml
 
 lattica_studio_src/         # lattica-studio package
   lattica_studio/

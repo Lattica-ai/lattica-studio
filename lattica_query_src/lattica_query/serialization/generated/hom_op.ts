@@ -31,6 +31,8 @@ export enum HomOpType {
   AxisSum = 19,
   Bootstrap = 20,
   RingSwitch = 21,
+  Conj = 22,
+  MuxConv = 23,
   UNRECOGNIZED = -1,
 }
 
@@ -102,6 +104,12 @@ export function homOpTypeFromJSON(object: any): HomOpType {
     case 21:
     case "RingSwitch":
       return HomOpType.RingSwitch;
+    case 22:
+    case "Conj":
+      return HomOpType.Conj;
+    case 23:
+    case "MuxConv":
+      return HomOpType.MuxConv;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -155,6 +163,10 @@ export function homOpTypeToJSON(object: HomOpType): string {
       return "Bootstrap";
     case HomOpType.RingSwitch:
       return "RingSwitch";
+    case HomOpType.Conj:
+      return "Conj";
+    case HomOpType.MuxConv:
+      return "MuxConv";
     case HomOpType.UNRECOGNIZED:
     default:
       return "UNRECOGNIZED";

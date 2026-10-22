@@ -13,8 +13,8 @@ import {
 import * as toolkit from './toolkitWrapper';
 
 import { runInference } from './inference';
-import { ClientModel, ClientBlock, ClientData, ExtendedContext, ExtendedSecretKey } from './serialization/hom_op';
-import { TensorHolder } from './serialization/generic';
+import { ClientModel, ClientBlock, ClientData, ExtendedContext, ExtendedSecretKey } from '../lattica_query/serialization/generated/hom_op';
+import { TensorHolder } from '../lattica_query/serialization/generated/generic';
 
 import { triggerEvkCopy } from './dev_utils';
 import { initWasm, workerManagerSingleton, setLogCallback } from './wasm/wasm_worker_manager';
