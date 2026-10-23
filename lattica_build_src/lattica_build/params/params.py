@@ -1,6 +1,10 @@
 """See `params/README.md` for usage details."""
 
 import enum
+import functools
+import json
+import math
+import os
 from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
@@ -30,6 +34,15 @@ MAX_LOG_QP_128 = {
     (15, 192): 809,
     (16, 192): 1638,
 }
+
+
+@functools.cache
+def _max_prime_log2(bits: int) -> float:
+    """The largest log2 among the good primes of this size: a pool's primes can exceed their nominal size (the 26-bit
+    ones reach 26.73 bits: few NTT-friendly primes that small), so the security bound counts them at this size."""
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "good_primes.json"), encoding="utf-8") as f:
+        pool = json.load(f).get(str(bits))
+    return max(math.log2(q) for q in pool) if pool else float(bits)
 
 
 def _prime_bits(q_list_precision: QListNorm) -> list[int]:
@@ -106,7 +119,7 @@ class HomParams:
         for dnum in range(1, len(bits) + 1):
             num = _num_special_primes(bits, dnum)
             if (max(_digit_sizes(bits, SPECIAL_PRIME_BITS * num)) <= MAX_DIGIT_PRIMES
-                    and sum(bits) + SPECIAL_PRIME_BITS * num <= max_log_qp):
+                    and sum(map(_max_prime_log2, bits)) + _max_prime_log2(SPECIAL_PRIME_BITS) * num <= max_log_qp):
                 return dnum
         raise ValueError(f"No dnum keeps log2(QP) of this chain ({sum(bits)} bits of Q) within {max_log_qp} bits, the "
                          f"128-bit bound for n = 2^{log_n} with sk_hw = {self.sk_hw}: shorten the chain or set dnum.")

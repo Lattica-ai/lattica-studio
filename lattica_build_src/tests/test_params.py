@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
@@ -5,6 +7,7 @@ from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.level_and_scale_tracing import ModulusChain
 from lattica_build.params.params import DecompositionType, HomParams
 
 
@@ -45,6 +48,14 @@ def test_unset_dnum_is_the_fewest_128_bit_secure_digits(q_list, dnum):
                                   'bootstrapping': True, 'boot_dft_levels': boot.dft_levels,
                                   'boot_cts_scale': boot.cts_scale})
     assert params.dnum is None and params.resolved_dnum == dnum
+
+
+def test_unset_dnum_counts_the_primes_at_their_actual_size():
+    """26-bit good primes reach 26.73 bits (few NTT-friendly primes that small): 12 rows of (52, 26) at 2^15 fit 809 bits
+    at dnum 4 by their nominal size but not by their drawn primes, so the derivation takes 6 digits."""
+    params = HomParams(n=2 ** 15, full_q_list_precision=((52, 26),) * 12, pt_scale=2 ** 26, sk_hw=192)
+    log_qp = sum(math.log2(int(q)) for row in ModulusChain(params).factors_per_row for q in row)
+    assert params.resolved_dnum == 6 and log_qp <= 809
 
 
 def test_unset_dnum_without_a_bootstrap_is_one_digit():
