@@ -1,14 +1,11 @@
 """See `params/README.md` for usage details."""
 
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Mapping
+
 
 BOOT_CONFIGURATION = {
-    # EvalMod and StC prime sizes (bits); the CtS ones and the DFT level counts come
-    # per slot count from BOOT_PARAMS_PER_N_SLOTS.
-    # Also the size of q0: EvalMod running at scale q0 makes the division by
-    # delta a free scale relabel; 53 is the smallest without accuracy loss.
-    'eval_mod_scale' : 53,
-    'stc_scale' : 30,
-
     'n_cosine_levels' : 5,
     'n_double_angle' : 3,
     'n_arcsine_levels' : 0,
@@ -57,6 +54,38 @@ BOOT_PARAMS_PER_N_SLOTS = {
 }
 
 
+@dataclass(frozen=True)
+class BootPrecision:
+    """How precise a bootstrap is, and what its chain spends on it.
+    eval_mod_scale: the EvalMod prime size, and q0's (EvalMod at scale q0 makes the division by delta a free relabel).
+    stc_scale: the StC prime size. per_n_slots: by log2(n_slots), the StC split, the CtS prime size and log_delta
+    (BOOT_PARAMS_PER_N_SLOTS, "full"'s, explains them). lcr_min_special_bits: the special primes P' the level-conserving CtS
+    keys need: their key switch adds noise ~ N |m| q0 e / P' (m at the CtS scale), which must stay below the bootstrap's
+    own error."""
+    eval_mod_scale: int
+    stc_scale: int
+    per_n_slots: Mapping[int, tuple[tuple[int, ...], int, int]]
+    lcr_min_special_bits: int
+
+
+BOOT_PRECISIONS = {
+    # The general-purpose bootstrap: ~18-21 bits. q0 = 53 is the smallest without accuracy loss; LCR's 3 x 61-bit special
+    # primes keep its key switch near 2**-40.
+    "full": BootPrecision(eval_mod_scale=53, stc_scale=30, per_n_slots=MappingProxyType(BOOT_PARAMS_PER_N_SLOTS),
+                          lcr_min_special_bits=170),
+    # ~10 bits (RTX 5090, N = 2**15, real data |x| <= 0.73 with mean 0.07: 9.9 / 10.2 / 10.8 bits mean at 2**14 / 2**13 /
+    # 2**12 slots), for networks that tolerate it: ResNet-20 needs ~9 bits (clear model, CIFAR-10 test set). Its chain is
+    # small enough for N = 2**15 at 128 bits. log_delta 2 holds while the largest coefficient EvalMod sees, the slot mean
+    # of a CtS-last bootstrap, stays small (ResNet-20: <= 0.09); one DFT level fewer than "full" on each side;
+    # LCR's key switch noise is ~2**-24 with 2 special primes, far below these bootstraps' error.
+    "low": BootPrecision(eval_mod_scale=36, stc_scale=26, per_n_slots=MappingProxyType({
+        12: ((4, 4, 4), 34, 2),
+        13: ((4, 4, 5), 34, 2),
+        14: ((4, 5, 5), 34, 2),
+    }), lcr_min_special_bits=100),
+}
+
+
 # The most terms (key products) a level-conserving first CtS level takes: the toolkit's lcr_rotations_sum kernel stages
 # each term's source indices in 48 KB of shared memory (256 bytes per term). A sparse bootstrap's level folds the
 # SubSum trace in, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
@@ -78,27 +107,28 @@ class BootstrappingParams:
         return tuple((scale,) for _ in range(levels))
 
     @staticmethod
-    def get_q_base_precision() -> int:
+    def get_q_base_precision(precision: str = "full") -> int:
         """Size of q0, the ModRaise base modulus: the EvalMod prime size."""
-        return BOOT_CONFIGURATION['eval_mod_scale']
+        return BOOT_PRECISIONS[precision].eval_mod_scale
     
     @classmethod
     def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int | None = None,
-                        lcr_first_cts: bool = True) -> "BootstrappingParams":
-        """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_N_SLOTS entry): as
+                        lcr_first_cts: bool = True, precision: str = "full") -> "BootstrappingParams":
+        """The chain for bootstraps of these slot counts (each needs an entry in its precision's per_n_slots): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use.
         n: the ring dimension. The chain has one CtS prime fewer when every slot count's bootstrap can run its first
         CtS level level-conserving (lcr_first_cts_fits, which needs n); lcr_first_cts=False keeps it regular."""
         slot_counts = list(slot_counts)
-        entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
+        entries = [cls._n_slots_entry(n_slots, precision) for n_slots in slot_counts]
         dft_levels = max(len(split) for split, _, _ in entries)
         cts_scale = max(bits for _, bits, _ in entries)
         lcr = False
         if lcr_first_cts and n is not None:
-            probe = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
+            probe = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, precision=precision)
             lcr = all(probe.lcr_first_cts_fits(n_slots, n) for n_slots in slot_counts)
-        return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=lcr)
+        return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=lcr,
+                   precision=precision)
 
     def lcr_first_cts_terms(self, n_slots: int, n: int) -> int:
         """The terms of the level-conserving first CtS level of a bootstrap of n_slots slots in a ring of dimension n,
@@ -114,19 +144,20 @@ class BootstrappingParams:
         return len(self.dft_split(n_slots)) > 1 and self.lcr_first_cts_terms(n_slots, n) <= LCR_MAX_TERMS
 
     @staticmethod
-    def _n_slots_entry(n_slots: int):
+    def _n_slots_entry(n_slots: int, precision: str):
         log_n_slots = n_slots.bit_length() - 1
-        if log_n_slots not in BOOT_PARAMS_PER_N_SLOTS:
-            raise ValueError(f"no bootstrap parameters for {n_slots} slots")
-        return BOOT_PARAMS_PER_N_SLOTS[log_n_slots]
+        per_n_slots = BOOT_PRECISIONS[precision].per_n_slots
+        if log_n_slots not in per_n_slots:
+            raise ValueError(f"no {precision!r}-precision bootstrap parameters for {n_slots} slots")
+        return per_n_slots[log_n_slots]
 
     def dft_split(self, n_slots: int) -> tuple[int, ...]:
         """The StC split (component sizes, stage 0 first; CtS takes it reversed) of a bootstrap of n_slots slots.
-        BOOT_PARAMS_PER_N_SLOTS's split, which the chain must fit: as many levels and CtS primes as wide (for_slot_counts
+        its precision's split, which the chain must fit: as many levels and CtS primes as wide (for_slot_counts
         with n_slots among its slot counts does). SLIM takes the same split: its StC and CtS are the same transforms,
         at other levels."""
         n_levels = self.dft_levels
-        split, cts_bits, _ = self._n_slots_entry(n_slots)
+        split, cts_bits, _ = self._n_slots_entry(n_slots, self.precision)
         if len(split) > n_levels or cts_bits > self.cts_scale:
             # fewer levels than the split would mean far more diagonals per DFT factor, and a CtS prime
             # narrower than the split needs loses precision
@@ -155,16 +186,18 @@ class BootstrappingParams:
         else its slot count's (fewer slots take more)."""
         if self.slim_boot:
             return BOOT_CONFIGURATION['log_delta_slim']
-        return self._n_slots_entry(n_slots)[2]
+        return self._n_slots_entry(n_slots, self.precision)[2]
 
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int,
-                 lcr_first_cts: bool = False) -> None:
+                 lcr_first_cts: bool = False, precision: str = "full") -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: one CtS prime fewer, for bootstraps whose first CtS level is level-conserving; for_slot_counts
-        picks it."""
+        picks it. precision: a BOOT_PRECISIONS profile."""
+        if precision not in BOOT_PRECISIONS:
+            raise ValueError(f"unknown bootstrap precision {precision!r}; one of {sorted(BOOT_PRECISIONS)}")
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(
@@ -173,8 +206,10 @@ class BootstrappingParams:
                     f"they bootstrap gives it.")
         self.real_boot = real_boot
         self.slim_boot = slim_boot
-        self.stc_scale = BOOT_CONFIGURATION['stc_scale']
-        self.eval_mod_scale = BOOT_CONFIGURATION['eval_mod_scale']
+        self.precision = precision
+        self.stc_scale = BOOT_PRECISIONS[precision].stc_scale
+        self.eval_mod_scale = BOOT_PRECISIONS[precision].eval_mod_scale
+        self.lcr_min_special_bits = BOOT_PRECISIONS[precision].lcr_min_special_bits
         self.cts_scale = cts_scale
         self.n_double_angle = BOOT_CONFIGURATION['n_double_angle']
         self.subsum_max_stage_size = BOOT_CONFIGURATION['subsum_max_stage_size']
@@ -194,7 +229,7 @@ class BootstrappingParams:
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
-        self.q_base_precision = self.get_q_base_precision()
+        self.q_base_precision = self.get_q_base_precision(precision)
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
         # The tree evaluates degree d in ceil(log2(d + 1)) levels: n levels fit degree 2^n - 1.
         # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so its top degree is 2^n - 2.

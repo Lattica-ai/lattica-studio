@@ -73,6 +73,12 @@ class HomParams:
     real_boot: bool = True
     slim_boot: bool = False
     n_slots: int | None = None
+    # The bootstrap's precision profile (bootstrapping_params.BOOT_PRECISIONS): "full", or "low" for networks that
+    # tolerate ~10 bits (a chain small enough for N = 2**15).
+    boot_precision: str = "full"
+    # Fresh input ciphertexts also hold the bootstrap's StC primes (as SLIM's do): more levels before the first
+    # bootstrap, e.g. a ResNet stem without one.
+    input_holds_stc_rows: bool = False
 
     @property
     def internal_n(self) -> int:
@@ -208,6 +214,8 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            "boot_precision": self.boot_precision,
+            "input_holds_stc_rows": self.input_holds_stc_rows,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
             "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
@@ -237,7 +245,7 @@ class HomParams:
         if bootstrapping:
             params.boot_params = BootstrappingParams(
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale,
-                lcr_first_cts=boot_lcr_first_cts)
+                lcr_first_cts=boot_lcr_first_cts, precision=params.boot_precision)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         return params
