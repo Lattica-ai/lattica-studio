@@ -29,20 +29,23 @@ RELU_COEFS = json.loads((Path(__file__).parent / "data" / "resnet20_relu_coefs.j
 # A bootstrap sits right before each ReLU: the ReLU takes 5 of its 6 levels and the next conv the last one, so every
 # conv runs on the bottom of the chain.
 class _MuxStem(HomOp):
-    def __init__(self, model):
+    """bootstrap=False: the input holds the levels of the conv and the ReLU (resnet20_n15)."""
+
+    def __init__(self, model, coefs, bootstrap=True):
         super().__init__()
         weight = torch.zeros(STEM_LAYOUT[0], STEM_CHANNELS, 3, 3, dtype=torch.float64)
         weight[:, :3] = model.conv1.weight
         self.convBN = _conv_bn(model.conv1, model.bn1, STEM_LAYOUT, DELTA_INITIAL, weight=weight)
-        self.bootstrap = Bootstrap()
-        self.relu = _ReLU(DELTA_INITIAL, "stem", RELU_COEFS)
+        self.bootstrap = Bootstrap() if bootstrap else None
+        self.relu = _ReLU(DELTA_INITIAL, "stem", coefs)
 
     def forward(self, x: HomValue) -> HomValue:
-        return self.relu(self.bootstrap(self.convBN(x)))
+        x = self.convBN(x)
+        return self.relu(self.bootstrap(x) if self.bootstrap is not None else x)
 
 
 class _MuxBlock(HomOp):
-    def __init__(self, model, layer, block):
+    def __init__(self, model, layer, block, coefs):
         super().__init__()
         input_layout = LAYER_IN[layer] if block == 1 else LAYER_OUT[layer]
         output_layout = LAYER_OUT[layer]
@@ -50,7 +53,7 @@ class _MuxBlock(HomOp):
         self.is_transition = model.downsample is not None
         self.convBN1 = _conv_bn(model.conv1, model.bn1, input_layout, first_relu_scale)
         self.bootstrap1 = Bootstrap()
-        self.relu1 = _ReLU(first_relu_scale, f"L{layer}B{block}r1", RELU_COEFS)
+        self.relu1 = _ReLU(first_relu_scale, f"L{layer}B{block}r1", coefs)
         self.convBN2 = _conv_bn(model.conv2, model.bn2, output_layout, second_relu_scale)
         if self.is_transition:
             skip_conv, skip_bn = model.downsample
@@ -58,7 +61,7 @@ class _MuxBlock(HomOp):
         else:
             self.skip_delta = second_relu_scale
         self.bootstrap2 = Bootstrap()
-        self.relu2 = _ReLU(second_relu_scale, f"L{layer}B{block}r2", RELU_COEFS)
+        self.relu2 = _ReLU(second_relu_scale, f"L{layer}B{block}r2", coefs)
 
     def forward(self, x: HomValue) -> HomValue:
         residual = self.relu1(self.bootstrap1(self.convBN1(x)))
@@ -68,11 +71,11 @@ class _MuxBlock(HomOp):
 
 
 class _MuxLayer(HomOp):
-    def __init__(self, model, layer):
+    def __init__(self, model, layer, coefs):
         super().__init__()
-        self.block1 = _MuxBlock(model[0], layer, 1)
-        self.block2 = _MuxBlock(model[1], layer, 2)
-        self.block3 = _MuxBlock(model[2], layer, 3)
+        self.block1 = _MuxBlock(model[0], layer, 1, coefs)
+        self.block2 = _MuxBlock(model[1], layer, 2, coefs)
+        self.block3 = _MuxBlock(model[2], layer, 3, coefs)
 
     def forward(self, x: HomValue) -> HomValue:
         return self.block3(self.block2(self.block1(x)))
@@ -95,12 +98,14 @@ class _MuxHead(HomOp):
 
 
 class _MuxResnetGraph(HomOp):
-    def __init__(self, model):
+    """coefs: the ReLUs' |x| coefficients by name; stem_bootstrap: as _MuxStem's bootstrap."""
+
+    def __init__(self, model, coefs=RELU_COEFS, stem_bootstrap=True):
         super().__init__()
-        self.stem = _MuxStem(model)
-        self.layer1 = _MuxLayer(model.layer1, 1)
-        self.layer2 = _MuxLayer(model.layer2, 2)
-        self.layer3 = _MuxLayer(model.layer3, 3)
+        self.stem = _MuxStem(model, coefs, stem_bootstrap)
+        self.layer1 = _MuxLayer(model.layer1, 1, coefs)
+        self.layer2 = _MuxLayer(model.layer2, 2, coefs)
+        self.layer3 = _MuxLayer(model.layer3, 3, coefs)
         self.head = _MuxHead(model)
 
     def forward(self, x: HomValue) -> HomValue:
