@@ -68,6 +68,12 @@ class BootPrecision:
     lcr_min_special_bits: int
 
 
+def boot_precision(name: str) -> BootPrecision:
+    if name not in BOOT_PRECISIONS:
+        raise ValueError(f"unknown bootstrap precision {name!r}; one of {sorted(BOOT_PRECISIONS)}")
+    return BOOT_PRECISIONS[name]
+
+
 BOOT_PRECISIONS = {
     # The general-purpose bootstrap: ~18-21 bits. q0 = 53 is the smallest without accuracy loss; LCR's 3 x 61-bit special
     # primes keep its key switch near 2**-40.
@@ -109,7 +115,7 @@ class BootstrappingParams:
     @staticmethod
     def get_q_base_precision(precision: str = "full") -> int:
         """Size of q0, the ModRaise base modulus: the EvalMod prime size."""
-        return BOOT_PRECISIONS[precision].eval_mod_scale
+        return boot_precision(precision).eval_mod_scale
     
     @classmethod
     def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int | None = None,
@@ -146,7 +152,7 @@ class BootstrappingParams:
     @staticmethod
     def _n_slots_entry(n_slots: int, precision: str):
         log_n_slots = n_slots.bit_length() - 1
-        per_n_slots = BOOT_PRECISIONS[precision].per_n_slots
+        per_n_slots = boot_precision(precision).per_n_slots
         if log_n_slots not in per_n_slots:
             raise ValueError(f"no {precision!r}-precision bootstrap parameters for {n_slots} slots")
         return per_n_slots[log_n_slots]
@@ -196,8 +202,7 @@ class BootstrappingParams:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: one CtS prime fewer, for bootstraps whose first CtS level is level-conserving; for_slot_counts
         picks it. precision: a BOOT_PRECISIONS profile."""
-        if precision not in BOOT_PRECISIONS:
-            raise ValueError(f"unknown bootstrap precision {precision!r}; one of {sorted(BOOT_PRECISIONS)}")
+        profile = boot_precision(precision)
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(
@@ -207,9 +212,9 @@ class BootstrappingParams:
         self.real_boot = real_boot
         self.slim_boot = slim_boot
         self.precision = precision
-        self.stc_scale = BOOT_PRECISIONS[precision].stc_scale
-        self.eval_mod_scale = BOOT_PRECISIONS[precision].eval_mod_scale
-        self.lcr_min_special_bits = BOOT_PRECISIONS[precision].lcr_min_special_bits
+        self.stc_scale = profile.stc_scale
+        self.eval_mod_scale = profile.eval_mod_scale
+        self.lcr_min_special_bits = profile.lcr_min_special_bits
         self.cts_scale = cts_scale
         self.n_double_angle = BOOT_CONFIGURATION['n_double_angle']
         self.subsum_max_stage_size = BOOT_CONFIGURATION['subsum_max_stage_size']

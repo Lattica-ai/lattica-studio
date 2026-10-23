@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
@@ -164,3 +166,50 @@ def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_
     assert d["boot_lcr_first_cts"] == lcr
     back = HomParams.from_dict({**d, "bootstrapping": True})
     assert back.boot_params.lcr_first_cts == lcr
+
+
+def _low_precision_logn15_params(**kwargs):
+    """ResNet-20's chain at N = 2**15 with the low-precision bootstrap: two boots per block, degree-14 ReLUs (4 levels)
+    and a conv after each boot, its bootstraps at 2**12 to 2**14 slots."""
+    boot = BootstrappingParams.for_slot_counts(False, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=2 ** 15, precision="low")
+    return HomParams.from_dict({**HomParams(n=2 ** 15, full_q_list_precision=((52, 26), (52, 26), (26,)),
+                                            pt_scale=2 ** 26, sk_hw=192, n_slots=2 ** 14, boot_precision="low",
+                                            **kwargs).to_dict(),
+                                'bootstrapping': True, 'boot_dft_levels': boot.dft_levels,
+                                'boot_cts_scale': boot.cts_scale, 'boot_lcr_first_cts': boot.lcr_first_cts})
+
+
+def test_low_precision_bootstrap_fits_n_2_15_at_128_bits():
+    """q0 and EvalMod 36 bits, CtS 34 with LCR, StC 26, 3 DFT levels: 4 digits keep the drawn primes within 809 bits."""
+    params = _low_precision_logn15_params()
+    boot = params.boot_params
+    assert (boot.eval_mod_scale, boot.stc_scale, boot.cts_scale, boot.dft_levels, boot.lcr_first_cts) == (36, 26, 34, 3, True)
+    assert boot.log_delta_for(2 ** 14) == 2 and boot.lcr_min_special_bits == 100
+    log_qp = sum(math.log2(int(q)) for row in ModulusChain(params).factors_per_row for q in row)
+    assert params.resolved_dnum == 4 and log_qp <= 809
+
+
+def test_boot_precision_survives_serialization():
+    params = _low_precision_logn15_params(input_holds_stc_rows=True)
+    restored = HomParams.from_dict(params.to_dict())
+    assert restored.boot_precision == "low" and restored.input_holds_stc_rows
+    assert restored.chain_q_list_precision == params.chain_q_list_precision
+    assert restored.boot_params.lcr_min_special_bits == 100
+
+
+def test_unknown_boot_precision_is_refused():
+    with pytest.raises(ValueError, match="unknown bootstrap precision"):
+        BootstrappingParams.for_slot_counts(False, False, {2 ** 14}, precision="medium")
+
+
+def test_low_precision_has_no_parameters_for_other_slot_counts():
+    with pytest.raises(ValueError, match="'low'-precision bootstrap parameters for 32768 slots"):
+        BootstrappingParams.for_slot_counts(False, False, {2 ** 15}, precision="low")
+
+
+def test_inputs_holding_the_stc_rows_start_with_them():
+    plain, with_stc = _low_precision_logn15_params(), _low_precision_logn15_params(input_holds_stc_rows=True)
+    chain = ModulusChain(with_stc)
+    stc = set(chain.section_rows["boot_stc"])
+    assert not stc & set(ModulusChain(plain).get_init_rows(plain))
+    assert stc <= set(chain.get_init_rows(with_stc))
