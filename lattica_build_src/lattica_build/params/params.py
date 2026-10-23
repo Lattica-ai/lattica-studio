@@ -5,7 +5,7 @@ from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
 
-from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.bootstrapping_params import BootPrecision, BootstrappingParams, boot_precision
 
 QListNorm = Tuple[Tuple[int, ...], ...]
 QListInput = Sequence[Sequence[int]]
@@ -73,9 +73,9 @@ class HomParams:
     real_boot: bool = True
     slim_boot: bool = False
     n_slots: int | None = None
-    # The bootstrap's precision profile (bootstrapping_params.BOOT_PRECISIONS): "full", or "low" for networks that
-    # tolerate ~10 bits (a chain small enough for N = 2**15).
-    boot_precision: str = "full"
+    # The bootstrap's precision: a BOOT_PRECISIONS preset's name ("full", or "low" for networks that tolerate ~10 bits:
+    # a chain small enough for N = 2**15) or a BootPrecision. Serialized by value.
+    boot_precision: "str | BootPrecision" = "full"
     # Fresh input ciphertexts also hold the bootstrap's StC primes (as SLIM's do): more levels before the first
     # bootstrap, e.g. a ResNet stem without one.
     input_holds_stc_rows: bool = False
@@ -214,7 +214,7 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
-            "boot_precision": self.boot_precision,
+            "boot_precision": boot_precision(self.boot_precision).to_dict(),
             "input_holds_stc_rows": self.input_holds_stc_rows,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
@@ -241,6 +241,8 @@ class HomParams:
                              "the pipeline")
         d.pop("ghs_keyswtich_scale_precision", None)
 
+        if isinstance(d.get("boot_precision"), dict):
+            d["boot_precision"] = BootPrecision.from_dict(d["boot_precision"])
         params = cls(**d)
         if bootstrapping:
             params.boot_params = BootstrappingParams(

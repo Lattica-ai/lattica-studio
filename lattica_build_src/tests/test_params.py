@@ -7,7 +7,7 @@ from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
-from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.bootstrapping_params import BOOT_PRECISIONS, BootstrappingParams
 from lattica_build.params.level_and_scale_tracing import ModulusChain, _get_config_for_row_or_col, infer_modswitch_by_num_levels
 from lattica_build.params.params import DecompositionType, HomParams
 
@@ -191,8 +191,10 @@ def test_low_precision_bootstrap_fits_n_2_15_at_128_bits():
 
 def test_boot_precision_survives_serialization():
     params = _low_precision_logn15_params(input_holds_stc_rows=True)
-    restored = HomParams.from_dict(params.to_dict())
-    assert restored.boot_precision == "low" and restored.input_holds_stc_rows
+    saved = params.to_dict()
+    assert saved["boot_precision"]["eval_mod_scale"] == 36           # by value, not the preset's name
+    restored = HomParams.from_dict(saved)
+    assert restored.boot_precision == BOOT_PRECISIONS["low"] and restored.input_holds_stc_rows
     assert restored.chain_q_list_precision == params.chain_q_list_precision
     assert restored.boot_params.lcr_min_special_bits == 100
 

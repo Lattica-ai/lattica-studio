@@ -67,11 +67,31 @@ class BootPrecision:
     per_n_slots: Mapping[int, tuple[tuple[int, ...], int, int]]
     lcr_min_special_bits: int
 
+    def to_dict(self) -> dict:
+        """Its values, JSON-ready: a compiled pipeline keeps them, not a preset's name, so retuning a preset does not
+        change the chain of a pipeline compiled with it."""
+        return {"eval_mod_scale": self.eval_mod_scale, "stc_scale": self.stc_scale,
+                "per_n_slots": {str(k): [list(split), cts, log_delta]
+                                for k, (split, cts, log_delta) in self.per_n_slots.items()},
+                "lcr_min_special_bits": self.lcr_min_special_bits}
 
-def boot_precision(name: str) -> BootPrecision:
-    if name not in BOOT_PRECISIONS:
-        raise ValueError(f"unknown bootstrap precision {name!r}; one of {sorted(BOOT_PRECISIONS)}")
-    return BOOT_PRECISIONS[name]
+    @classmethod
+    def from_dict(cls, d: dict) -> "BootPrecision":
+        return cls(d["eval_mod_scale"], d["stc_scale"],
+                   MappingProxyType({int(k): (tuple(split), cts, log_delta)
+                                     for k, (split, cts, log_delta) in d["per_n_slots"].items()}),
+                   d["lcr_min_special_bits"])
+
+
+def boot_precision(precision: "str | BootPrecision | dict") -> BootPrecision:
+    """A BootPrecision, a BOOT_PRECISIONS preset's by name, or one serialized (BootPrecision.to_dict)."""
+    if isinstance(precision, BootPrecision):
+        return precision
+    if isinstance(precision, dict):
+        return BootPrecision.from_dict(precision)
+    if precision not in BOOT_PRECISIONS:
+        raise ValueError(f"unknown bootstrap precision {precision!r}; one of {sorted(BOOT_PRECISIONS)}")
+    return BOOT_PRECISIONS[precision]
 
 
 BOOT_PRECISIONS = {
@@ -79,11 +99,12 @@ BOOT_PRECISIONS = {
     # primes keep its key switch near 2**-40.
     "full": BootPrecision(eval_mod_scale=53, stc_scale=30, per_n_slots=MappingProxyType(BOOT_PARAMS_PER_N_SLOTS),
                           lcr_min_special_bits=170),
-    # ~10 bits (RTX 5090, N = 2**15, real data |x| <= 0.73 with mean 0.07: 9.9 / 10.2 / 10.8 bits mean at 2**14 / 2**13 /
-    # 2**12 slots), for networks that tolerate it: ResNet-20 needs ~9 bits (clear model, CIFAR-10 test set). Its chain is
-    # small enough for N = 2**15 at 128 bits. log_delta 2 holds while the largest coefficient EvalMod sees, the slot mean
-    # of a CtS-last bootstrap, stays small (ResNet-20: <= 0.09); one DFT level fewer than "full" on each side;
-    # LCR's key switch noise is ~2**-24 with 2 special primes, far below these bootstraps' error.
+    # ~10 bits, for networks that tolerate it: ResNet-20 needs ~9 bits (clear model, CIFAR-10 test set). Its chain is
+    # small enough for N = 2**15 at 128 bits; one DFT level fewer than "full" on each side; LCR's key switch noise is
+    # ~2**-24 with 2 special primes, far below these bootstraps' error. CONTRACT: inputs |x| <= ~0.75 whose slot mean
+    # stays small (ResNet-20: <= 0.09): log_delta 2 leaves the sine's cubic error on the largest coefficient EvalMod
+    # sees, the mean, at ~2**-10; a larger mean costs precision. Measured (RTX 5090, N = 2**15, |x| <= 0.73, mean
+    # 0.07): 9.9 / 10.2 / 10.8 bits mean at 2**14 / 2**13 / 2**12 slots; 2**12 to 2**14 slots only.
     "low": BootPrecision(eval_mod_scale=36, stc_scale=26, per_n_slots=MappingProxyType({
         12: ((4, 4, 4), 34, 2),
         13: ((4, 4, 5), 34, 2),
@@ -113,13 +134,13 @@ class BootstrappingParams:
         return tuple((scale,) for _ in range(levels))
 
     @staticmethod
-    def get_q_base_precision(precision: str = "full") -> int:
+    def get_q_base_precision(precision: "str | BootPrecision" = "full") -> int:
         """Size of q0, the ModRaise base modulus: the EvalMod prime size."""
         return boot_precision(precision).eval_mod_scale
     
     @classmethod
     def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int | None = None,
-                        lcr_first_cts: bool = True, precision: str = "full") -> "BootstrappingParams":
+                        lcr_first_cts: bool = True, precision: "str | BootPrecision" = "full") -> "BootstrappingParams":
         """The chain for bootstraps of these slot counts (each needs an entry in its precision's per_n_slots): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use.
@@ -150,11 +171,12 @@ class BootstrappingParams:
         return len(self.dft_split(n_slots)) > 1 and self.lcr_first_cts_terms(n_slots, n) <= LCR_MAX_TERMS
 
     @staticmethod
-    def _n_slots_entry(n_slots: int, precision: str):
+    def _n_slots_entry(n_slots: int, precision: "str | BootPrecision"):
         log_n_slots = n_slots.bit_length() - 1
         per_n_slots = boot_precision(precision).per_n_slots
         if log_n_slots not in per_n_slots:
-            raise ValueError(f"no {precision!r}-precision bootstrap parameters for {n_slots} slots")
+            name = precision if isinstance(precision, str) else "this"
+            raise ValueError(f"no {name!r}-precision bootstrap parameters for {n_slots} slots")
         return per_n_slots[log_n_slots]
 
     def dft_split(self, n_slots: int) -> tuple[int, ...]:
@@ -195,13 +217,13 @@ class BootstrappingParams:
         return self._n_slots_entry(n_slots, self.precision)[2]
 
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int,
-                 lcr_first_cts: bool = False, precision: str = "full") -> None:
+                 lcr_first_cts: bool = False, precision: "str | BootPrecision" = "full") -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: one CtS prime fewer, for bootstraps whose first CtS level is level-conserving; for_slot_counts
-        picks it. precision: a BOOT_PRECISIONS profile."""
+        picks it. precision: a BootPrecision, or a BOOT_PRECISIONS preset's name."""
         profile = boot_precision(precision)
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
@@ -211,7 +233,7 @@ class BootstrappingParams:
                     f"they bootstrap gives it.")
         self.real_boot = real_boot
         self.slim_boot = slim_boot
-        self.precision = precision
+        self.precision = profile
         self.stc_scale = profile.stc_scale
         self.eval_mod_scale = profile.eval_mod_scale
         self.lcr_min_special_bits = profile.lcr_min_special_bits
