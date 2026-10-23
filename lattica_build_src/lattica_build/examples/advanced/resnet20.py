@@ -1,3 +1,5 @@
+import json
+import math
 import pickle
 import random
 from pathlib import Path
@@ -10,16 +12,43 @@ from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBnFused, MuxLayout
-from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
+from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
 
 N = 2 ** 16
 SUBRING_SLOTS = 2 ** 14                      # stem tile = 32*32*16 = 16384 < N/2
 PT_SCALE = 2 ** 30
-Q_LIST_PRECISION = ((60, 30),) * 3 + ((30,),)   # 7 levels after each bootstrap
-DNUM = 2                                     # hybrid digits over the chain
-RELU_DEG = 63                                # 6 levels on the tree; relu(6) + conv(1) = 7 exactly
+# The FC's weights are encoded at 2^16, without a rescale: its output, at 2^30 x 2^16 with logits within +-12, fits the
+# last ReLU's level, q0 (53 bits), so the head needs no bootstrap. At 2^16 the encrypted pipeline predicts as it did with
+# the head bootstrap on 1000 of 1000 test images.
+FC_PT_SCALE = 2 ** 16
+# The ReLUs' |x| polynomials, one per ReLU: Chebyshev coefficients (T0 first) of |u| on [-1, 1]. Degree 30 (5 levels
+# on the tree): least squares weighted by that ReLU's inputs on 5,000 CIFAR-10 training images plus 1e-3 of a uniform
+# weight. Degree 14 (4 levels): trained by distillation from that fit. Both ReLUs of a block share a degree, so the
+# block's level count (2 (levels + 1)) is a whole number of (60, 30) rows. PROTOTYPE: the mixed set is for timing; its
+# accuracy is not validated.
+RELU_COEFS = json.loads((Path(__file__).parent / "data" / "resnet20_relu_coefs_mixed.json").read_text())
+
+
+def _relu_levels(name: str) -> int:
+    return (len(RELU_COEFS[name]) - 1).bit_length()
+
+
+def _block_rows(layer: int, block: int) -> int:
+    """The (60, 30) rows a block's bootstrap gives it: conv1 (1) + ReLU1 + conv2 (1) + ReLU2."""
+    levels = {_relu_levels(f"L{layer}B{block}r{r}") for r in (1, 2)}
+    assert len(levels) == 1, f"L{layer}B{block}: both ReLUs of a block take the same degree"
+    return levels.pop() + 1
+
+
+# One bootstrap per residual block, at its input, the shortcut's scalar or downsample conv running in parallel; it
+# targets the block's own rows (drop_levels leaves the chain's first others out). The head takes no level (see _MuxHead),
+# so no block carries a spare one. dnum is unset: the fewest 128-bit-secure digits for the chain.
+Q_LIST_PRECISION = ((60, 30),) * max(_block_rows(layer, block) for layer in (1, 2, 3) for block in (1, 2, 3))
+# There is no bootstrap before the first block: the image is encrypted with the stem's levels only, the stem conv (1)
+# and its ReLU.
+NUM_INIT_ROWS = math.ceil((_relu_levels("stem") + 1) / 2)
 STEM_CHANNELS = 16                           # RGB (3) zero-padded up to 16 channels
 
 # Per-stage map (C, H, W) after the stage's downsampling.
@@ -30,11 +59,11 @@ LAYER_OUT = {1: (16, 32, 32), 2: (32, 16, 16), 3: (64, 8, 8)}
 
 
 # ReLU-domain scaling folded into each conv's BN affine (per block, per conv).
-DELTA_INITIAL = 0.1806
+DELTA_INITIAL = 0.136372
 DELTAS = [
-    [[0.1722, 0.1310], [0.1973, 0.1273], [0.2429, 0.1275]],   # layer 1
-    [[0.1906, 0.1232], [0.3359, 0.1161], [0.2869, 0.0893]],   # layer 2
-    [[0.2563, 0.1762], [0.2739, 0.1279], [0.2108, 0.0348]],   # layer 3
+    [[0.095998, 0.0785], [0.144863, 0.076012], [0.113038, 0.075843]],   # layer 1
+    [[0.142393, 0.082133], [0.176943, 0.084878], [0.138764, 0.067013]],   # layer 2
+    [[0.127263, 0.087996], [0.130662, 0.071781], [0.088909, 0.037647]],   # layer 3
 ]
 
 # The official CIFAR-10 test batch, and the normalization the model expects.
@@ -48,35 +77,42 @@ CIFAR10_CLASSES = ('airplane', 'automobile', 'bird', 'cat', 'deer',
 
 class _ReLU(HomOp):
     """max(0, x / delta) = x / (2 delta) + |x| / (2 delta). |x| is even, so the poly eval
-    takes it through z = T2 at half the degree; the linear term is one scalar multiply."""
+    takes it through z = T2 at half the degree; the linear term is one scalar multiply.
+    delta 1 gives max(0, x) itself, in [0, 1] for a folded x in [-1, 1]: what a bootstrap takes."""
 
-    def __init__(self, delta: float):
+    def __init__(self, delta: float, name: str):
         super().__init__()
         self.slope = 1 / (2 * delta)
-        self.abs = HomPolyEval(func=lambda x: np.abs(x) / (2 * delta), degree=RELU_DEG)
+        coefs = np.asarray(RELU_COEFS[name]) / (2 * delta)
+        self.abs = HomPolyEvalBase(coefs=coefs)   # lowest degree first, as the JSON holds them
 
     def forward(self, x: HomValue) -> HomValue:
         return self.abs(x) + self.slope * x   # the add writes into its first operand: the polynomial's output, at the lower level
 
 
-def make_relu(delta: float) -> HomOp:
-    return _ReLU(delta)
-
-
-def _conv_bn(conv, bn, layout, delta, *, weight=None):
+def _conv_bn(conv, bn, layout, delta, *, weight=None, drop_rows=0):
     """A mux convolution with its batch norm and the next ReLU's 1/delta folded in."""
     _, height, width = layout
     weight = conv.weight if weight is None else weight
     op = HomMuxConvBnFused(
         kernel_shape=tuple(weight.shape), image_hw=(height, width),
-        stride=conv.stride, padding=conv.padding, dilation=conv.dilation,
+        stride=conv.stride, padding=conv.padding, dilation=conv.dilation, drop_rows=drop_rows,
     )
     op.set_data(weight, None, bn.running_mean, bn.running_var, bn.weight, bn.bias, bn.eps, delta)
     return op
 
 
-# A bootstrap sits right before each ReLU: the ReLU takes 6 of its 7 levels and the
-# next conv the last one, so every conv runs on the bottom of the chain.
+def _input_delta(layer, block):
+    """The delta of the ReLU whose output is this block's input: the stem's, or the previous block's second."""
+    if block > 1:
+        return DELTAS[layer - 1][block - 2][1]
+    if layer > 1:
+        return DELTAS[layer - 2][-1][1]
+    return DELTA_INITIAL
+
+
+# The ReLUs that feed a bootstrap (the stem's and each block's second) output max(0, x) in their folded domain, delta
+# times the activation, so the bootstrap's input stays in [0, 1]; their consumers take the 1/delta into their weights.
 class _MuxStem(HomOp):
     def __init__(self, model):
         super().__init__()
@@ -84,13 +120,10 @@ class _MuxStem(HomOp):
         weight[:, :3] = model.conv1.weight
         self.convBN = _conv_bn(model.conv1, model.bn1, STEM_LAYOUT,
                               DELTA_INITIAL, weight=weight)
-        self.bootstrap = Bootstrap()
-        self.relu = make_relu(DELTA_INITIAL)
+        self.relu = _ReLU(1, "stem")
 
     def forward(self, x: HomValue) -> HomValue:
-        x = self.convBN(x)
-        x = self.bootstrap(x)
-        return self.relu(x)
+        return self.relu(self.convBN(x))
 
 
 class _MuxBlock(HomOp):
@@ -99,22 +132,29 @@ class _MuxBlock(HomOp):
         input_layout = LAYER_IN[layer] if block == 1 else LAYER_OUT[layer]
         output_layout = LAYER_OUT[layer]
         first_relu_scale, second_relu_scale = DELTAS[layer - 1][block - 1]
+        input_scale = _input_delta(layer, block)
         self.is_transition = model.downsample is not None
-        self.convBN1 = _conv_bn(model.conv1, model.bn1, input_layout, first_relu_scale)
-        self.bootstrap1 = Bootstrap()
-        self.relu1 = make_relu(first_relu_scale)
+        self.bootstrap = Bootstrap(drop_levels=len(Q_LIST_PRECISION) - _block_rows(layer, block))
+        self.convBN1 = _conv_bn(model.conv1, model.bn1, input_layout, first_relu_scale,
+                                weight=model.conv1.weight / input_scale)
+        self.relu1 = _ReLU(first_relu_scale, f"L{layer}B{block}r1")
         self.convBN2 = _conv_bn(model.conv2, model.bn2, output_layout, second_relu_scale)
         if self.is_transition:
             skip_conv, skip_bn = model.downsample
-            self.downsample = _conv_bn(skip_conv, skip_bn, input_layout, second_relu_scale)
+            # The shortcut is added after conv2, so the downsample runs near conv2's rows, not at the bootstrap's: on
+            # fewer limbs, its plaintext too. It drops ReLU1's levels // 2 whole rows, fewer than conv1 and ReLU1
+            # consume, so its output stays a level above the residual's: the add's scale adjustment needs one (it
+            # refuses the same rows at another scale).
+            self.downsample = _conv_bn(skip_conv, skip_bn, input_layout, second_relu_scale,
+                                       weight=skip_conv.weight / input_scale,
+                                       drop_rows=_relu_levels(f"L{layer}B{block}r1") // 2)
         else:
-            self.skip_delta = second_relu_scale
-        self.bootstrap2 = Bootstrap()
-        self.relu2 = make_relu(second_relu_scale)
+            self.skip_delta = second_relu_scale / input_scale
+        self.relu2 = _ReLU(1, f"L{layer}B{block}r2")
 
     def forward(self, x: HomValue) -> HomValue:
+        x = self.bootstrap(x)
         residual = self.convBN1(x)
-        residual = self.bootstrap1(residual)
         residual = self.relu1(residual)
         residual = self.convBN2(residual)
 
@@ -124,7 +164,6 @@ class _MuxBlock(HomOp):
             shortcut = self.skip_delta * x
 
         x = residual + shortcut
-        x = self.bootstrap2(x)
         return self.relu2(x)
 
 
@@ -147,13 +186,14 @@ class _MuxHead(HomOp):
         super().__init__()
         channels, height, width = LAYER_OUT[3]
         spatial_positions = height * width
-        # the last ReLU leaves one level, for the FC
+        # the last ReLU leaves only q0: the sum takes no level, the FC multiplies without a rescale
         self.avgpool = HomSumSlots(k=spatial_positions)
         self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0),
-                             bias=True)
-        # SumSlots supplies a sum; fold the averaging factor into the FC weights.
+                             bias=True, with_modswitch=False, pt_scale=FC_PT_SCALE)
+        # SumSlots supplies a sum, of the last ReLU's folded output: fold the averaging factor and that ReLU's
+        # 1/delta into the FC weights.
         fc_weights = model.fc.weight.reshape(10, channels, 1, 1)
-        self.fc.set_data(weight=fc_weights / spatial_positions, bias=model.fc.bias)
+        self.fc.set_data(weight=fc_weights / (spatial_positions * DELTAS[-1][-1][1]), bias=model.fc.bias)
 
     def forward(self, x: HomValue) -> HomValue:
         x = self.avgpool(x)
@@ -179,8 +219,12 @@ class _MuxResnetGraph(HomOp):
 
 class Pipeline(PipelineWrapper):
     def _load_model(self):
+        # The architecture of chenyaofo's cifar10_resnet20 with osmr/pytorchcv's resnet20_cifar10 weights (MIT,
+        # 94.03% on the CIFAR-10 test set; the keys renamed to chenyaofo's): same network, 1.4 points more accurate.
         model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar10_resnet20",
-                               pretrained=True, verbose=False)
+                               pretrained=False, verbose=False)
+        model.load_state_dict(torch.load(Path(__file__).parent / "data" / "resnet20_cifar10_pytorchcv.pt",
+                                         map_location="cpu"))
         model.eval()
         return model
 
@@ -196,8 +240,8 @@ class Pipeline(PipelineWrapper):
             n=N,
             pt_scale=PT_SCALE,
             sk_hw=192,
-            dnum=DNUM,
             n_slots=SUBRING_SLOTS,
+            num_init_rows=NUM_INIT_ROWS,
         )
 
     @staticmethod

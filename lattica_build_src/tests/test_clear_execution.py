@@ -329,15 +329,10 @@ def test_resnet_composite_example_matches_pretrained_model():
 
     sample_index = random.Random(0).randrange(len(batch[b"labels"]))
     normalized_image, _ = resnet20.Pipeline.load_cifar_sample(sample_index)
-    reference_model = torch.hub.load(
-        "chenyaofo/pytorch-cifar-models",
-        "cifar10_resnet20",
-        pretrained=True,
-        verbose=False,
-    ).eval()
     example = resnet20.Pipeline()
     pipeline = example.build_pipeline()
     params = example.build_params()
+    reference_model = example._model
     with torch.no_grad():
         expected_class = reference_model(
             normalized_image.to(torch.float32).reshape(1, 3, 32, 32)
