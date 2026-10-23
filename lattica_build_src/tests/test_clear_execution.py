@@ -160,8 +160,8 @@ def test_convolution_clear_groups_dilation_and_bias():
 
 def test_polynomial_clear_prepends_coefficient_batch_dimensions():
     x = torch.tensor([[0., .25], [.5, 1.]], dtype=torch.float64)
-    # Descending Chebyshev coefficients for x and 2*x**2 - 1.
-    op = HomPolyEvalBase([[0., 1., 0.], [1., 0., 0.]])
+    # Chebyshev coefficients, lowest degree first, of x and 2*x**2 - 1.
+    op = HomPolyEvalBase([[0., 1., 0.], [0., 0., 1.]])
     torch.testing.assert_close(op(x), torch.stack((x, 2 * x.square() - 1)))
 
 

@@ -17,7 +17,7 @@ class HomPolyEvalBase(HomOp):
     input ciphertext and infers level consumption from polynomial degree.
 
     Args:
-        coefs: Polynomial coefficients. Leading dimensions are treated as batch
+        coefs: Chebyshev coefficients, lowest degree first. Leading dimensions are treated as batch
             dimensions and are prepended to the output shape.
         left: Lower bound of the approximation interval.
         right: Upper bound of the approximation interval.
@@ -58,7 +58,7 @@ class HomPolyEvalBase(HomOp):
         coefs = torch.as_tensor(self.coefs, dtype=input.dtype, device=input.device)
         b_next = torch.zeros_like(x)
         b_curr = torch.zeros_like(x)
-        for coefficient in coefs.unbind(-1):
+        for coefficient in reversed(coefs.unbind(-1)):   # Clenshaw: highest degree first
             coefficient = coefficient.reshape(coefs.shape[:-1] + (1,) * input.ndim)
             b_next, b_curr = b_curr, 2 * x * b_curr - b_next + coefficient
         return b_curr - x * b_next
