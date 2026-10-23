@@ -1,6 +1,5 @@
 """See `params/README.md` for usage details."""
 
-import os
 
 BOOT_CONFIGURATION = {
     # EvalMod and StC prime sizes (bits); the CtS ones and the DFT level counts come
@@ -64,12 +63,6 @@ BOOT_PARAMS_PER_N_SLOTS = {
 LCR_MAX_TERMS = 192
 
 
-def lcr_first_cts_env() -> bool:
-    """The A/B switch of the level-conserving first CtS level, the environment's LATTICA_LCR_FIRST_CTS (the toolkit
-    reads it too)."""
-    return os.environ.get("LATTICA_LCR_FIRST_CTS") == "1"
-
-
 class BootstrappingParams:
 
     @staticmethod
@@ -90,20 +83,20 @@ class BootstrappingParams:
         return BOOT_CONFIGURATION['eval_mod_scale']
     
     @classmethod
-    def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int | None = None
-                        ) -> "BootstrappingParams":
+    def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int | None = None,
+                        lcr_first_cts: bool = True) -> "BootstrappingParams":
         """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_N_SLOTS entry): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use.
-        n: the ring dimension. With LATTICA_LCR_FIRST_CTS=1 the chain has one CtS prime fewer when every slot count's
-        bootstrap can run its first CtS level level-conserving (lcr_first_cts_fits); without n, whenever it is set."""
+        n: the ring dimension. The chain has one CtS prime fewer when every slot count's bootstrap can run its first
+        CtS level level-conserving (lcr_first_cts_fits, which needs n); lcr_first_cts=False keeps it regular."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
         dft_levels = max(len(split) for split, _, _ in entries)
         cts_scale = max(bits for _, bits, _ in entries)
-        lcr = lcr_first_cts_env()
-        if lcr and n is not None:
-            probe = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=False)
+        lcr = False
+        if lcr_first_cts and n is not None:
+            probe = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
             lcr = all(probe.lcr_first_cts_fits(n_slots, n) for n_slots in slot_counts)
         return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=lcr)
 
@@ -165,13 +158,13 @@ class BootstrappingParams:
         return self._n_slots_entry(n_slots)[2]
 
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int,
-                 lcr_first_cts: bool | None = None) -> None:
+                 lcr_first_cts: bool = False) -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: one CtS prime fewer, for bootstraps whose first CtS level is level-conserving; for_slot_counts
-        picks it, None takes LATTICA_LCR_FIRST_CTS."""
+        picks it."""
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(
@@ -190,10 +183,9 @@ class BootstrappingParams:
 
         self.dft_levels = dft_levels
         # The level-conserving first CtS level (toolkit BackendHomLcrMatMul) consumes no prime, so the chain carries one
-        # CtS prime fewer. Only for pipelines whose bootstraps all have it (for_slot_counts): for now behind the A/B
-        # switch LATTICA_LCR_FIRST_CTS.
+        # CtS prime fewer. Only for pipelines whose bootstraps all have it (for_slot_counts).
         # (a one-level split keeps its CtS prime: its single factor has every diagonal)
-        self.lcr_first_cts = (lcr_first_cts_env() if lcr_first_cts is None else bool(lcr_first_cts)) and dft_levels > 1
+        self.lcr_first_cts = bool(lcr_first_cts) and dft_levels > 1
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)

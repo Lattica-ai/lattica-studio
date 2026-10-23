@@ -222,7 +222,7 @@ class HomParams:
         bootstrapping = d.pop("bootstrapping", False)
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
-        boot_lcr_first_cts = d.pop("boot_lcr_first_cts", None)
+        boot_lcr_first_cts = d.pop("boot_lcr_first_cts", False)
 
         # the special primes are derived from dnum and the chain; only BV's gadget bits are an input
         g_base_bits = d.pop("g_base_bits", None)
