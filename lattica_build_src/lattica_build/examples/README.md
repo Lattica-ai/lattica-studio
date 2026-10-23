@@ -72,10 +72,11 @@ These modules live under `lattica_build.examples.advanced`.
 | `mnist_fc` | Reshape, two FC layers, square, and client softmax |
 | `bootstrap` | Two bootstrapping operations |
 | `bitonic_sort` | Composite compare/exchange stages with bootstrapping |
-| `resnet20` | A full ResNet-20 pipeline using downloaded weights |
+| `resnet20` | A full ResNet-20 pipeline using downloaded weights: one bootstrap per residual block, ReLUs trained to degree 14 |
+| `resnet20_two_boot` | The same ResNet-20 with a bootstrap before every ReLU, ReLUs fitted (not trained) at degree 30 |
 | `rnn` | A recurrent layer unrolled over 128 timesteps with a polynomial tanh and bootstrapping |
 
-`resnet20` downloads a pretrained model when its pipeline is built. All basic
+`resnet20` and `resnet20_two_boot` download a pretrained model when its pipeline is built. All basic
 examples are self-contained.
 
 ## Use the Python API
