@@ -16,6 +16,8 @@ class ModulusChain():
     def __init__(self, hom_params):
         self._set_pipeline_sections(hom_params)
         self.post_init()
+        # the absolute rows the level tracing drops, in order (infer_optional_modswitch): see traced_consumption_order
+        self.drop_order = []
 
     def _set_pipeline_sections(self, hom_params):
         self.mod_chain_sections = []
@@ -74,12 +76,24 @@ class ModulusChain():
         sections = list(self.section_rows.keys())
         return self.get_rows_of_sections(sections)
 
+    def traced_consumption_order(self):
+        """The pipeline rows in the order the traced pipeline consumed them: by their last drop (a pipeline between
+        bootstraps drops them again from the top; row budgets may order them freely), the rows it never dropped
+        last. serialize stores it as HomParams.consumption_order."""
+        pipeline = self.section_rows["pipeline"]
+        last_drop = {row: position for position, row in enumerate(self.drop_order) if row in pipeline}
+        return tuple(sorted(pipeline, key=lambda row: (last_drop.get(row, len(self.drop_order)), row)))
+
     def get_consumption_rows(self, params):
         """The rows in the order ciphertexts drop them along the chain, the bootstrap base row excluded, so that
-        every state on the way is a suffix of this list (plus the base row when bootstrapping): with a bootstrap,
-        from the raised ciphertext down, CoefsToSlots, EvalMod, then SlotsToCoefs and the pipeline, in the order
-        the bootstrap runs them (SlotsToCoefs first in the slim bootstrap)."""
+        every state on the way is a suffix of this list (plus the base row when bootstrapping): the pipeline rows
+        in the order the pipeline's tracing consumed them (params.consumption_order; their index order without a
+        trace), and with a bootstrap, from the raised ciphertext down, CoefsToSlots, EvalMod, then SlotsToCoefs
+        and the pipeline, in the order the bootstrap runs them (SlotsToCoefs first in the slim bootstrap)."""
         pipeline = list(self.section_rows["pipeline"])
+        traced = getattr(params, "consumption_order", None)
+        if traced:
+            pipeline = [row for row in traced if row in pipeline] + [row for row in pipeline if row not in traced]
         if not params.bootstrapping:
             return pipeline
         cts, eval_mod, stc = (list(self.section_rows[name]) for name in ("boot_cts", "boot_eval", "boot_stc"))
@@ -196,6 +210,7 @@ def infer_optional_modswitch(hom_params: 'HomParams', input: HomValue, with_mods
     drop_config = _get_config_for_row_or_col(
         hom_params.mod_chain, input.active_rows, input.active_cols, rows_budget=rows_budget
     )
+    hom_params.mod_chain.drop_order.append(int(input.active_rows[drop_config[0]]))
     if op_scale_up is None:
         op_scale_up = drop_config[2]
     res = input.make_copy(pt_scale=input.pt_scale * op_scale_up)

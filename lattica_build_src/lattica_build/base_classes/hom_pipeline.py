@@ -325,6 +325,8 @@ class HomomorphicPipeline:
             "modulus_chain":                 self._serialize_modulus_chain(hom_params),
             "pipeline_sections":             self._serialize_pipeline_sections(tensors, hom_params)
         }
+        # the order the pipeline consumed its rows, traced above: the toolkit fills the key-switching digits along it
+        hom_params.consumption_order = hom_params.mod_chain.traced_consumption_order()
         graph_bytes = json.dumps(attributes_dict).encode("utf-8")
         # safetensors has no complex dtype: complex tensors are stored as their real
         # view [..., 2] and listed in the metadata, which the loader uses to restore them

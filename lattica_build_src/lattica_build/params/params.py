@@ -86,6 +86,10 @@ class HomParams:
     real_boot: bool = True
     slim_boot: bool = False
     n_slots: int | None = None
+    # The pipeline rows in the order the pipeline consumes them, from its level tracing (HomomorphicPipeline.serialize
+    # sets it, ModulusChain.traced_consumption_order); the toolkit fills the hybrid key-switching digits along it so
+    # that a ciphertext's primes span as few digits as possible. None: the rows' index order.
+    consumption_order: tuple[int, ...] | None = None
 
     @property
     def internal_n(self) -> int:
@@ -200,6 +204,8 @@ class HomParams:
         for name in ("real_boot", "slim_boot"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")
+        if self.consumption_order is not None:
+            self.consumption_order = tuple(int(row) for row in self.consumption_order)
 
 
     def to_dict(self) -> dict[str, Any]:
@@ -222,6 +228,7 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            "consumption_order": self.consumption_order,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
             "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
