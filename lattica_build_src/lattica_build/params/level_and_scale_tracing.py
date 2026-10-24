@@ -74,13 +74,28 @@ class ModulusChain():
         sections = list(self.section_rows.keys())
         return self.get_rows_of_sections(sections)
 
+    def get_consumption_rows(self, params):
+        """The rows in the order ciphertexts drop them along the chain, the bootstrap base row excluded, so that
+        every state on the way is a suffix of this list (plus the base row when bootstrapping): with a bootstrap,
+        from the raised ciphertext down, CoefsToSlots, EvalMod, then SlotsToCoefs and the pipeline, in the order
+        the bootstrap runs them (SlotsToCoefs first in the slim bootstrap)."""
+        pipeline = list(self.section_rows["pipeline"])
+        if not params.bootstrapping:
+            return pipeline
+        cts, eval_mod, stc = (list(self.section_rows[name]) for name in ("boot_cts", "boot_eval", "boot_stc"))
+        if params.boot_params.slim_boot:
+            return cts + eval_mod + pipeline + stc
+        return cts + eval_mod + stc + pipeline
+
     def get_init_rows(self, params):
         active_rows = copy.deepcopy(self.section_rows["pipeline"])
         if not params.bootstrapping:
             return active_rows
 
         if params.num_init_rows is not None:
-            active_rows = active_rows[:params.num_init_rows]
+            # the last pipeline rows: the ones the pipeline after the bootstrap keeps longest, so the stages before
+            # the bootstrap share a key-switching digit with them
+            active_rows = active_rows[len(active_rows) - params.num_init_rows:]
         active_rows += self.section_rows["boot_base"]
         if params.boot_params.slim_boot:
             active_rows += self.section_rows["boot_stc"]
