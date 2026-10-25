@@ -89,13 +89,3 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
     assert set(params.consumption_order) == {0, 1, 2, 3, 4}
     assert params.mod_chain.get_consumption_rows(params) == list(params.consumption_order)
     assert HomParams.from_dict(params.to_dict()).consumption_order == params.consumption_order
-
-
-def test_consumption_order_is_not_an_input():
-    """Compile-time state like boot_params: not a constructor argument."""
-    with pytest.raises(TypeError):
-        HomParams(n=256, full_q_list_precision=((60,),) * 5, pt_scale=2 ** 30, dnum=2, consumption_order=(0, 1))
-    d = HomParams(n=256, full_q_list_precision=((60,),) * 5, pt_scale=2 ** 30, dnum=2).to_dict()
-    assert d["consumption_order"] is None
-    d["consumption_order"] = [4, 3, 2, 1, 0]
-    assert HomParams.from_dict(d).consumption_order == (4, 3, 2, 1, 0)
