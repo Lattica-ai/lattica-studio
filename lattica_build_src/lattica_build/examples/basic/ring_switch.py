@@ -37,7 +37,7 @@ class Pipeline(PipelineWrapper):
             n_slots=N_SLOTS,
             sk_hw=192,
             pt_scale=INPUT_SCALE,
-            dnum=2,
+            num_special_primes=6,
         )
 
     def _set_example_pt(self) -> torch.Tensor:

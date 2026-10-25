@@ -27,5 +27,5 @@ class Pipeline(PipelineWrapper):
             n=2 ** 13,
             full_q_list_precision=((60, 30),),
             pt_scale=2 ** 30,
-            dnum=1,
+            num_special_primes=1,
         )

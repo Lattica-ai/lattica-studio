@@ -117,7 +117,7 @@ class Pipeline(PipelineWrapper):
             n=2 ** 16,
             pt_scale=2 ** 30,
             sk_hw=192,
-            dnum=3,
+            num_special_primes=6,
             n_slots=INPUT_SIZE,
         )
 

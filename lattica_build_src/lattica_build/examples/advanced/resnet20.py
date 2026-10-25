@@ -18,7 +18,7 @@ N = 2 ** 16
 SUBRING_SLOTS = 2 ** 14                      # stem tile = 32*32*16 = 16384 < N/2
 PT_SCALE = 2 ** 30
 Q_LIST_PRECISION = ((60, 30),) * 4
-DNUM = 2                                     # hybrid digits over the chain (9 special primes)
+N_SPECIAL_PRIMES = 9
 RELU_DEG = 119                               # 7 levels with Paterson-Stockmeyer; relu(7) + conv(1) = 8 exactly
 STEM_CHANNELS = 16                           # RGB (3) zero-padded up to 16 channels
 
@@ -183,7 +183,7 @@ class Pipeline(PipelineWrapper):
             n=N,
             pt_scale=PT_SCALE,
             sk_hw=192,
-            dnum=DNUM,
+            num_special_primes=N_SPECIAL_PRIMES,
             n_slots=SUBRING_SLOTS,
         )
 
