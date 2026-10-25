@@ -10,6 +10,7 @@ import pytest
 import torch
 
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
+from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.slots.h_expand import HomExpand
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
@@ -151,6 +152,17 @@ def test_sum_slots_on_a_slot_axis_that_is_not_last():
     result, params = _run(HomSumSlots(k=8), x, 32, n_axis=0)
     expected = _per_slot_axis(x, 0, lambda v: _sum_slots(v, 8, 32, params.internal_n))
     torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.parametrize('length', [32, 28])
+def test_rotate_sum_after_sum_slots_rotates_the_repeated_sums(length):
+    # SumSlots(k=8) leaves its sums repeated every 4 slots over the ring: a rotation by 4 finds the same sums, a
+    # rotation by 1 the next sum of the period
+    x = torch.randn(length, dtype=torch.float64)
+    result, params = _run(SequentialHomOp(HomSumSlots(k=8), HomRotateSum((1, 4))), x, 32)
+    sums = torch.tensor(_sum_slots(x.tolist(), 8, 32, params.internal_n), dtype=torch.float64)
+    next_sums = torch.tensor([sums[i - i % 4 + (i + 1) % 4] for i in range(length)], dtype=torch.float64)
+    torch.testing.assert_close(result, 2 * sums + next_sums)
 
 
 # ---------------- Expand

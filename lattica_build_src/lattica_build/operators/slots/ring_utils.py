@@ -5,8 +5,10 @@ logical tensor, so their clear execution lays the tensor out as encryption does,
 the result back as decryption does.
 
 A slot axis of at most `n_slots` values is zero-padded to its period `n_slots`, and the period is repeated over the
-`internal_n` slots of the ring. A longer slot axis spans whole rings (ciphertexts) of `internal_n` slots, the last
-one zero-padded. Decryption reads back the slots that hold the values, dropping the padding and the repeats.
+`internal_n` slots of the ring. A longer slot axis with a period shorter than the ring holds values that repeat at the
+period (the output of SumSlots), and the ring repeats its first period. A longer slot axis with the ring as its period
+spans whole rings (ciphertexts) of `internal_n` slots, the last one zero-padded. Decryption reads back the slots that
+hold the values, dropping the padding and the repeats.
 """
 
 import torch
@@ -49,8 +51,8 @@ def to_ring(x: torch.Tensor, value: HomValue, internal_n: int) -> torch.Tensor:
         raise ValueError(f"Clear input has shape {tuple(x.shape)}; the traced shape is {value.tensor_shape}")
     length = value.tensor_shape[value.n_axis]
     x = x.movedim(value.n_axis, -1)
-    if length <= value.n_slots:
-        period = torch.nn.functional.pad(x, (0, value.n_slots - length))
+    if length <= value.n_slots or value.n_slots < internal_n:
+        period = torch.nn.functional.pad(x[..., :value.n_slots], (0, max(value.n_slots - length, 0)))
         ring = period.repeat(*([1] * (x.dim() - 1)), internal_n // value.n_slots)
         return ring.unsqueeze(-2)
     rings = -(-length // internal_n)
