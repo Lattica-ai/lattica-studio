@@ -82,17 +82,6 @@ class ModulusChain():
         dropped = list(dict.fromkeys(row for row in reversed(self.drop_order) if row in pipeline))[::-1]
         return tuple(dropped + [row for row in pipeline if row not in dropped])
 
-    def get_consumption_rows(self, params):
-        """The rows in the order ciphertexts drop them along the chain (the bootstrap base row excluded): the
-        bootstrap's sections as it runs them, then the pipeline rows in their traced order, or index order."""
-        pipeline = list(params.consumption_order or self.section_rows["pipeline"])
-        if not params.bootstrapping:
-            return pipeline
-        cts, eval_mod, stc = (list(self.section_rows[name]) for name in ("boot_cts", "boot_eval", "boot_stc"))
-        if params.boot_params.slim_boot:
-            return cts + eval_mod + pipeline + stc
-        return cts + eval_mod + stc + pipeline
-
     def get_init_rows(self, params):
         active_rows = copy.deepcopy(self.section_rows["pipeline"])
         if not params.bootstrapping:

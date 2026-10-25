@@ -87,5 +87,4 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
     pipeline.serialize(params)
     assert params.consumption_order[:2] == (3, 4)
     assert set(params.consumption_order) == {0, 1, 2, 3, 4}
-    assert params.mod_chain.get_consumption_rows(params) == list(params.consumption_order)
     assert HomParams.from_dict(params.to_dict()).consumption_order == params.consumption_order
