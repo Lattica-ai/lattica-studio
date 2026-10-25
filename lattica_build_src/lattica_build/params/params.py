@@ -86,10 +86,6 @@ class HomParams:
     real_boot: bool = True
     slim_boot: bool = False
     n_slots: int | None = None
-    # The pipeline rows in the order the pipeline consumes them, from its level tracing (HomomorphicPipeline.serialize
-    # sets it, ModulusChain.traced_consumption_order); the toolkit fills the hybrid key-switching digits along it so
-    # that a ciphertext's primes span as few digits as possible. None: the rows' index order.
-    consumption_order: tuple[int, ...] | None = None
 
     @property
     def internal_n(self) -> int:
@@ -151,6 +147,10 @@ class HomParams:
     def __post_init__(self) -> None:
         self.boot_params = None
         self.ring_switch_params = None
+        # The pipeline rows in the order the pipeline consumes them, from its level tracing (HomomorphicPipeline.serialize
+        # sets it, ModulusChain.traced_consumption_order); the toolkit fills the hybrid key-switching digits along it so
+        # that a ciphertext's primes span as few digits as possible. None: the rows' index order.
+        self.consumption_order: tuple[int, ...] | None = None
         self.full_q_list_precision = tuple(tuple(row) for row in self.full_q_list_precision)
 
         if not isinstance(self.n, int) or not _is_power_of_two(self.n):
@@ -204,9 +204,6 @@ class HomParams:
         for name in ("real_boot", "slim_boot"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")
-        if self.consumption_order is not None:
-            self.consumption_order = tuple(int(row) for row in self.consumption_order)
-
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -242,6 +239,7 @@ class HomParams:
         bootstrapping = d.pop("bootstrapping", False)
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
+        consumption_order = d.pop("consumption_order", None)
 
         # the special primes are derived from dnum and the chain; only BV's gadget bits are an input
         g_base_bits = d.pop("g_base_bits", None)
@@ -258,4 +256,6 @@ class HomParams:
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
+        if consumption_order is not None:
+            params.consumption_order = tuple(int(row) for row in consumption_order)
         return params
