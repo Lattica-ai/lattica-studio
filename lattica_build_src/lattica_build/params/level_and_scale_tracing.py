@@ -16,7 +16,7 @@ class ModulusChain():
     def __init__(self, hom_params):
         self._set_pipeline_sections(hom_params)
         self.post_init()
-        # the absolute rows the level tracing drops, in order (infer_optional_modswitch): see traced_consumption_order
+        # the absolute rows the level tracing drops, in order (infer_optional_modswitch)
         self.drop_order = []
 
     def _set_pipeline_sections(self, hom_params):
@@ -77,19 +77,14 @@ class ModulusChain():
         return self.get_rows_of_sections(sections)
 
     def traced_consumption_order(self):
-        """The pipeline rows in the order the traced pipeline consumed them: by their last drop (a pipeline between
-        bootstraps drops them again from the top; row budgets may order them freely), the rows it never dropped
-        last. serialize stores it as HomParams.consumption_order."""
+        """The pipeline rows by their last drop, the rows never dropped last (HomParams.consumption_order)."""
         pipeline = self.section_rows["pipeline"]
         last_drop = {row: position for position, row in enumerate(self.drop_order) if row in pipeline}
         return tuple(sorted(pipeline, key=lambda row: (last_drop.get(row, len(self.drop_order)), row)))
 
     def get_consumption_rows(self, params):
-        """The rows in the order ciphertexts drop them along the chain, the bootstrap base row excluded, so that
-        every state on the way is a suffix of this list (plus the base row when bootstrapping): the pipeline rows
-        in the order the pipeline's tracing consumed them (params.consumption_order; their index order without a
-        trace), and with a bootstrap, from the raised ciphertext down, CoefsToSlots, EvalMod, then SlotsToCoefs
-        and the pipeline, in the order the bootstrap runs them (SlotsToCoefs first in the slim bootstrap)."""
+        """The rows in the order ciphertexts drop them along the chain (the bootstrap base row excluded): the
+        bootstrap's sections as it runs them, then the pipeline rows in their traced order, or index order."""
         pipeline = list(self.section_rows["pipeline"])
         traced = getattr(params, "consumption_order", None)
         if traced:
@@ -107,8 +102,7 @@ class ModulusChain():
             return active_rows
 
         if params.num_init_rows is not None:
-            # the last pipeline rows: the ones the pipeline after the bootstrap keeps longest, so the stages before
-            # the bootstrap share a key-switching digit with them
+            # num_init_rows counts from the bottom of the chain: the last pipeline rows
             active_rows = active_rows[len(active_rows) - params.num_init_rows:]
         active_rows += self.section_rows["boot_base"]
         if params.boot_params.slim_boot:

@@ -81,6 +81,8 @@ class HomParams:
     # None: derived (resolved_dnum), the fewest 128-bit-secure digits.
     dnum: int | None = None
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
+    # With a bootstrap: fresh ciphertexts hold this many pipeline rows, counted from the bottom of the chain (the
+    # last pipeline rows), plus the bootstrap base. None: all the pipeline rows.
     num_init_rows: int | None = None
     # Bootstrapping: real slots (one EvalMod) or complex; StC first (slim) or last.
     real_boot: bool = True
@@ -147,9 +149,8 @@ class HomParams:
     def __post_init__(self) -> None:
         self.boot_params = None
         self.ring_switch_params = None
-        # The pipeline rows in the order the pipeline consumes them, from its level tracing (HomomorphicPipeline.serialize
-        # sets it, ModulusChain.traced_consumption_order); the toolkit fills the hybrid key-switching digits along it so
-        # that a ciphertext's primes span as few digits as possible. None: the rows' index order.
+        # the pipeline rows in the order the pipeline consumes them, set by serialize from the level tracing; the
+        # toolkit fills the key-switching digits along it
         self.consumption_order: tuple[int, ...] | None = None
         self.full_q_list_precision = tuple(tuple(row) for row in self.full_q_list_precision)
 

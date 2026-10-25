@@ -77,8 +77,7 @@ def test_unset_dnum_with_bv_is_zero():
 
 
 def test_serialize_records_the_consumption_order_with_row_budgets():
-    """The level tracing records the order a pipeline consumes its rows, row budgets included, on the parameters:
-    the first polynomial may only rescale with rows 3 and 4, the second takes the rest from the top."""
+    """The first polynomial may only rescale with rows 3 and 4: they are consumed first."""
     pipeline = HomomorphicPipeline(
         hom=SequentialHomOp(HomPolyEval(func=np.abs, degree=3, rows_budget=[3, 4]),
                             HomPolyEval(func=np.abs, degree=3)),
@@ -93,7 +92,7 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
 
 
 def test_consumption_order_is_not_an_input():
-    """It is compile-time state like boot_params: absent from the constructor, None until serialize sets it."""
+    """Compile-time state like boot_params: not a constructor argument."""
     with pytest.raises(TypeError):
         HomParams(n=256, full_q_list_precision=((60,),) * 5, pt_scale=2 ** 30, dnum=2, consumption_order=(0, 1))
     d = HomParams(n=256, full_q_list_precision=((60,),) * 5, pt_scale=2 ** 30, dnum=2).to_dict()
