@@ -79,16 +79,13 @@ class ModulusChain():
     def traced_consumption_order(self):
         """The pipeline rows by their last drop, the rows never dropped last (HomParams.consumption_order)."""
         pipeline = self.section_rows["pipeline"]
-        last_drop = {row: position for position, row in enumerate(self.drop_order) if row in pipeline}
-        return tuple(sorted(pipeline, key=lambda row: (last_drop.get(row, len(self.drop_order)), row)))
+        dropped = list(dict.fromkeys(row for row in reversed(self.drop_order) if row in pipeline))[::-1]
+        return tuple(dropped + [row for row in pipeline if row not in dropped])
 
     def get_consumption_rows(self, params):
         """The rows in the order ciphertexts drop them along the chain (the bootstrap base row excluded): the
         bootstrap's sections as it runs them, then the pipeline rows in their traced order, or index order."""
-        pipeline = list(self.section_rows["pipeline"])
-        traced = getattr(params, "consumption_order", None)
-        if traced:
-            pipeline = [row for row in traced if row in pipeline] + [row for row in pipeline if row not in traced]
+        pipeline = list(params.consumption_order or self.section_rows["pipeline"])
         if not params.bootstrapping:
             return pipeline
         cts, eval_mod, stc = (list(self.section_rows[name]) for name in ("boot_cts", "boot_eval", "boot_stc"))
