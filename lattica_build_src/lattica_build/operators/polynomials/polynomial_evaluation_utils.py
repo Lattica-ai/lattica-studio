@@ -1,7 +1,7 @@
 """See `operators/polynomials/README.md` for usage details."""
 
 import numpy as np
-from numpy.polynomial.chebyshev import chebfit, chebval
+from numpy.polynomial.chebyshev import chebder, chebfit, chebval
 from numpy.polynomial import Chebyshev
 from scipy import signal
 
@@ -91,6 +91,20 @@ def indicator_cheb_coeffs_packed(max, deg, peak_width=0.01, num=10_000, tol=None
     # every input that sits at it.
     coefs[:, 0] -= chebval(-1, coefs.T)
     return coefs
+
+
+def hermite_indicator_cheb_coeffs(num_bins):
+    """[num_bins, 2 * num_bins + 2] Chebyshev coefficients on [-1, 1] of the indicators of the nodes
+    k / num_bins * 2 - 1, k = 0..num_bins: indicator j (1..num_bins) is 1 at node j and 0 at the others, with zero slope
+    at every node (Hermite interpolation, degree 2 * num_bins + 1). An input off a node by eps moves an output by
+    O(eps^2), so it stays flat with a far lower degree than a fitted peak; between the nodes it is unconstrained."""
+    nodes = np.arange(num_bins + 1) / num_bins * 2 - 1
+    basis = np.eye(2 * len(nodes))
+    values = np.array([chebval(nodes, c) for c in basis]).T
+    slopes = np.array([chebval(nodes, chebder(c)) for c in basis]).T
+    system = np.concatenate([values, slopes])
+    rhs = np.concatenate([np.eye(len(nodes))[1:], np.zeros((num_bins, len(nodes)))], axis=1)
+    return np.linalg.solve(system, rhs.T).T
 
 
 def get_cheb_coefs(

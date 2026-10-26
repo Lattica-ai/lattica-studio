@@ -21,6 +21,7 @@ from lattica_build.operators.fhe.h_mod_switch import HomModSwitch
 from lattica_build.operators.fhe.h_ring_switch import HomRingSwitch
 from lattica_build.operators.ml.h_conv import HomConv
 from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
+from lattica_build.operators.polynomials.h_poly_indicator import HomHermiteIndicator
 from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
@@ -163,6 +164,17 @@ def test_polynomial_clear_prepends_coefficient_batch_dimensions():
     # Chebyshev coefficients, lowest degree first, of x and 2*x**2 - 1.
     op = HomPolyEvalBase([[0., 1., 0.], [0., 0., 1.]])
     torch.testing.assert_close(op(x), torch.stack((x, 2 * x.square() - 1)))
+
+
+@pytest.mark.parametrize("num_bins", [4, 8])
+def test_hermite_indicator_is_exact_and_flat_at_the_points(num_bins):
+    op = HomHermiteIndicator(num_bins, left=0, right=2)
+    points = torch.arange(num_bins + 1, dtype=torch.float64) * 2 / num_bins
+    torch.testing.assert_close(op(points), torch.eye(num_bins + 1, dtype=torch.float64)[1:], atol=1e-10, rtol=0)
+    # zero slope: off a point by eps, the outputs move by O(eps^2), so 10x closer moves them about 100x less
+    for sign in (1, -1):
+        far, near = ((op(points + sign * eps) - op(points)).abs().max() for eps in (1e-3, 1e-4))
+        assert far > 50 * near
 
 
 def test_composites_and_pipeline_clear_execution():
