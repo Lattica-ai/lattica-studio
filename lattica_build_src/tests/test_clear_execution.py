@@ -60,7 +60,7 @@ def test_slot_client_and_fhe_clear_execution():
     assert torch.equal(HomConj()(z), z.conj())
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
     assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
-    assert torch.equal(HomSumSlots(k=4)(x), x.reshape(4, 2).sum(0).repeat(4))
+    assert torch.equal(HomSumSlots(k=4)(x), x.reshape(4, 2).sum(0))
     assert torch.equal(HomModSwitch()(x), x)
     assert torch.equal(Bootstrap()(x), x)
     assert torch.equal(HomRingSwitch(10)(x), x)
@@ -251,7 +251,7 @@ def test_sum_slots_clear_matches_the_ciphertext():
     """The clear graph sums the slots the ciphertext does: 28 values zero-padded to their
     32-slot period, so padding and data mix in every sum."""
     x = torch.randn(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8), input_shape=(28,))
+    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8, reduce_output=False), input_shape=(28,))
     params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
                        pt_scale=2 ** 44, num_special_primes=1, n_slots=32)
     graph, _ = pipeline.serialize(params)
