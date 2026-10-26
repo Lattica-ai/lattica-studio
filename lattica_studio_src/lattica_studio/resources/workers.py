@@ -109,7 +109,7 @@ class WorkersAPI:
         model_id: ModelId,
         *,
         poll_interval: float = 5,
-        timeout: float = 600,
+        timeout: float = 1800,  # as long as the backend waits for a new box to boot
     ) -> Worker:
         """
         Start a worker and wait until it becomes ready.
@@ -125,6 +125,7 @@ class WorkersAPI:
 
             while not worker.is_ready:
                 if time.monotonic() - start_time >= timeout:
+                    self._stop_abandoned(model_id, session_id)
                     raise WorkerStartupTimeoutError(
                         f"Worker for model {model_id} did not become ready "
                         f"within {timeout:g} seconds."
@@ -153,6 +154,16 @@ class WorkersAPI:
             log_info(f"status: {worker.status or 'unknown'}")
 
             return worker
+
+    def _stop_abandoned(self, model_id: ModelId, session_id: WorkerSessionId | None) -> None:
+        """Stop the worker this client gave up waiting for, so its credits come back."""
+        if session_id is None:
+            return
+        log_info("decision: stop the worker we stopped waiting for")
+        try:
+            self.stop(model_id=model_id, session_id=session_id)
+        except Exception as error:  # a failed stop must not hide the timeout error
+            log_info(f"stop failed: {error}")
 
     def get_or_start(
         self,

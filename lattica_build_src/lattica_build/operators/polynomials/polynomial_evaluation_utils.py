@@ -77,7 +77,7 @@ def _indicator_cheb_coeffs(max_val, j, deg, peak_width, left_tol=0.01, num=10_00
         plt.tight_layout()
         plt.show()
 
-    return coefs[::-1].copy()
+    return coefs
 
 
 def indicator_cheb_coeffs_packed(max, deg, peak_width=0.01, num=10_000, tol=None, plot=False):
@@ -89,7 +89,7 @@ def indicator_cheb_coeffs_packed(max, deg, peak_width=0.01, num=10_000, tol=None
     coefs = np.stack(packed_indicators)
     # Exactly 0 at the domain's left end (the Chebyshev point -1), which is no bin: a small value there adds up over
     # every input that sits at it.
-    coefs[:, -1] -= chebval(-1, coefs[:, ::-1].T)
+    coefs[:, 0] -= chebval(-1, coefs.T)
     return coefs
 
 
@@ -147,7 +147,7 @@ def get_cheb_coefs(
         plt.legend()
         plt.show()
 
-    return coefs[::-1].copy()  # copy ndarray is equivalent to contiguous
+    return coefs
 
 
 def heaviside_sigmoid_cheb_coeffs(step, deg=100, sharpness=79, out_val=1, num=10001, tol=None, plot=False):
@@ -260,22 +260,4 @@ def threshold_cheb_coeffs_minimax(deg, margin, out_val=1, domain_start=-1, tol=N
 
         plt.show()
 
-    return cheb_coeffs[::-1].copy()
-
-
-def find_optimal_k_m(deg):
-    """ Compute positive integers k,m such that n < k(2^m-1), k is close to sqrt(n/2)
-    and the depth = ceil(log2(k))+m is minimized. Moreover, for that depth the
-    number of homomorphic multiplications = k+2m+2^(m-1)-4 is minimized.
-    """
-
-    m_list_intervals = [0, 2, 11, 13, 17, 55, 59, 76, 239, 247, 284, 991, 1007, 1083, 2015, 2031, 2204]
-    m_list_values = [1, 2, 3, 2, 3, 4, 3, 4, 5, 4, 5, 6, 5, 6, 7, 6]
-
-    if deg < 1 or deg > 2204:
-        raise ValueError("n must be in the range [1, 2204]")
-    for i in range(len(m_list_intervals)):
-        if deg > m_list_intervals[i] and deg <= m_list_intervals[i + 1]:
-            m = m_list_values[i]
-            k = int(np.floor(deg / (2 ** m - 1) + 1))
-            return m, k
+    return cheb_coeffs

@@ -7,7 +7,6 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.polynomials.polynomial_evaluation_utils import find_optimal_k_m
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch, infer_modswitch_by_num_levels
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
@@ -18,7 +17,7 @@ class HomPolyEvalBase(HomOp):
     input ciphertext and infers level consumption from polynomial degree.
 
     Args:
-        coefs: Polynomial coefficients. Leading dimensions are treated as batch
+        coefs: Chebyshev coefficients, lowest degree first. Leading dimensions are treated as batch
             dimensions and are prepended to the output shape.
         left: Lower bound of the approximation interval.
         right: Upper bound of the approximation interval.
@@ -59,7 +58,7 @@ class HomPolyEvalBase(HomOp):
         coefs = torch.as_tensor(self.coefs, dtype=input.dtype, device=input.device)
         b_next = torch.zeros_like(x)
         b_curr = torch.zeros_like(x)
-        for coefficient in coefs.unbind(-1):
+        for coefficient in reversed(coefs.unbind(-1)):   # Clenshaw: highest degree first
             coefficient = coefficient.reshape(coefs.shape[:-1] + (1,) * input.ndim)
             b_next, b_curr = b_curr, 2 * x * b_curr - b_next + coefficient
         return b_curr - x * b_next
@@ -82,11 +81,8 @@ class HomPolyEvalBase(HomOp):
             )
 
         degree = self.coefs.shape[-1] - 1
-        if degree > 4:  # PS
-            m, k = find_optimal_k_m(degree)
-            num_levels = math.ceil(math.log2(k)) + m
-        else:  # direct
-            num_levels = degree - 1
+        # the backend's depth-optimal tree, at every degree
+        num_levels = math.ceil(math.log2(degree + 1))
         input = infer_modswitch_by_num_levels(
             hom_params,
             input,

@@ -128,13 +128,7 @@ class TokenInfo:
 
 
 class InstanceType(StrEnum):
-    """Available model deployment instance types."""
+    """Instance types a model can be deployed on."""
 
     G4DN_XLARGE = "G4DN_XLARGE"
-    G5_2XLARGE = "G5_2XLARGE"
-    G6E_2XLARGE = "G6E_2XLARGE"
     G7E_2XLARGE = "G7E_2XLARGE"
-    G7E_12XLARGE = "G7E_12XLARGE"
-    TPU_MEDIUM = "TPU_MEDIUM"
-    CPU_C7G_XLARGE = "CPU_C7G_XLARGE"
-    CPU_C7G_2XLARGE = "CPU_C7G_2XLARGE"
