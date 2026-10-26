@@ -77,7 +77,7 @@ class ModulusChain():
         return self.get_rows_of_sections(sections)
 
     def traced_consumption_order(self):
-        """The pipeline rows by their last drop, the rows never dropped last (HomParams.consumption_order)."""
+        """Pipeline rows ordered by their last drop, then the rows never dropped (HomParams.consumption_order)."""
         pipeline = self.section_rows["pipeline"]
         dropped = list(dict.fromkeys(row for row in reversed(self.drop_order) if row in pipeline))[::-1]
         return tuple(dropped + [row for row in pipeline if row not in dropped])

@@ -1,10 +1,7 @@
 """See `params/README.md` for usage details."""
 
 import enum
-import functools
-import json
 import math
-import os
 from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
@@ -24,7 +21,6 @@ def _is_power_of_two(x: int) -> bool:
     return x > 0 and (x & (x - 1)) == 0
 
 
-SPECIAL_PRIME_BITS = 61
 # Largest log2(QP) at 128-bit security, by (log2 n, secret Hamming weight sk_hw; 0 = uniform ternary): lattice-estimator
 # with error sigma 3.19, m = n, Arora-GB and BKW excluded, the cheapest attack. Rings without an entry are not checked.
 MAX_LOG_QP_128 = {
@@ -32,21 +28,6 @@ MAX_LOG_QP_128 = {
     (15, 192): 809,
     (16, 192): 1638,
 }
-
-
-@functools.cache
-def _max_prime_log2(bits: int) -> float:
-    """The largest log2 among the good primes of this size: a pool's primes can exceed their nominal size (the 26-bit
-    ones reach 26.73 bits: few NTT-friendly primes that small), so the security bound counts them at this size."""
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "good_primes.json"), encoding="utf-8") as f:
-        pool = json.load(f).get(str(bits))
-    return max(math.log2(q) for q in pool) if pool else float(bits)
-
-
-def _prime_bits(q_list_precision: QListNorm) -> list[int]:
-    """Each prime's bits, in chain order: a row lists cumulative precisions, so (60, 30) holds two 30-bit primes."""
-    return [bits for row in q_list_precision
-            for bits in (*(row[i] - row[i + 1] for i in range(len(row) - 1)), row[-1])]
 
 
 @dataclass(kw_only=True)
@@ -75,26 +56,16 @@ class HomParams:
     def bootstrapping(self) -> bool:
         return self.boot_params is not None
 
-    @property
-    def chain_q_list_precision(self) -> QListNorm:
-        """The ciphertext primes: the pipeline's, then the bootstrap's (once the pipeline has set boot_params)."""
-        if self.boot_params is None:
-            return self.full_q_list_precision
-        return (self.full_q_list_precision + self.boot_params.cts_q_list_precision
-                + self.boot_params.eval_mod_q_list_precision + self.boot_params.stc_q_list_precision
-                + ((self.boot_params.q_base_precision,),))
-
     def check_chain(self) -> None:
-        """HYBRID: log2(QP) of the whole chain (the bootstrap's too, once `serialize` has chosen it), counting each prime
-        at its pool's largest size, is within MAX_LOG_QP_128 when the table has the ring size and sk_hw."""
+        """HYBRID: log2(QP) of the primes mod_chain drew (the whole chain, special primes included) is within
+        MAX_LOG_QP_128 when the table has the ring size and sk_hw."""
         if self.decomposition_type != DecompositionType.HYBRID:
             return
-        bits = _prime_bits(self.chain_q_list_precision)
         log_n = self.n.bit_length() - 1
         max_log_qp = MAX_LOG_QP_128.get((log_n, self.sk_hw))
-        log_qp = sum(map(_max_prime_log2, bits)) + _max_prime_log2(SPECIAL_PRIME_BITS) * self.num_special_primes
+        log_qp = sum(math.log2(q) for row in self.mod_chain.factors_per_row for q in row)
         if max_log_qp is not None and log_qp > max_log_qp:
-            raise ValueError(f"log2(QP) of this chain is up to {log_qp:.1f} bits, over {max_log_qp}, the 128-bit bound "
+            raise ValueError(f"log2(QP) of this chain is {log_qp:.1f} bits, over {max_log_qp}, the 128-bit bound "
                              f"for n = 2^{log_n} with sk_hw = {self.sk_hw}: shorten the chain or use fewer special primes.")
 
     def __post_init__(self) -> None:
@@ -216,6 +187,5 @@ class HomParams:
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
-        if consumption_order is not None:
-            params.consumption_order = tuple(int(row) for row in consumption_order)
+        params.consumption_order = consumption_order
         return params

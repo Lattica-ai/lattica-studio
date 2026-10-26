@@ -159,10 +159,10 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
 - `HYBRID`:
   - requires `num_special_primes > 0`,
   - derives `g_base_bits` from special-prime count: the toolkit splits the ciphertext primes of the whole chain
-    (the pipeline's, then the bootstrap's) into digits of at most `g_base_bits` bits, filled along the order the
-    pipeline consumes them, and each key switch uses only the special primes its own largest digit needs.
-  - `serialize` checks the whole chain (`check_chain`): log2(QP) must be within `MAX_LOG_QP_128`, lattice-estimator's
-    128-bit bound, when it lists the ring size and `sk_hw`.
+    into digits of at most `g_base_bits` bits, filled along the order the pipeline consumes them, and each key
+    switch uses only the special primes its own largest digit needs.
+  - `serialize` checks that the whole chain's log2(QP) is within `MAX_LOG_QP_128`, lattice-estimator's 128-bit
+    bound, when it lists the ring size and `sk_hw`.
 
 Pick decomposition settings with your backend performance profile in mind.
 
