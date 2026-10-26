@@ -148,7 +148,8 @@ class _MuxHead(HomOp):
         channels, height, width = LAYER_OUT[3]
         spatial_positions = height * width
         # the last ReLU leaves one level, for the FC
-        self.avgpool = HomSumSlots(k=spatial_positions)
+        # one sum per channel, over its spatial positions
+        self.avgpool = HomSumSlots(nb_cols=channels)
         self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0),
                              bias=True)
         # SumSlots supplies a sum; fold the averaging factor into the FC weights.

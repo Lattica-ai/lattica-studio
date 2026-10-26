@@ -5,7 +5,7 @@ import torch
 from typing import Optional, Sequence
 
 from lattica_build.base_classes.hom_value import HomValue, to_pos_axis
-from lattica_build.operators.slots.ring_utils import SlotOp, check_span, from_ring, full_period, input_layout, to_ring
+from lattica_build.operators.slots.ring_utils import SlotOp, from_ring, full_period, input_layout, to_ring
 from lattica_build.params.level_and_scale_tracing import infer_modswitch_by_num_levels
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
@@ -112,7 +112,6 @@ class HomRunningSum(SlotOp):
             ring = ring.squeeze(-2).movedim(blocks_axis, -2)
 
         k = self.k if self.k is not None else internal_n
-        check_span(self, k, internal_n, "the ring")
         grid = ring.unflatten(-1, (k, internal_n // k)).transpose(-3, -2)  # (..., k, blocks, cols)
         sums = grid.flatten(-3, -2).cumsum(dim=-2).unflatten(-2, grid.shape[-3:-1])
         sums = sums.transpose(-3, -2).flatten(-2)  # (..., blocks, internal_n)

@@ -10,7 +10,7 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 | `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots. |
 | `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration. |
 | `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns) induced by slot layout. |
-| `HomSumSlots` | Performs slot-axis reduction over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns). |
+| `HomSumSlots` | Performs slot-axis reduction into `nb_cols` sums, one per column of the period seen as rows of `nb_cols` slots. |
 
 ## What `k` means
 
@@ -50,13 +50,13 @@ Per operator:
   `internal_n`. The sums fill the zero padding and the repeats of a shorter
   period, so with `full_period_output` (the default) the output's slot axis
   holds whole rings, its period; without it, it keeps the input's length.
-- `HomSumSlots` adds, in each period of `n_slots` slots, the `k` slots
-  `n_slots / k` apart: slot `j` gets `x[j] + x[j + n_slots / k] + ...`, and the
-  output's period is `n_slots / k`. `k` (by default `n_slots`) must be a power
-  of 2 dividing `n_slots`. With `reduce_output` (the default) the output's slot
-  axis holds the `n_slots / k` sums; without it, it keeps the input's length
-  and reads the sums repeated at `n_slots / k`, which a slot axis over several
-  rings needs.
+- `HomSumSlots` adds, in each period of `n_slots` slots, the `n_slots / nb_cols`
+  slots `nb_cols` apart: slot `j` gets `x[j] + x[j + nb_cols] + ...`, and the
+  output's period is `nb_cols`. `nb_cols` (by default 1, the sum of the period)
+  must be a power of 2 dividing `n_slots`. With `reduce_output` (the default)
+  the output's slot axis holds the `nb_cols` sums; without it, it keeps the
+  input's length and reads the sums repeated at `nb_cols`, which a slot axis
+  over several rings needs.
 - `HomRotateSum` rotates every ring and sums or stacks the requested views.
   Sum mode always includes the original input once; stack mode includes it
   only when `add_identity_rotation` is set. The rotations bring values into the
@@ -70,7 +70,8 @@ Per operator:
 
 - In `HomExpand`, `k` is how many expanded outputs are produced per input slot
   pattern (conceptually, you can think of this as creating `k` copies/positions).
-- In `HomSumSlots`, `k` is how many slot elements are reduced into a sum.
+- In `HomSumSlots`, `k = n_slots / nb_cols` is how many slot elements are reduced
+  into a sum.
 - In `HomRunningSum`, `k` is how many slot elements are aggregated in the
   running-sum range.
 

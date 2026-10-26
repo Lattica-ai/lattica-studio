@@ -41,12 +41,6 @@ def input_layout(op: SlotOp, x: torch.Tensor) -> tuple[HomValue, int]:
     return HomValue(tensor_shape=tuple(x.shape), n_axis=x.dim() - 1, n_slots=ring), ring
 
 
-def check_span(op: SlotOp, k: int, slots: int, where: str) -> None:
-    """Raise ValueError unless the span `k` of `op` is a power of 2 dividing the `slots` slots of `where`."""
-    if k < 1 or k & (k - 1) or slots % k:
-        raise ValueError(f"{type(op).__name__} needs k={k} to be a power of 2 dividing the {slots} slots of {where}")
-
-
 def full_period(value: HomValue, n_slots: int) -> HomValue:
     """`value` with its slot axis rounded up to a multiple of `n_slots`: the slots that held its zero padding are
     part of the value."""
