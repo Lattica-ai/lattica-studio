@@ -11,6 +11,8 @@ spans whole rings (ciphertexts) of `internal_n` slots, the last one zero-padded.
 hold the values, dropping the padding and the repeats.
 """
 
+import math
+
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp
@@ -43,6 +45,15 @@ def check_span(op: SlotOp, k: int, slots: int, where: str) -> None:
     """Raise ValueError unless the span `k` of `op` is a power of 2 dividing the `slots` slots of `where`."""
     if k < 1 or k & (k - 1) or slots % k:
         raise ValueError(f"{type(op).__name__} needs k={k} to be a power of 2 dividing the {slots} slots of {where}")
+
+
+def full_period(value: HomValue, n_slots: int) -> HomValue:
+    """`value` with its slot axis rounded up to a multiple of `n_slots`: the slots that held its zero padding are
+    part of the value."""
+    length = value.tensor_shape[value.n_axis]
+    shape = list(value.tensor_shape)
+    shape[value.n_axis] = math.ceil(length / n_slots) * n_slots
+    return value.make_copy(tensor_shape=tuple(shape))
 
 
 def to_ring(x: torch.Tensor, value: HomValue, internal_n: int) -> torch.Tensor:

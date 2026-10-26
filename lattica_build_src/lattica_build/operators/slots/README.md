@@ -47,14 +47,22 @@ Per operator:
   `internal_n / k` columns, and the sum runs down the rows of all blocks (row
   `r` of every block, then row `r + 1`); the blocks are the rings, or the
   entries of `blocks_axis_external`. `k` must be a power of 2 dividing
-  `internal_n`.
+  `internal_n`. The sums fill the zero padding and the repeats of a shorter
+  period, so with `full_period_output` (the default) the output's slot axis
+  holds whole rings, its period; without it, it keeps the input's length.
 - `HomSumSlots` adds, in each period of `n_slots` slots, the `k` slots
   `n_slots / k` apart: slot `j` gets `x[j] + x[j + n_slots / k] + ...`, and the
   output's period is `n_slots / k`. `k` (by default `n_slots`) must be a power
-  of 2 dividing `n_slots`.
+  of 2 dividing `n_slots`. With `reduce_output` (the default) the output's slot
+  axis holds the `n_slots / k` sums; without it, it keeps the input's length
+  and reads the sums repeated at `n_slots / k`, which a slot axis over several
+  rings needs.
 - `HomRotateSum` rotates every ring and sums or stacks the requested views.
   Sum mode always includes the original input once; stack mode includes it
-  only when `add_identity_rotation` is set.
+  only when `add_identity_rotation` is set. The rotations bring values into the
+  zero padding of a shorter slot axis, so with `full_period_output` (the
+  default) the output's slot axis is rounded up to a multiple of `n_slots`;
+  without it, it keeps the input's length.
 
 ### Homomorphic execution
 
