@@ -162,7 +162,7 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
     into digits of at most `g_base_bits` bits, filled along the order the pipeline consumes them, and each key
     switch uses only the special primes its own largest digit needs.
   - `serialize` checks that the whole chain's log2(QP) is within `MAX_LOG_QP_128`, lattice-estimator's 128-bit
-    bound, when it lists the ring size and `sk_hw`.
+    bound. Only `sk_hw` 192 at 2^14..2^16 has a bound: other secrets, the default `sk_hw` 0 included, are not checked.
 
 Pick decomposition settings with your backend performance profile in mind.
 

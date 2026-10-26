@@ -21,8 +21,9 @@ def _is_power_of_two(x: int) -> bool:
     return x > 0 and (x & (x - 1)) == 0
 
 
-# Largest log2(QP) at 128-bit security, by (log2 n, secret Hamming weight sk_hw; 0 = uniform ternary): lattice-estimator
-# with error sigma 3.19, m = n, Arora-GB and BKW excluded, the cheapest attack. Rings without an entry are not checked.
+# Largest log2(QP) at 128-bit security, by (log2 n, secret Hamming weight sk_hw): lattice-estimator with error sigma
+# 3.19, m = n, Arora-GB and BKW excluded, the cheapest attack. Only sk_hw 192 has entries: other secrets (the default
+# sk_hw 0, uniform ternary, included) and other rings are not checked.
 MAX_LOG_QP_128 = {
     (14, 192): 402,
     (15, 192): 809,
@@ -133,8 +134,10 @@ class HomParams:
                 raise ValueError(
                     f"n_slots={self.n_slots} is larger than the {self.internal_n} available slots.")
 
-        if not ((isinstance(self.num_init_rows, int) and self.num_init_rows >= 0) or self.num_init_rows is None):
-            raise ValueError(f"num_init_rows must be None or an int >= 0; got {self.num_init_rows!r}.")
+        if not (self.num_init_rows is None or (isinstance(self.num_init_rows, int)
+                                               and 0 <= self.num_init_rows <= len(self.full_q_list_precision))):
+            raise ValueError(f"num_init_rows must be None or an int from 0 to the {len(self.full_q_list_precision)} "
+                             f"pipeline rows; got {self.num_init_rows!r}.")
         for name in ("real_boot", "slim_boot"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")

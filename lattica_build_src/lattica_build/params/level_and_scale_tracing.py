@@ -16,7 +16,7 @@ class ModulusChain():
     def __init__(self, hom_params):
         self._set_pipeline_sections(hom_params)
         self.post_init()
-        # the absolute rows the level tracing drops, in order (infer_optional_modswitch)
+        # the absolute rows the level tracing drops, in order (apply_drop_config)
         self.drop_order = []
 
     def _set_pipeline_sections(self, hom_params):
@@ -150,10 +150,12 @@ def _get_config_for_row_or_col(mod_chain, active_rows, active_cols, rows_budget:
 
 
 def apply_drop_config(
+        mod_chain: 'ModulusChain',
         input: HomValue,
         drop_config: Tuple[int, Sequence[int] | None, int],
 ):
     relative_row, cols_to_drop, scale_down_by = drop_config
+    mod_chain.drop_order.append(int(input.active_rows[relative_row]))
     if cols_to_drop is None:
         # Drop the whole row.
         new_cols = input.active_cols[:relative_row] + input.active_cols[relative_row + 1:]
@@ -190,12 +192,11 @@ def infer_optional_modswitch(hom_params: 'HomParams', input: HomValue, with_mods
     drop_config = _get_config_for_row_or_col(
         hom_params.mod_chain, input.active_rows, input.active_cols, rows_budget=rows_budget
     )
-    hom_params.mod_chain.drop_order.append(int(input.active_rows[drop_config[0]]))
     if op_scale_up is None:
         op_scale_up = drop_config[2]
     res = input.make_copy(pt_scale=input.pt_scale * op_scale_up)
 
-    return apply_drop_config(res, drop_config)
+    return apply_drop_config(hom_params.mod_chain, res, drop_config)
 
 def infer_modswitch_by_num_levels(hom_params: 'HomParams', input: HomValue, num_levels: int, rows_budget: Sequence[int]) -> HomValue:
     """Drop multiple rows/cols according to the `num_levels` param."""
