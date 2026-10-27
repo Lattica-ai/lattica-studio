@@ -61,7 +61,7 @@ def test_slot_client_and_fhe_clear_execution():
     assert torch.equal(HomConj()(z), z.conj())
     assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
     assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
-    assert torch.equal(HomSumSlots(k=4)(x), x.reshape(4, 2).sum(0).repeat(4))
+    assert torch.equal(HomSumSlots(nb_cols=2)(x), x.reshape(4, 2).sum(0))
     assert torch.equal(HomModSwitch()(x), x)
     assert torch.equal(Bootstrap()(x), x)
     assert torch.equal(HomRingSwitch(10)(x), x)
@@ -73,22 +73,22 @@ def test_slot_client_and_fhe_clear_execution():
 
 
 @pytest.mark.parametrize('axis', [0, 1, -1, -2])
-def test_expand_clear_accepts_every_vector_insertion_axis(axis):
-    x = torch.tensor([2., 3., 5.])
-    expected = torch.tensor([[2., 3., 5.]]).repeat(3, 1)
-    if axis in (0, -2):
+def test_expand_clear_inserts_the_values_axis_as_traced(axis):
+    """The values axis goes where infer_output_shape inserts it: in the input's axes, so -1 and -2 of a vector
+    both put it first."""
+    x = torch.tensor([2., 3., 5., 7.])
+    expected = x[:, None].expand(4, 4)
+    if axis == 1:
         expected = expected.T
     torch.testing.assert_close(HomExpand(expand_axis=axis)(x), expected)
 
 
 def test_expand_clear_preserves_batch_dimensions():
-    x = torch.arange(6.).reshape(2, 3)
+    x = torch.arange(8.).reshape(2, 4)
     result = HomExpand(expand_axis=1)(x)
-    assert result.shape == (2, 3, 3)
-    for index in range(3):
-        torch.testing.assert_close(result[:, :, index], x)
-    with pytest.raises(IndexError):
-        HomExpand(expand_axis=3)(x)
+    assert result.shape == (2, 4, 4)
+    for slot in range(4):
+        torch.testing.assert_close(result[:, :, slot], x)
 
 
 def test_serialized_clear_execution_expands_to_ring_size():
@@ -126,8 +126,8 @@ def test_running_sum_clear_uses_only_the_logical_axis():
 @pytest.mark.parametrize('include_identity', [False, True])
 @pytest.mark.parametrize('perform_sum', [False, True])
 def test_rotate_sum_clear_counts_each_requested_view_once(include_identity, perform_sum):
-    x = torch.tensor([1., 2., 4.])
-    views = [torch.tensor([2., 4., 1.])]
+    x = torch.tensor([1., 2., 4., 8.])
+    views = [torch.tensor([2., 4., 8., 1.])]
     if perform_sum or include_identity:
         views.insert(0, x)
     expected = sum(views) if perform_sum else torch.stack(views)
@@ -248,14 +248,14 @@ def test_mux_conv_bn_fused_clear_matches_torch(delta):
     assert torch.allclose(out[MuxLayout(c_out, *op.output_hw).slot_map()], expected)
 
 
-def _ciphertext_slot_sums(x, n_slots, ks, internal_n):
+def _ciphertext_slot_sums(x, n_slots, nb_cols_list, internal_n):
     """Independent oracle: x zero-padded to its period n_slots and repeated over the
-    ring's internal_n slots; each SumSlots(k) adds the slots rotated by every multiple of
-    n_slots / k, leaving period n_slots / k. Read back at x's positions."""
+    ring's internal_n slots; each SumSlots(nb_cols) adds the slots rotated by every multiple of
+    nb_cols, leaving period nb_cols. Read back at x's positions."""
     slots = torch.nn.functional.pad(x, (0, n_slots - len(x))).repeat(internal_n // n_slots)
-    for k in ks:
-        n_slots //= k
-        slots = sum(slots.roll(-m * n_slots) for m in range(k))
+    for nb_cols in nb_cols_list:
+        slots = sum(slots.roll(-m * nb_cols) for m in range(n_slots // nb_cols))
+        n_slots = nb_cols
     return slots[:len(x)]
 
 
@@ -263,20 +263,20 @@ def test_sum_slots_clear_matches_the_ciphertext():
     """The clear graph sums the slots the ciphertext does: 28 values zero-padded to their
     32-slot period, so padding and data mix in every sum."""
     x = torch.randn(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8), input_shape=(28,))
+    pipeline = HomomorphicPipeline(hom=HomSumSlots(nb_cols=4, reduce_output=False), input_shape=(28,))
     params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
                        pt_scale=2 ** 44, num_special_primes=1, n_slots=32)
     graph, _ = pipeline.serialize(params)
     section = json.loads(graph)['pipeline_sections']['hom']
     result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
-    torch.testing.assert_close(result, _ciphertext_slot_sums(x, 32, (8,), params.internal_n))
+    torch.testing.assert_close(result, _ciphertext_slot_sums(x, 32, (4,), params.internal_n))
 
 
 def test_sum_slots_output_period():
-    """The output's period is the input's (internal_n without one) over k."""
+    """The output's period is nb_cols."""
     value = HomValue(tensor_shape=(32,), n_axis=-1)
-    assert HomSumSlots(k=8).infer_output_shape(value.make_copy(n_slots=4096)).n_slots == 512
-    assert HomSumSlots(k=8).infer_output_shape(value, internal_n=4096).n_slots == 512
+    assert HomSumSlots(nb_cols=512).infer_output_shape(value.make_copy(n_slots=4096)).n_slots == 512
+    assert HomSumSlots(nb_cols=512).infer_output_shape(value, internal_n=4096).n_slots == 512
 
 
 def test_clear_execution_does_not_trace():

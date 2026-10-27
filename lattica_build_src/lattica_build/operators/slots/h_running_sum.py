@@ -4,12 +4,12 @@ import math
 import torch
 from typing import Optional, Sequence
 
-from lattica_build.base_classes.hom_op import HomOp
-from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.base_classes.hom_value import HomValue, to_pos_axis
+from lattica_build.operators.slots.ring_utils import SlotOp, from_ring, full_period, input_layout, to_ring
 from lattica_build.params.level_and_scale_tracing import infer_modswitch_by_num_levels
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
-class HomRunningSum(HomOp):
+class HomRunningSum(SlotOp):
     """Base slot running-sum operator over configured stage schedule.
 
     Args:
@@ -22,6 +22,11 @@ class HomRunningSum(HomOp):
         stages_per_level: Optional number of stages grouped per consumed level.
             It should divide the selected stage count exactly.
         rows_budget: Optional allowed modulus rows for modswitch inference.
+        full_period_output: Whether, for a running sum along the slot axis, the
+            output's slot axis holds whole rings (default): the sums run over
+            the ring, so they fill the zero padding and the repeats of a shorter
+            period, and the output's period is the ring. Otherwise it keeps the
+            input's length and period.
     """
 
     OP_TYPE = HomOpType.RunningSum
@@ -34,6 +39,7 @@ class HomRunningSum(HomOp):
         stage_sizes: Sequence[int] | None = None,
         stages_per_level: int | None = None,
         rows_budget: Sequence[int] | None = None,
+        full_period_output: bool = True,
     ) -> None:
         super().__init__()
         self.cumsum_axis = cumsum_axis
@@ -42,6 +48,18 @@ class HomRunningSum(HomOp):
         self.stage_sizes = stage_sizes
         self.stages_per_level = stages_per_level
         self.rows_budget = rows_budget
+        self.full_period_output = full_period_output
+
+    def _sums_slot_axis(self, input: HomValue) -> bool:
+        """Whether the running sum is along the slot axis of `input` (the default) rather than another axis."""
+        return self.cumsum_axis is None or to_pos_axis(self.cumsum_axis, input.tensor_shape) == input.n_axis
+
+    def infer_output_shape(self, input: HomValue, internal_n=None) -> HomValue:
+        """With full_period_output, a running sum along the slot axis rounds the slot axis up to whole rings of
+        internal_n slots, its period."""
+        if not self.full_period_output or input.n_axis is None or internal_n is None or not self._sums_slot_axis(input):
+            return input
+        return _whole_rings(input, internal_n)
 
     def infer_output_level_and_scale(
         self,
@@ -52,8 +70,11 @@ class HomRunningSum(HomOp):
         """Compute exact level consumption from stages/log2(k), then apply modswitch.
 
         Running-sum stages include masked multiplications, so they consume
-        levels.
+        levels. Along another axis than the slot axis, the running sum adds whole ciphertexts
+        only, which consumes no level.
         """
+        if not self._sums_slot_axis(input):
+            return input
         if self.stage_sizes is None:
             k = self.k if self.k is not None else hom_params.internal_n
             num_levels = int(math.log2(k))
@@ -69,5 +90,37 @@ class HomRunningSum(HomOp):
         )
 
     def forward_clear(self, input):
-        dim = self.cumsum_axis if self.cumsum_axis is not None else -1
-        return input.cumsum(dim=dim)
+        """Along another axis than the slot axis, a cumsum. Along the slot axis, the ciphertext views each ring as
+        k rows of internal_n / k columns (slot s at row s // cols, column s % cols) and sums down the rows of all
+        blocks: row r of block 0, row r of block 1, ..., then row r + 1. The blocks are the rings, or the entries of
+        `blocks_axis_external`."""
+        value, internal_n = input_layout(self, input)
+        if not self._sums_slot_axis(value):
+            return input.cumsum(dim=self.cumsum_axis)
+
+        ring = to_ring(input, value, internal_n)  # (..., blocks, internal_n)
+        blocks_axis = None
+        if self.blocks_axis_external is not None:
+            if ring.shape[-2] != 1:
+                raise ValueError("blocks_axis_external needs the slot axis to fit in one ring")
+            blocks_axis = to_pos_axis(self.blocks_axis_external, value.tensor_shape)
+            if blocks_axis == value.n_axis:
+                raise ValueError(f"blocks_axis_external={self.blocks_axis_external} is the slot axis; "
+                                 "the blocks must be on another axis")
+            # The axis among those to_ring keeps before the slot axis
+            blocks_axis -= int(blocks_axis > value.n_axis)
+            ring = ring.squeeze(-2).movedim(blocks_axis, -2)
+
+        k = self.k if self.k is not None else internal_n
+        grid = ring.unflatten(-1, (k, internal_n // k)).transpose(-3, -2)  # (..., k, blocks, cols)
+        sums = grid.flatten(-3, -2).cumsum(dim=-2).unflatten(-2, grid.shape[-3:-1])
+        sums = sums.transpose(-3, -2).flatten(-2)  # (..., blocks, internal_n)
+
+        if blocks_axis is not None:
+            sums = sums.movedim(-2, blocks_axis).unsqueeze(-2)
+        return from_ring(sums, _whole_rings(value, internal_n) if self.full_period_output else value)
+
+
+def _whole_rings(value: HomValue, internal_n: int) -> HomValue:
+    """`value` with its slot axis rounded up to whole rings, its period."""
+    return full_period(value, internal_n).make_copy(n_slots=internal_n)

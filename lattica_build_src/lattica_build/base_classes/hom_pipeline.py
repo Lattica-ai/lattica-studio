@@ -21,7 +21,7 @@ from lattica_build.serialization.hom_op_pb2 import HomOpType
 from dataclasses import dataclass
 import enum
 
-from safetensors.torch import save as safetensors_save
+from safetensors.torch import load as safetensors_load, save as safetensors_save
 
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
@@ -137,7 +137,27 @@ class HomomorphicPipeline:
                 raise TypeError(f"Expected {len(input_names)} clear inputs, got {len(values)}")
         if not all(torch.is_tensor(value) for value in values):
             raise TypeError("forward_clear inputs must be torch.Tensor instances")
+        for name, value in zip(input_names[1:], values[1:]):
+            if tuple(value.shape) != tuple(self.input_shape[name]):
+                raise ValueError(f"Clear input '{name}' has shape {tuple(value.shape)}; "
+                                 f"expected {tuple(self.input_shape[name])}.")
 
+        if hom_params is not None:
+            from lattica_build.serialization.clear_execution import run_clear_graph
+
+            graph_bytes, tensors_bytes = self.serialize(hom_params)
+            graph = json.loads(graph_bytes)['pipeline_sections']
+            tensors = safetensors_load(tensors_bytes)
+
+            def resolve_data(section, path):
+                node = graph[section]
+                for index in path:
+                    node = node['child_ops'][index]
+                data = tuple(tensors[ref] for ref in node['data_ref'])
+                return data[0] if len(data) == 1 else data
+
+            return run_clear_graph(graph, values[0], dict(zip(input_names[1:], values[1:])), resolve_data,
+                                   self.as_complex)
         # Let the operators know the ring size.
         with clear_options(internal_n=getattr(hom_params, "internal_n", None)):
             if self.client_pre is not None:

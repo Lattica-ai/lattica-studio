@@ -7,9 +7,9 @@ from lattica_build.params.params import HomParams
 
 
 def test_chain_serves_the_slot_counts_the_pipeline_bootstraps():
-    """The input fills the ring's 2^15 slots; HomSumSlots(k=2^10) folds them to 32, which the bootstrap sees:
+    """The input fills the ring's 2^15 slots; HomSumSlots(nb_cols=32) folds them to 32, which the bootstrap sees:
     the chain is built for 32."""
-    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(k=2 ** 10), Bootstrap()), input_shape=(2 ** 15,))
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(nb_cols=32), Bootstrap()), input_shape=(2 ** 15,))
     params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, num_special_primes=7)
     pipeline.serialize(params)
     expected = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {32})
