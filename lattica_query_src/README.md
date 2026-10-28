@@ -4,13 +4,26 @@ The Lattica Query Client executes inference against Lattica workers. Encrypted
 queries encrypt the input locally, process it remotely as ciphertext, and
 decrypt the response locally before returning a clear tensor.
 
-## Installation
+Two clients live in this folder, one per language:
+
+| Client | Package | Code |
+| --- | --- | --- |
+| Python | `lattica-query` on PyPI (`pyproject.toml`) | `lattica_query/` |
+| JavaScript (browser) | `@lattica-ai/query` on npm (`package.json`) | `src/`, built into `dist/` |
+
+Both read the generated protobuf code in `lattica_query/serialization/generated/`
+(`*_pb2.py` for Python, `*.ts` for JavaScript). `make proto` in
+`lattice-toolkit/toolkit` regenerates both from the `.proto` files there.
+
+## Python client
+
+### Installation
 
 ```bash
 pip install lattica-query
 ```
 
-## Query API
+### Query API
 
 ```python
 from lattica_query import QueryClient, QueryToken
@@ -36,7 +49,7 @@ The client exposes three focused namespaces:
 queries through one client instance because its session and latest timing state
 are shared.
 
-## Credentials
+### Credentials
 
 `QueryToken` keeps the secret credential out of its representation. If you omit
 `TokenIdentity`, the client decodes the stable token ID locally from the
@@ -47,7 +60,7 @@ Stored tokens are organized by encoded token name and ID under
 `~/.lattica/tokens`. A name is required to save a token. Credential files use
 owner-only permissions.
 
-## Key storage and recovery
+### Key storage and recovery
 
 Keys are stored under `~/.lattica/keys/<encoded-token-id>`. Each replacement is
 written as a complete revision and then committed atomically, so an interrupted
@@ -61,7 +74,7 @@ completed; worker preprocessing may happen later if no worker was running.
 When an upload is interrupted, the key stays pending and the next
 `client.keys.ensure()` resumes registration from the stored file.
 
-## Timing and output
+### Timing and output
 
 Pass `show_timing=True` to render client and server timing after an encrypted
 query:
@@ -80,7 +93,7 @@ with output_context(OutputConfig(enabled=False)):
     result = client.query.encrypted(plaintext, key=key)
 ```
 
-## Configuration and errors
+### Configuration and errors
 
 Production endpoints are used by default. Tests and local tools can inject an
 immutable per-client configuration:
@@ -98,6 +111,31 @@ exports the stable categories `AuthenticationError`, `ClientVersionError`,
 `InvalidCredentialError`, `SerializationError`, `StorageError`, and
 `TransportError`. More specific diagnostic exceptions live in
 `lattica_query.errors`.
+
+## JavaScript client
+
+A TypeScript client for the browser. It runs the FHE core as WebAssembly
+(`@lattica-ai/fhe-core`) in a Web Worker.
+
+### Installation
+
+```bash
+npm install @lattica-ai/query
+```
+
+### Development
+
+```bash
+npm ci            # installs and builds (dist/)
+npm run build     # tsup; copies the WASM of the installed @lattica-ai/fhe-core into dist/wasm/
+npm test          # jest
+```
+
+`src/index.ts` holds `LatticaQueryClient` (init, encrypt, apply_query, decrypt,
+runQuery); `src/wasm/` the Web Worker that loads the WASM. The demo app
+(`lattice-toolkit/frontend/packages/demo`) and the WASM integration test
+(`lattice-toolkit/toolkit/integration-tests/wasm`) depend on this folder with
+`file:` links, so build it before running `npm ci` there.
 
 See the full documentation at [platformdocs.lattica.ai](https://platformdocs.lattica.ai/).
 

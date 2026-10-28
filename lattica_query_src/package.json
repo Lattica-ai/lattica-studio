@@ -1,0 +1,70 @@
+{
+  "name": "@lattica-ai/query",
+  "version": "4.1.1",
+  "description": "A client for lattica image queries",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "homepage": "https://www.lattica.ai/platform/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Lattica-ai/lattica-studio.git",
+    "directory": "lattica_query_src"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "update-version": "ts-node dev_scripts/updateVersion.ts",
+    "build": "npm run update-version && tsup",
+    "dev": "tsup --watch",
+    "prepare": "npm run build",
+    "test": "jest",
+    "test:build": "tsup src/index.ts src/**tests**/LatticeQueryClient.test.ts --onSuccess 'node dist/**tests**/LatticeQueryClient.test.js'",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prepublishOnly": "npm run update-version && npm run build"
+  },
+  "keywords": [
+    "lattica",
+    "image",
+    "query"
+  ],
+  "author": "Lattica AI",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.8.4",
+    "@typescript-eslint/eslint-plugin": "^8.12.2",
+    "@typescript-eslint/parser": "^8.12.2",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "prettier": "^3.3.3",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "ts-proto": "^2.6.0",
+    "ts-protoc-gen": "^0.15.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.19.0"
+  },
+  "dependencies": {
+    "google-protobuf": "^3.21.4",
+    "ndarray": "^1.0.19",
+    "@lattica-ai/fhe-core": "^0.7.0"
+  }
+}
