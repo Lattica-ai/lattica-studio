@@ -1,6 +1,7 @@
 """See `params/README.md` for usage details."""
 
 import enum
+import math
 from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
@@ -19,6 +20,17 @@ class DecompositionType(enum.StrEnum):
 def _is_power_of_two(x: int) -> bool:
     return x > 0 and (x & (x - 1)) == 0
 
+
+# Largest log2(QP) at 128-bit security, by (log2 n, secret Hamming weight sk_hw): lattice-estimator with error sigma
+# 3.19, m = n, Arora-GB and BKW excluded, the cheapest attack. Only sk_hw 192 has entries: other secrets (the default
+# sk_hw 0, uniform ternary, included) and other rings are not checked.
+MAX_LOG_QP_128 = {
+    (14, 192): 402,
+    (15, 192): 809,
+    (16, 192): 1638,
+}
+
+
 @dataclass(kw_only=True)
 class HomParams:
     n: int
@@ -29,6 +41,8 @@ class HomParams:
     bv_gadget_bits: int = 4
     num_special_primes: int = 0
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
+    # With a bootstrap: fresh ciphertexts hold this many pipeline rows, counted from the bottom of the chain (the
+    # last pipeline rows), plus the bootstrap base. None: all the pipeline rows.
     num_init_rows: int | None = None
     # Bootstrapping: real slots (one EvalMod) or complex; StC first (slim) or last.
     real_boot: bool = True
@@ -43,9 +57,24 @@ class HomParams:
     def bootstrapping(self) -> bool:
         return self.boot_params is not None
 
+    def check_chain(self) -> None:
+        """HYBRID: log2(QP) of the primes mod_chain drew (the whole chain, special primes included) is within
+        MAX_LOG_QP_128 when the table has the ring size and sk_hw."""
+        if self.decomposition_type != DecompositionType.HYBRID:
+            return
+        log_n = self.n.bit_length() - 1
+        max_log_qp = MAX_LOG_QP_128.get((log_n, self.sk_hw))
+        log_qp = sum(math.log2(q) for row in self.mod_chain.factors_per_row for q in row)
+        if max_log_qp is not None and log_qp > max_log_qp:
+            raise ValueError(f"log2(QP) of this chain is {log_qp:.1f} bits, over {max_log_qp}, the 128-bit bound "
+                             f"for n = 2^{log_n} with sk_hw = {self.sk_hw}: shorten the chain or use fewer special primes.")
+
     def __post_init__(self) -> None:
         self.boot_params = None
         self.ring_switch_params = None
+        # the pipeline rows in the order the pipeline consumes them, set by serialize from the level tracing; the
+        # toolkit fills the key-switching digits along it
+        self.consumption_order: tuple[int, ...] | None = None
         self.full_q_list_precision = tuple(tuple(row) for row in self.full_q_list_precision)
 
         if not isinstance(self.n, int) or not _is_power_of_two(self.n):
@@ -105,12 +134,13 @@ class HomParams:
                 raise ValueError(
                     f"n_slots={self.n_slots} is larger than the {self.internal_n} available slots.")
 
-        if not ((isinstance(self.num_init_rows, int) and self.num_init_rows >= 0) or self.num_init_rows is None):
-            raise ValueError(f"num_init_rows must be None or an int >= 0; got {self.num_init_rows!r}.")
+        if not (self.num_init_rows is None or (isinstance(self.num_init_rows, int)
+                                               and 0 <= self.num_init_rows <= len(self.full_q_list_precision))):
+            raise ValueError(f"num_init_rows must be None or an int from 0 to the {len(self.full_q_list_precision)} "
+                             f"pipeline rows; got {self.num_init_rows!r}.")
         for name in ("real_boot", "slim_boot"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")
-
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,6 +161,7 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            "consumption_order": self.consumption_order,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
             "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
@@ -144,6 +175,7 @@ class HomParams:
         bootstrapping = d.pop("bootstrapping", False)
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
+        consumption_order = d.pop("consumption_order", None)
 
         if "g_base_bits" in d:
             if d["decomposition_type"]==DecompositionType.BV:
@@ -158,4 +190,5 @@ class HomParams:
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
+        params.consumption_order = consumption_order
         return params

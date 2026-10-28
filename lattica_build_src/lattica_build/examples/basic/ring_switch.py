@@ -8,7 +8,7 @@ from lattica_build.params.params import HomParams
 LOG_N = 13
 # The logical input period, which can be smaller than the slots of the
 # sub-ring the client encrypts in (HomRingSwitch's default, 2**11).
-N_SLOTS = 2 ** 3
+N_SLOTS = 2 ** 5   # the fewest slots a bootstrap takes (BOOT_PARAMS_PER_N_SLOTS)
 INPUT_SCALE = 2 ** 30
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
 

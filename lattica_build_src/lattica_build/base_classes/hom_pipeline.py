@@ -303,6 +303,7 @@ class HomomorphicPipeline:
             hom_params.boot_params = BootstrappingParams.for_slot_counts(
                 hom_params.real_boot, hom_params.slim_boot, self._bootstrap_slot_counts(hom_params))
         hom_params.mod_chain = ModulusChain(hom_params)
+        hom_params.check_chain()
 
         tensors = {}
         attributes_dict = {
@@ -318,6 +319,8 @@ class HomomorphicPipeline:
             "modulus_chain":                 self._serialize_modulus_chain(hom_params),
             "pipeline_sections":             self._serialize_pipeline_sections(tensors, hom_params)
         }
+        # the order the tracing above dropped the rows in (the toolkit fills the hybrid digits along it)
+        hom_params.consumption_order = hom_params.mod_chain.traced_consumption_order()
         graph_bytes = json.dumps(attributes_dict).encode("utf-8")
         # safetensors has no complex dtype: complex tensors are stored as their real
         # view [..., 2] and listed in the metadata, which the loader uses to restore them
