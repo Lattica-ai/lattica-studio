@@ -1,0 +1,176 @@
+"""See `base_classes/README.md` for usage details."""
+
+import torch
+from torch import Tensor
+from typing import ClassVar
+import contextlib
+import contextvars
+from lattica_build.serialization.hom_op_pb2 import HomOpType
+
+_clear_execution = contextvars.ContextVar("hom_clear_execution", default=False)
+_clear_options = contextvars.ContextVar("hom_clear_options", default={})
+
+
+@contextlib.contextmanager
+def clear_options(**options):
+    """Pass extra settings to the pipeline operators during a plaintext run."""
+    token = _clear_options.set({**_clear_options.get(), **options})
+    try:
+        yield
+    finally:
+        _clear_options.reset(token)
+
+
+class HomOp:
+    OP_TYPE: ClassVar[HomOpType] = None
+    data:    torch.Tensor | tuple[torch.Tensor, ...] | None = None
+
+    def forward(self, *inputs):
+        raise NotImplementedError
+
+    def forward_clear(self, *inputs, **kwargs):
+        """Evaluate this operator on ordinary clear ``torch.Tensor`` values."""
+        if self.is_leaf_op():
+            if len(inputs) != 1:
+                raise TypeError(
+                    f"Default clear execution for leaf {type(self).__name__} "
+                    "requires exactly one input"
+                )
+            return inputs[0]
+
+        options = dict(_clear_options.get())
+        options.update(kwargs)
+        execution_token = _clear_execution.set(True)
+        options_token = _clear_options.set(options)
+        try:
+            return self.forward(*inputs)
+        finally:
+            _clear_options.reset(options_token)
+            _clear_execution.reset(execution_token)
+
+    @staticmethod
+    def _clear_option(name, default=None):
+        return _clear_options.get().get(name, default)
+
+    def __call__(self, *inputs):
+        from lattica_build.base_classes.hom_op_tracer import Tracer
+
+        if _clear_execution.get() and all(torch.is_tensor(value) for value in inputs):
+            return self.forward_clear(*inputs)
+        tracer = Tracer.current_or_none()
+        if tracer is not None:
+            return tracer.call(self, *inputs)
+        if all(torch.is_tensor(value) for value in inputs):
+            return self.forward_clear(*inputs)
+        raise RuntimeError(
+            "HomOp called outside tracing context: provide HomValue inputs "
+            "inside Tracer or torch.Tensor inputs for clear execution."
+        )
+
+    def _require_clear_data(self):
+        data = getattr(self, "data", None)
+        if data is None:
+            raise ValueError(f"{type(self).__name__} requires data before clear execution")
+        return data
+
+    def is_leaf_op(self) -> bool:
+        return self.OP_TYPE is not None
+
+    def serialize(self, tensors, *inputs, **kwargs):
+        from lattica_build.base_classes.hom_op_tracer import Tracer
+
+        with Tracer(tensors, **kwargs) as tracer:
+            serialized_op, out_val = tracer.serialize_op(self, *inputs)
+
+        # Top-level section inputs are otherwise represented only by IDs. Keep
+        # their resolved shape, packing axis, level, and scale at the section
+        # boundary so graph consumers do not need to reconstruct that state.
+        serialized_op["inputs"] = [value.id for value in inputs]
+        serialized_op["input_values"] = [
+            tracer.serialize_hom_val(value)
+            for value in inputs
+        ]
+
+        tracer.finalize()
+        return serialized_op, out_val
+
+    def infer_output_shape(self, *inputs, internal_n=None):
+        if not self.is_leaf_op():
+            raise RuntimeError("infer_output_shape should only be called directly on leaf ops")
+        return inputs[0]
+
+    def infer_output_level_and_scale(self, *inputs, hom_params=None):
+        if not self.is_leaf_op():
+            raise RuntimeError("infer_output_level_and_scale should only be called directly on leaf ops")
+        return inputs[0]
+
+
+    # =============== methods related to set_data ================== #
+
+    def _set_data_here(self, *data: "Tensor") -> None:
+        """Set the data for this op."""
+        if not self.is_leaf_op():
+            raise RuntimeError("data should only be set directly on base ops")
+
+        # complex data keeps its imaginary parts
+        def convert(item):
+            if not torch.is_tensor(item):
+                item = torch.tensor(item)
+            dtype = torch.complex128 if item.is_complex() else torch.float64
+            return item.detach().to(dtype=dtype).contiguous()
+        converted_data = tuple(convert(item) for item in data)
+        if len(converted_data) == 1:
+            self.data = converted_data[0]
+            if hasattr(self, "dims"):
+                self.data = self.data.reshape(self.dims)
+        else:
+            self.data = converted_data
+
+    def _get_child(self, name: str) -> "HomOp":
+        """Get the child op with the given name."""
+        try:
+            child = getattr(self, name)
+        except AttributeError as error:
+            raise KeyError(
+                f"Unknown child op {name!r}."
+                f"Available: {[n for n, v in self.__dict__.items() if isinstance(v, HomOp)]}"
+        ) from error
+        if not isinstance(child, HomOp):
+            raise KeyError(f"{name!r} is not a HomOp.")
+        return child
+
+    def set_data(self, *data,  name: str | int | tuple[int, ...] | None = None) -> "HomOp":
+        """Parse a path and set data on the corresponding op.
+
+        Returns this operator so data setup can be chained during construction.
+        """
+
+        if name is None or (self.is_leaf_op() and name in (0, "0")):
+            self._set_data_here(*data)
+            return self
+
+        if isinstance(name, int):
+            name = str(name)
+
+        elif isinstance(name, tuple):
+            if not all(isinstance(index, int) for index in name):
+                raise TypeError("set_data tuple path must contain only ints.")
+
+            name = ".".join(map(str, name))
+
+        elif not isinstance(name, str):
+            raise TypeError(
+                "set_data accepts a string, int, tuple[int, ...], or None."
+            )
+
+        child_name, separator, remaining_path = name.partition(".")
+
+        child = self._get_child(child_name)
+        child.set_data(*data, name=remaining_path if separator else None)
+        return self
+
+    # =============== enf of methods related to set_data ================== #
+
+
+class ClientOp(HomOp):
+    """Marker base for operations that may only run on clear client data."""

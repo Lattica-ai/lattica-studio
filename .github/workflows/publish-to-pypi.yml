@@ -1,0 +1,102 @@
+name: Publish to PyPI
+# run-name gives the run a fixed title, e.g. "Publish lattica_query_src (publish=true)", so the auto-release CI can find the run it started and wait for it.
+run-name: Publish ${{ inputs.package }} (publish=${{ inputs.publish }})
+
+on:
+  workflow_dispatch:  # allows manual triggering
+    inputs:
+      package:
+        description: 'Which package to publish'
+        required: true
+        type: choice
+        options:
+          - lattica_build_src
+          - lattica_query_src
+          - lattica_studio_src
+      publish:
+        description: 'Upload the wheel to PyPI and tag the release (off: only build it and keep it as a run artifact)'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.7.12"
+  WHEEL_ARTIFACT: ${{ inputs.package }}-wheel
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pkg_info.outputs.version }}
+      package_name: ${{ steps.pkg_info.outputs.package_name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Get package info
+        id: pkg_info
+        working-directory: ${{ inputs.package }}
+        run: |
+          VERSION=$(uv version --short)
+          PACKAGE_NAME=$(uv version | awk '{print $1}')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "package_name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Build the wheel
+        working-directory: ${{ inputs.package }}
+        run: uv build --wheel --out-dir dist
+
+      - name: Keep the wheel as a run artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.WHEEL_ARTIFACT }}
+          path: ${{ inputs.package }}/dist/*.whl
+          if-no-files-found: error
+
+  publish:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.WHEEL_ARTIFACT }}
+          path: dist
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Publish to PyPI using trusted publishing
+        run: uv publish --verbose dist/*.whl
+
+      # Add a git tag like pypi-lattica-studio-v0.5.0 to the released commit.
+      - name: Create Git tag
+        env:
+          TAG: pypi-${{ needs.build.outputs.package_name }}-v${{ needs.build.outputs.version }}
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
