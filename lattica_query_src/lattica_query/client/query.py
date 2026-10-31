@@ -12,7 +12,11 @@ if TYPE_CHECKING:
 
 
 class QueryAPI:
-    """Run clear and encrypted queries."""
+    """Run clear and encrypted queries.
+
+    ``encrypted()`` runs one query end to end. ``encrypt()``, ``execute()`` and
+    ``decrypt()`` are its three steps, for callers that run or time them apart.
+    """
 
     def __init__(self, worker: "WorkerGateway") -> None:
         self._worker = worker
@@ -38,3 +42,25 @@ class QueryAPI:
                 if server_timing:
                     summarize_timing(parse_server_timing(server_timing), "SERVER")
             return execution.value
+
+    def encrypt(self, plaintext: "torch.Tensor", *, key: QueryKey) -> bytes:
+        """Preprocess and encrypt one query locally; ``execute()`` runs the ciphertext."""
+        with OperationLog("encrypting query", theme=QUERY_THEME):
+            return self._executor.encrypt(plaintext, key)
+
+    def execute(self, ciphertext: bytes) -> bytes:
+        """Run the model on a ciphertext from ``encrypt()`` and return the encrypted result."""
+        if not isinstance(ciphertext, bytes) or not ciphertext:
+            raise ValueError("ciphertext must be non-empty bytes")
+        with OperationLog("running encrypted query on the worker", theme=QUERY_THEME):
+            return self._worker.execute_encrypted(ciphertext)
+
+    def decrypt(self, ciphertext: bytes, *, key: QueryKey) -> "torch.Tensor":
+        """Decrypt and postprocess an encrypted result from ``execute()`` locally."""
+        with OperationLog("decrypting result", theme=QUERY_THEME):
+            return self._executor.decrypt(ciphertext, key)
+
+    @property
+    def last_server_timing(self) -> dict[str, float]:
+        """The server's timing of the last worker call: seconds per step, empty if it reported none."""
+        return parse_server_timing(self._worker.last_timing.server_header)
