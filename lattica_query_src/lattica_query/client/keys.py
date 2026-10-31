@@ -56,16 +56,33 @@ class KeysAPI:
     def generate(
         self,
         path: str | Path | None = None,
+        *,
+        initialization: QueryInitialization | None = None,
+        register: bool = True,
     ) -> QueryKey:
-        """Generate a new key, replacing any local bundle at the destination."""
+        """Generate a new key, replacing any local bundle at the destination.
+
+        The key is generated for ``initialization`` (from ``fetch_initialization()``),
+        fetched here when omitted. With ``register=False`` the key stays local and
+        its evaluation key pending; ``ensure()`` registers it later.
+        """
         identity = self._token.require_identity()
         resolved_path = Path(path) if path is not None else get_key_path(identity)
         with key_lock(resolved_path):
-            return self._generate(resolved_path)
+            return self._generate(resolved_path, initialization, register)
 
-    def _generate(self, resolved_path: Path) -> QueryKey:
+    def fetch_initialization(self) -> QueryInitialization:
+        """Fetch the model's context and client model, which keys are generated for."""
+        return self._fetch_client_data()
+
+    def _generate(
+        self,
+        resolved_path: Path,
+        initialization: QueryInitialization | None = None,
+        register: bool = True,
+    ) -> QueryKey:
         identity = self._token.require_identity()
-        init_data = self._fetch_client_data()
+        init_data = initialization if initialization is not None else self._fetch_client_data()
         with OperationLog("generating FHE keys", theme=QUERY_THEME):
             secret_key, evaluation_key = fhe_core.generate_key(
                 init_data.client_model,
@@ -78,7 +95,7 @@ class KeysAPI:
             )
             record = save_key_bundle(identity, key, evaluation_key, resolved_path)
 
-        return self._register(record).key
+        return self._register(record).key if register else record.key
 
     def load(self, path: str | Path | None = None) -> QueryKey:
         """Load a local key without contacting the backend."""

@@ -28,8 +28,33 @@ The client exposes three focused namespaces:
   state and never contacts the service.
 - `client.query.encrypted()` performs client preprocessing, encryption, worker
   execution, decryption, and postprocessing. `clear()` executes a clear query.
-- `client.encrypted_data.upload(path)` uploads a custom encrypted-data artifact
-  and asks the worker to load it.
+- `client.encrypted_data.encrypt(data, path, key=key)` encrypts a model's custom
+  inputs (a dict of tensors by input name) into an archive, and
+  `client.encrypted_data.upload(path)` uploads it and asks the worker to load it.
+
+### Running the steps separately
+
+`client.query.encrypted()` is `encrypt()`, `execute()` and `decrypt()` in one
+call. Call them directly to run or time the steps apart, for example in
+separate processes; only `execute()` contacts the worker:
+
+```python
+ciphertext = client.query.encrypt(plaintext, key=key)
+encrypted_result = client.query.execute(ciphertext)
+result = client.query.decrypt(encrypted_result, key=key)
+server_seconds = client.query.last_server_timing  # e.g. {"worker": 0.03, ...}
+```
+
+Key generation splits the same way. `fetch_initialization()` downloads the
+model's context and client model, `generate()` with `initialization=` makes the
+key locally from them, and `register=False` leaves its evaluation key pending
+until a later `ensure()` uploads it:
+
+```python
+initialization = client.keys.fetch_initialization()
+key = client.keys.generate(path, initialization=initialization, register=False)
+client.keys.ensure(path)  # uploads and registers the evaluation key
+```
 
 `QueryClient` owns one HTTP session. Use it as a context manager or call
 `close()`; repeated calls to `close()` are safe. Do not execute concurrent

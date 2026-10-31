@@ -9,6 +9,7 @@ from .errors import (
     TransportError,
 )
 from .logging import OutputConfig, output_context
+from .serialization.artifacts import QueryInitialization
 from .transport.settings import TransportConfig
 
 __all__ = [
@@ -18,6 +19,7 @@ __all__ = [
     "LatticaClientError",
     "OutputConfig",
     "QueryClient",
+    "QueryInitialization",
     "QueryKey",
     "QueryToken",
     "SerializationError",
