@@ -26,15 +26,14 @@
     "LICENSE.md"
   ],
   "scripts": {
-    "update-version": "ts-node dev_scripts/updateVersion.ts",
-    "build": "npm run update-version && tsup",
+    "build": "tsup",
     "dev": "tsup --watch",
     "prepare": "npm run build",
     "test": "jest",
     "test:build": "tsup src/index.ts src/**tests**/LatticeQueryClient.test.ts --onSuccess 'node dist/**tests**/LatticeQueryClient.test.js'",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "prepublishOnly": "npm run update-version && npm run build"
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "lattica",
