@@ -6,10 +6,10 @@ decrypt the response locally before returning a clear tensor.
 
 Two clients live in this folder, one per language:
 
-| Client | Package | Code |
-| --- | --- | --- |
-| Python | `lattica-query` on PyPI (`pyproject.toml`) | `lattica_query/` |
-| JavaScript (browser) | `@lattica-ai/query` on npm (`package.json`) | `src/`, built into `dist/` |
+| Client | Code |
+| --- | --- |
+| Python (`lattica-query` on PyPI) | `lattica_query/` |
+| JavaScript (browser) | `src/`, built into `dist/` |
 
 Both read the generated protobuf code in `lattica_query/serialization/generated/`
 (`*_pb2.py` for Python, `*.ts` for JavaScript). `make proto` in
@@ -141,12 +141,6 @@ exports the stable categories `AuthenticationError`, `ClientVersionError`,
 
 A TypeScript client for the browser. It runs the FHE core as WebAssembly
 (`@lattica-ai/fhe-core`) in a Web Worker.
-
-### Installation
-
-```bash
-npm install @lattica-ai/query
-```
 
 ### Development
 
