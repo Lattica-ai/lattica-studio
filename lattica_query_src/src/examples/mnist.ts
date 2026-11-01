@@ -22,10 +22,7 @@ const imagePath = './src/examples/data/four_200x200.png';
     client = new LatticaQueryClientLocalDev(jwt);
     console.log('DEV client created');
   } else {
-    client = new LatticaQueryClient(
-      jwt,
-      '<BackendUrl>', // the app of the environment to query
-    );
+    client = new LatticaQueryClient(jwt);
     console.log('Client created');
   }
 

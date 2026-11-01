@@ -1,5 +1,5 @@
 ### How to run an example:
-- If you want a local run set `RUN_LOCAL=true`, otherwise set it to `false` and set the `beUrl` to point to `app` of the correct environment.
+- If you want a local run set `RUN_LOCAL=true`, otherwise set it to `false` to query the Lattica API.
 - Make sure you configure the `jwt` token that corresponds to the model you want to use, or configure `MODEL_ID` to generate a new token.
 - In `tsup.config.ts` append `src/examples/<eg>.ts` to `entry` list.
 - In `RunExample.html`, change the script path to the example you want to run `dist/examples/<eg>.mjs`.

@@ -49,10 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
     client = new LatticaQueryClientLocalDev(jwt);
     workerManagerSingleton.logConsole("DEV client created");
   } else {
-    client = new LatticaQueryClient(
-      jwt,
-      "<BackendUrl>", // the app of the environment to query
-    );
+    client = new LatticaQueryClient(jwt);
     workerManagerSingleton.logConsole("Client created");
   }
 

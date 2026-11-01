@@ -12,8 +12,8 @@ Two clients live in this folder, one per language:
 | JavaScript (browser) | `src/`, built into `dist/` |
 
 Both read the generated protobuf code in `lattica_query/serialization/generated/`
-(`*_pb2.py` for Python, `*.ts` for JavaScript). `make proto` in
-`lattice-toolkit/toolkit` regenerates both from the `.proto` files there.
+(`*_pb2.py` for Python, `*.ts` for JavaScript), generated from the `.proto` files of
+the Lattica FHE core.
 
 ## Python client
 
@@ -139,22 +139,24 @@ exports the stable categories `AuthenticationError`, `ClientVersionError`,
 
 ## JavaScript client
 
-A TypeScript client for the browser. It runs the FHE core as WebAssembly
-(`@lattica-ai/fhe-core`) in a Web Worker.
+A TypeScript client for the browser. It runs the FHE core as WebAssembly in a
+Web Worker.
 
 ### Development
 
 ```bash
-npm ci            # installs and builds (dist/)
-npm run build     # tsup; copies the WASM of the installed @lattica-ai/fhe-core into dist/wasm/
-npm test          # jest
+npm ci              # installs and builds (dist/)
+npm run build       # tsup, plus the FHE core WASM (cpp_sdk.js, cpp_sdk.wasm) into dist/wasm/ when it is there
+npm run build:wasm  # only the WASM copy; fails when the WASM is missing
+npm test            # jest
 ```
 
+The WASM is taken from `LATTICA_FHE_CORE_WASM_DIR`, or from the sibling FHE core
+build when it is not set.
+
 `src/index.ts` holds `LatticaQueryClient` (init, encrypt, apply_query, decrypt,
-runQuery); `src/wasm/` the Web Worker that loads the WASM. The demo app
-(`lattice-toolkit/frontend/packages/demo`) and the WASM integration test
-(`lattice-toolkit/toolkit/integration-tests/wasm`) depend on this folder with
-`file:` links, so build it before running `npm ci` there.
+runQuery); `src/wasm/` the Web Worker that loads the WASM. Apps that depend on
+this folder with a `file:` link need `dist/` built first.
 
 See the full documentation at [platformdocs.lattica.ai](https://platformdocs.lattica.ai/).
 

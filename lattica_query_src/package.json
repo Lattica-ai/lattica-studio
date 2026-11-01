@@ -26,7 +26,8 @@
     "LICENSE.md"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node copy_wasm.mjs",
+    "build:wasm": "node copy_wasm.mjs --required",
     "dev": "tsup --watch",
     "prepare": "npm run build",
     "test": "jest",
@@ -63,7 +64,6 @@
   },
   "dependencies": {
     "google-protobuf": "^3.21.4",
-    "ndarray": "^1.0.19",
-    "@lattica-ai/fhe-core": "^0.7.0"
+    "ndarray": "^1.0.19"
   }
 }
