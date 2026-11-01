@@ -67,7 +67,7 @@ jobs:
 
   publish:
     needs: build
-    # Publish the wheel this run built, or, when build was skipped for from_run_id, the wheel that run built.
+    # Prod only (publish=true): upload the wheel this run built, or, given from_run_id, the wheel the staging run built (build skipped).
     if: ${{ !cancelled() && inputs.publish && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.from_run_id != '')) }}
     runs-on: ubuntu-latest
     environment: pypi
