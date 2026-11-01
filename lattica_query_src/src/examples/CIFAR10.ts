@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
   } else {
     client = new LatticaQueryClient(
       jwt,
-      "https://gini.api.b543.lattica.dev", // Gini
+      "<BackendUrl>", // the app of the environment to query
     );
     workerManagerSingleton.logConsole("Client created");
   }

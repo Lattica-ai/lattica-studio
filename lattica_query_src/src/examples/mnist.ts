@@ -24,7 +24,7 @@ const imagePath = './src/examples/data/four_200x200.png';
   } else {
     client = new LatticaQueryClient(
       jwt,
-      'https://api-alb-509680522.eu-central-1.elb.amazonaws.com', // old-dev env
+      '<BackendUrl>', // the app of the environment to query
     );
     console.log('Client created');
   }
