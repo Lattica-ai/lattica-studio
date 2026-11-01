@@ -67,7 +67,7 @@ jobs:
 
   publish:
     needs: build
-    # Runs after the build, or without one when the wheel comes from from_run_id.
+    # Publish the wheel this run built, or, when build was skipped for from_run_id, the wheel that run built.
     if: ${{ !cancelled() && inputs.publish && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.from_run_id != '')) }}
     runs-on: ubuntu-latest
     environment: pypi
