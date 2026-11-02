@@ -20,6 +20,8 @@ _USE_IN_PROCESS_TENSOR_TRANSPORT = bool(
 if TYPE_CHECKING:
     from .worker import WorkerGateway
 
+_ParsedKey = tuple[ClientModel, ExtendedContext, ExtendedSecretKey]
+
 
 @dataclass(frozen=True, slots=True)
 class EncryptedExecution:
@@ -35,17 +37,46 @@ class EncryptedQueryExecutor:
 
     def execute(self, plaintext: Any, key: QueryKey) -> EncryptedExecution:
         timings: dict[str, float] = {}
+        parsed_key = self._parse_key(key, timings)
+        ciphertext = self._encrypt(plaintext, parsed_key, timings)
 
+        log_status("sending encrypted data to worker for processing")
+        started = time.perf_counter()
+        encrypted_result = self._worker.execute_encrypted(ciphertext)
+        timings["worker"] = time.perf_counter() - started
+
+        return EncryptedExecution(self._decrypt(encrypted_result, parsed_key, timings), timings)
+
+    def encrypt(self, plaintext: Any, key: QueryKey) -> bytes:
+        """Preprocess and encrypt one query into the ciphertext the worker executes."""
+        timings: dict[str, float] = {}
+        return self._encrypt(plaintext, self._parse_key(key, timings), timings)
+
+    def decrypt(self, encrypted_result: bytes, key: QueryKey) -> Any:
+        """Decrypt and postprocess the worker's encrypted result."""
+        timings: dict[str, float] = {}
+        return self._decrypt(encrypted_result, self._parse_key(key, timings), timings)
+
+    @staticmethod
+    def _parse_key(key: QueryKey, timings: dict[str, float]) -> _ParsedKey:
+        started = time.perf_counter()
+        parsed_key = (
+            ClientModel.from_bytes(key.client_model),
+            ExtendedContext.from_bytes(key.context),
+            ExtendedSecretKey.from_bytes(key.secret_key),
+        )
+        timings["serialization"] = time.perf_counter() - started
+        return parsed_key
+
+    def _encrypt(self, plaintext: Any, parsed_key: _ParsedKey, timings: dict[str, float]) -> bytes:
+        model, context, secret_keys = parsed_key
         log_status("preparing client-side data")
         started = time.perf_counter()
         serialized_plaintext = serialize_tensor(
             plaintext, in_process=_USE_IN_PROCESS_TENSOR_TRANSPORT
         )
-        model = ClientModel.from_bytes(key.client_model)
-        context = ExtendedContext.from_bytes(key.context)
-        secret_keys = ExtendedSecretKey.from_bytes(key.secret_key)
         input_context, input_secret_key = self._select_input_key(context, secret_keys)
-        timings["serialization"] = time.perf_counter() - started
+        timings["serialization"] += time.perf_counter() - started
 
         started = time.perf_counter()
         serialized_plaintext = fhe_core.apply_client_block(
@@ -71,12 +102,10 @@ class EncryptedQueryExecutor:
             None,
         )
         timings["encryption"] = time.perf_counter() - started
+        return ciphertext
 
-        log_status("sending encrypted data to worker for processing")
-        started = time.perf_counter()
-        encrypted_result = self._worker.execute_encrypted(ciphertext)
-        timings["worker"] = time.perf_counter() - started
-
+    def _decrypt(self, encrypted_result: bytes, parsed_key: _ParsedKey, timings: dict[str, float]) -> Any:
+        model, context, secret_keys = parsed_key
         log_status("decrypting result from worker")
         started = time.perf_counter()
         serialized_plaintext = fhe_core.dec(
@@ -103,7 +132,7 @@ class EncryptedQueryExecutor:
         started = time.perf_counter()
         result = deserialize_tensor(serialized_plaintext)
         timings["serialization"] += time.perf_counter() - started
-        return EncryptedExecution(result, timings)
+        return result
 
     @staticmethod
     def _select_input_key(context: ExtendedContext, secret_keys: ExtendedSecretKey):
