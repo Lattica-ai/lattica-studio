@@ -49,8 +49,7 @@ class HomParams:
     def __post_init__(self) -> None:
         self.boot_params = None
         self.ring_switch_params = None
-        # the pipeline rows in the order the pipeline consumes them, set by serialize from the level tracing; the
-        # toolkit fills the key-switching digits along it
+        # the pipeline rows in the order the pipeline consumes them, set by serialize from the level tracing
         self.consumption_order: tuple[int, ...] | None = None
         self.full_q_list_precision = tuple(tuple(row) for row in self.full_q_list_precision)
 

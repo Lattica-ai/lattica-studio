@@ -318,7 +318,7 @@ class HomomorphicPipeline:
             "modulus_chain":                 self._serialize_modulus_chain(hom_params),
             "pipeline_sections":             self._serialize_pipeline_sections(tensors, hom_params)
         }
-        # the order the tracing above dropped the rows in (the toolkit fills the hybrid digits along it)
+        # the order the tracing above dropped the rows in
         hom_params.consumption_order = hom_params.mod_chain.traced_consumption_order()
         graph_bytes = json.dumps(attributes_dict).encode("utf-8")
         # safetensors has no complex dtype: complex tensors are stored as their real
