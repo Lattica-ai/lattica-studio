@@ -19,6 +19,7 @@ class DecompositionType(enum.StrEnum):
 def _is_power_of_two(x: int) -> bool:
     return x > 0 and (x & (x - 1)) == 0
 
+
 @dataclass(kw_only=True)
 class HomParams:
     n: int
@@ -29,6 +30,8 @@ class HomParams:
     bv_gadget_bits: int = 4
     num_special_primes: int = 0
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
+    # With a bootstrap: fresh ciphertexts hold this many pipeline rows, counted from the bottom of the chain (the
+    # last pipeline rows), plus the bootstrap base. None: all the pipeline rows.
     num_init_rows: int | None = None
     # Bootstrapping: real slots (one EvalMod) or complex; StC first (slim) or last.
     real_boot: bool = True
@@ -46,6 +49,8 @@ class HomParams:
     def __post_init__(self) -> None:
         self.boot_params = None
         self.ring_switch_params = None
+        # the pipeline rows in the order the pipeline consumes them, set by serialize from the level tracing
+        self.consumption_order: tuple[int, ...] | None = None
         self.full_q_list_precision = tuple(tuple(row) for row in self.full_q_list_precision)
 
         if not isinstance(self.n, int) or not _is_power_of_two(self.n):
@@ -105,12 +110,13 @@ class HomParams:
                 raise ValueError(
                     f"n_slots={self.n_slots} is larger than the {self.internal_n} available slots.")
 
-        if not ((isinstance(self.num_init_rows, int) and self.num_init_rows >= 0) or self.num_init_rows is None):
-            raise ValueError(f"num_init_rows must be None or an int >= 0; got {self.num_init_rows!r}.")
+        if not (self.num_init_rows is None or (isinstance(self.num_init_rows, int)
+                                               and 0 <= self.num_init_rows <= len(self.full_q_list_precision))):
+            raise ValueError(f"num_init_rows must be None or an int from 0 to the {len(self.full_q_list_precision)} "
+                             f"pipeline rows; got {self.num_init_rows!r}.")
         for name in ("real_boot", "slim_boot"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")
-
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -131,6 +137,7 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            "consumption_order": self.consumption_order,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
             "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
@@ -144,6 +151,7 @@ class HomParams:
         bootstrapping = d.pop("bootstrapping", False)
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
+        consumption_order = d.pop("consumption_order", None)
 
         if "g_base_bits" in d:
             if d["decomposition_type"]==DecompositionType.BV:
@@ -158,4 +166,5 @@ class HomParams:
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
+        params.consumption_order = consumption_order
         return params
