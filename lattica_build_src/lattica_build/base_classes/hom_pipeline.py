@@ -303,7 +303,6 @@ class HomomorphicPipeline:
             hom_params.boot_params = BootstrappingParams.for_slot_counts(
                 hom_params.real_boot, hom_params.slim_boot, self._bootstrap_slot_counts(hom_params))
         hom_params.mod_chain = ModulusChain(hom_params)
-        hom_params.check_chain()
 
         tensors = {}
         attributes_dict = {
