@@ -25,10 +25,11 @@ BOOT_CONFIGURATION = {
     # every slot count measured (2**15 to 2**9); the others take theirs from BOOT_PARAMS_PER_N_SLOTS.
     'log_delta_slim' : 12,
 
-    # SubSum stage size cap and the DFTs' baby-step/giant-step ratio. 4 puts the 15-16
-    # diagonal factors on 8x2 grids (one giant step) rather than 4x4 (three).
+    # SubSum stage size cap and the DFTs' baby-step/giant-step ratio. On an RTX 5090, 8 is
+    # 2.8% faster than 4 at 2**15 slots and 0.7% at 2**14 for 0.66 and 0.33 GiB more peak
+    # memory, the same at 2**13 and 2**10, and 5% slower at 2**12.
     'subsum_max_stage_size' : 8,
-    'baby_giant_ratio' : 4,
+    'baby_giant_ratio' : 8,
 }
 
 # Per number of slots, by log2(n_slots): the StC split of the log2(n_slots) FFT stages
