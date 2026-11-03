@@ -65,7 +65,9 @@ def test_slot_client_and_fhe_clear_execution():
     assert torch.equal(HomModSwitch()(x), x)
     assert torch.equal(Bootstrap()(x), x)
     assert torch.equal(HomRingSwitch(10)(x), x)
-    assert torch.equal(HomomorphicPipeline(hom=SequentialHomOp(Clamp(0, 8)), input_shape=x.shape).forward_clear(x), x)
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4, pt_scale=2**30, num_special_primes=1)
+    pipeline = HomomorphicPipeline(client_pre=[Clamp(0, 8)], hom=HomModSwitch(), input_shape=x.shape)
+    assert torch.equal(pipeline.forward_clear(x, hom_params=params), x)
 
     probabilities = Softmax(-1)(x)
     assert torch.allclose(probabilities.sum(), torch.tensor(1.0))
@@ -191,7 +193,8 @@ def test_composites_and_pipeline_clear_execution():
         input_shape=(2,),
     )
     expected = (x.clamp(0, 2) * torch.tensor([2.0, 3.0])).clamp(0, 3)
-    assert torch.equal(pipeline.forward_clear(x), expected)
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4, pt_scale=2**30, num_special_primes=1)
+    assert torch.equal(pipeline.forward_clear(x, hom_params=params), expected)
 
 
 @pytest.mark.parametrize("c_in,c_out,hw,kernel,stride,padding", [
@@ -309,7 +312,7 @@ def test_mnist_composite_example_predicts_known_digits():
     labels = labels[sample_indices]
 
     pipeline = mnist_fc.Pipeline()
-    predictions = pipeline.build_pipeline().forward_clear(images).argmax(dim=-1)
+    predictions = pipeline.build_pipeline().forward_clear(images, hom_params=pipeline.build_params()).argmax(dim=-1)
     accuracy = (predictions == labels).float().mean()
     assert accuracy >= 0.95, f"clear MNIST accuracy was only {accuracy.item():.1%}"
 

@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 import base64
 
-from lattica_build.base_classes.hom_op import HomOp, clear_options
+from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue, TensorShape
 from torch import Tensor
 import torch
@@ -117,8 +117,9 @@ class HomomorphicPipeline:
     def set_data(self, name: str | int | tuple[int, ...] | None, *data: Tensor, section: PipeSec = PipeSec.HOM) -> None:
         self._get_pipe_section(section).set_data(*data, name=name)
 
-    def forward_clear(self, *inputs, hom_params=None, **named_inputs):
-        """Run the complete pipeline on clear torch tensors."""
+    def forward_clear(self, *inputs, hom_params, **named_inputs):
+        """Run the complete pipeline on clear torch tensors: the pipeline is traced with `hom_params` and its graph
+        run, so each op computes on its input's traced layout and the result matches the ciphertext's."""
         input_names = list(inspect.signature(self.hom.forward).parameters)
         if inputs and named_inputs:
             raise TypeError("forward_clear accepts positional or named inputs, not both")
@@ -142,30 +143,21 @@ class HomomorphicPipeline:
                 raise ValueError(f"Clear input '{name}' has shape {tuple(value.shape)}; "
                                  f"expected {tuple(self.input_shape[name])}.")
 
-        if hom_params is not None:
-            from lattica_build.serialization.clear_execution import run_clear_graph
+        from lattica_build.serialization.clear_execution import run_clear_graph
 
-            graph_bytes, tensors_bytes = self.serialize(hom_params)
-            graph = json.loads(graph_bytes)['pipeline_sections']
-            tensors = safetensors_load(tensors_bytes)
+        graph_bytes, tensors_bytes = self.serialize(hom_params)
+        graph = json.loads(graph_bytes)['pipeline_sections']
+        tensors = safetensors_load(tensors_bytes)
 
-            def resolve_data(section, path):
-                node = graph[section]
-                for index in path:
-                    node = node['child_ops'][index]
-                data = tuple(tensors[ref] for ref in node['data_ref'])
-                return data[0] if len(data) == 1 else data
+        def resolve_data(section, path):
+            node = graph[section]
+            for index in path:
+                node = node['child_ops'][index]
+            data = tuple(tensors[ref] for ref in node['data_ref'])
+            return data[0] if len(data) == 1 else data
 
-            return run_clear_graph(graph, values[0], dict(zip(input_names[1:], values[1:])), resolve_data,
-                                   self.as_complex)
-        # Let the operators know the ring size.
-        with clear_options(internal_n=getattr(hom_params, "internal_n", None)):
-            if self.client_pre is not None:
-                values[0] = self.client_pre.forward_clear(values[0])
-            result = self.hom.forward_clear(*values)
-            if self.client_post is not None:
-                result = self.client_post.forward_clear(result)
-        return result
+        return run_clear_graph(graph, values[0], dict(zip(input_names[1:], values[1:])), resolve_data,
+                               self.as_complex)
 
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
         self.client_preprocessing_data = binary_data

@@ -29,11 +29,11 @@ and returns what decryption reads back:
 - Decryption reads back the slots that hold the values, dropping the padding
   and the repeats, at the input's positions on the slot axis.
 
-Clear execution of a traced graph (`HomomorphicPipeline.forward_clear` with
-`hom_params`) gives each slot operator its input's traced value (slot axis
-`n_axis`, period `n_slots`) and the ring size `internal_n`. Outside a traced
-graph, the input's last axis is the slot axis and is one whole ring, of its
-length rounded up to a power of 2.
+Clear execution of a pipeline (`HomomorphicPipeline.forward_clear`, which
+traces it with `hom_params`) gives each slot operator its input's traced value
+(slot axis `n_axis`, `n_slots`) and the ring size `internal_n`. An operator run
+on its own takes the input's last axis as the slot axis and as one whole ring,
+of its length rounded up to a power of 2.
 
 Per operator:
 
@@ -47,9 +47,11 @@ Per operator:
   `internal_n / k` columns, and the sum runs down the rows of all blocks (row
   `r` of every block, then row `r + 1`); the blocks are the rings, or the
   entries of `blocks_axis_external`. `k` must be a power of 2 dividing
-  `internal_n`. The sums fill the zero padding and the repeats of a shorter
-  period, so with `full_period_output` (the default) the output's slot axis
-  holds whole rings, its period; without it, it keeps the input's length.
+  `internal_n`. The input's slot axis must have no zero padding (a multiple of
+  `n_slots`), or tracing raises `ValueError`. The sums fill the repeats of an
+  `n_slots` shorter than the ring, so with `full_period_output` (the default)
+  the output's slot axis holds whole rings; without it, it keeps the input's
+  length.
 - `HomSumSlots` adds, in each period of `n_slots` slots, the `n_slots / nb_cols`
   slots `nb_cols` apart: slot `j` gets `x[j] + x[j + nb_cols] + ...`, and the
   output's period is `nb_cols`. `nb_cols` (by default 1, the sum of the period)

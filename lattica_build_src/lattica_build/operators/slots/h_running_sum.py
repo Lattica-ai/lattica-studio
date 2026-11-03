@@ -24,9 +24,12 @@ class HomRunningSum(SlotOp):
         rows_budget: Optional allowed modulus rows for modswitch inference.
         full_period_output: Whether, for a running sum along the slot axis, the
             output's slot axis holds whole rings (default): the sums run over
-            the ring, so they fill the zero padding and the repeats of a shorter
-            period, and the output's period is the ring. Otherwise it keeps the
-            input's length and period.
+            the ring, so they fill the repeats of an n_slots shorter than the
+            ring, and the output's n_slots is internal_n. Otherwise it keeps the
+            input's length and n_slots.
+
+    Along the slot axis, the input must have no zero padding: its slot axis is
+    a multiple of n_slots, or the sums would add the padding slots.
     """
 
     OP_TYPE = HomOpType.RunningSum
@@ -55,11 +58,15 @@ class HomRunningSum(SlotOp):
         return self.cumsum_axis is None or to_pos_axis(self.cumsum_axis, input.tensor_shape) == input.n_axis
 
     def infer_output_shape(self, input: HomValue, internal_n=None) -> HomValue:
-        """With full_period_output, a running sum along the slot axis rounds the slot axis up to whole rings of
-        internal_n slots, its period."""
-        if not self.full_period_output or input.n_axis is None or internal_n is None or not self._sums_slot_axis(input):
+        """A running sum along the slot axis takes no zero padding, and with full_period_output rounds the slot axis
+        up to whole rings of internal_n slots."""
+        if input.n_axis is None or internal_n is None or not self._sums_slot_axis(input):
             return input
-        return _whole_rings(input, internal_n)
+        length = input.tensor_shape[input.n_axis]
+        if length % input.n_slots:
+            raise ValueError(f"RunningSum along the slot axis takes no padded input: its {length} values are not a "
+                             f"multiple of n_slots={input.n_slots}")
+        return _whole_rings(input, internal_n) if self.full_period_output else input
 
     def infer_output_level_and_scale(
         self,
@@ -122,5 +129,5 @@ class HomRunningSum(SlotOp):
 
 
 def _whole_rings(value: HomValue, internal_n: int) -> HomValue:
-    """`value` with its slot axis rounded up to whole rings, its period."""
+    """`value` with its slot axis rounded up to whole rings, and n_slots internal_n."""
     return full_period(value, internal_n).make_copy(n_slots=internal_n)
