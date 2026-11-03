@@ -61,6 +61,24 @@ def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_
     assert back.boot_params.lcr_first_cts == lcr
 
 
+@pytest.mark.parametrize("n, num_special_primes, key", [
+    (2 ** 16, 9, (2, 13)),   # 791 bits of q left after 2 EvalMod rescales, 13 special primes: 1584 bits
+    (2 ** 16, 13, None),     # the square key's digit already holds every level past the first
+    (2 ** 10, 9, None),      # no 128-bit bound known
+], ids=["2^16", "wide-square-key", "no-bound"])
+def test_one_digit_relin_key_fits_the_128_bit_bound(n, num_special_primes, key):
+    """The REAL 2**15-slot chain with 5 x (60, 30) after the bootstrap: the one-digit key starts at the first EvalMod
+    level whose rows and special primes fit MAX_LOG_QP_128, and the chain carries its special primes after the square
+    key's."""
+    boot = BootstrappingParams.for_slot_counts(True, False, {2 ** 15}, n=2 ** 16, special_bits=9 * 61)
+    params = HomParams(n=n, full_q_list_precision=((60, 30),) * 5, pt_scale=2 ** 30,
+                       num_special_primes=num_special_primes)
+    params.boot_params = boot
+    assert boot.one_digit_relin_key(boot.chain_sections(params.full_q_list_precision), num_special_primes, n) == key
+    special = ModulusChain(params).section_rows["special_primes"]
+    assert len(special) == (num_special_primes if key is None else key[1])
+
+
 def _boot_params(q_list, real_boot, slim_boot):
     boot = BootstrappingParams.for_slot_counts(real_boot, slim_boot, {2 ** 15})
     return HomParams.from_dict({**HomParams(n=2 ** 16, full_q_list_precision=q_list, pt_scale=2 ** 30,

@@ -64,6 +64,10 @@ LCR_MAX_TERMS = 192
 # The special primes that level's keys need, in bits: its key switch noise must stay below the ModDown's rounding,
 # which three 61-bit primes give and two do not (the toolkit's BACKEND_Context.LCR_MIN_SPECIAL_BITS).
 LCR_MIN_SPECIAL_BITS = 170
+# The most bits of log QP any key may have for 128-bit security under the secret key (hamming weight 192), by ring
+# dimension: the lattice estimator's limits, where the cheapest attack is the sparse-secret hybrid.
+MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 809, 2 ** 16: 1638}
+SPECIAL_PRIME_BITS = 61
 
 
 class BootstrappingParams:
@@ -115,6 +119,30 @@ class BootstrappingParams:
         """Whether that level fits the toolkit's kernel (LCR_MAX_TERMS), with another CtS level after it: 2**12 slots
         and up at N = 2**16."""
         return len(self.dft_split(n_slots)) > 1 and self.lcr_first_cts_terms(n_slots, n) <= LCR_MAX_TERMS
+
+    def one_digit_relin_key(self, chain_sections, num_special_primes: int, n: int) -> tuple[int, int] | None:
+        """The one-digit relinearization key of EvalMod's lower levels, as (e, s): the relinearizations after e of
+        EvalMod's rescales switch with one digit and s special primes, rather than with the square key's two or more
+        digits, which read the key once per digit and add a ModUp. The key holds the q rows left at level e and the
+        fewest special primes with more bits than those rows, so its key switch noise, about N * sigma * Q / P, is a
+        few bits that the rescale after the relinearization divides away. e is the first level where the rows and
+        primes fit MAX_LOG_QP_128. The chain's special primes past num_special_primes are only this key's.
+        chain_sections: the chain's ciphertext sections (chain_sections). None if no level both fits and needs
+        more than one digit of the square key, or if n has no bound."""
+        if n not in MAX_LOG_QP_128 or num_special_primes == 0:
+            return None
+        names = [name for name, _ in chain_sections]
+        first_below = names.index("boot_eval") + 1
+        eval_rows = chain_sections[first_below - 1][1]
+        below_bits = sum(row[0] for _, q_list in chain_sections[first_below:] for row in q_list)
+        for e in range(len(eval_rows)):
+            q_bits = below_bits + sum(row[0] for row in eval_rows[e:])
+            special = q_bits // SPECIAL_PRIME_BITS + 1
+            if special <= num_special_primes:
+                return None   # the square key switches this level, and the ones after it, in one digit already
+            if q_bits + special * SPECIAL_PRIME_BITS <= MAX_LOG_QP_128[n]:
+                return e, special
+        return None
 
     @staticmethod
     def _n_slots_entry(n_slots: int):
