@@ -31,14 +31,14 @@ class SlotOp(HomOp):
 
 def input_layout(op: SlotOp, x: torch.Tensor) -> tuple[HomValue, int]:
     """The traced value of the slot operator's input and its ring size `internal_n`, as clear execution of a traced
-    graph sets them on the op (`op.input_value`, `op.internal_n`), with its period `n_slots` set (internal_n when the
-    value has none). Outside a traced graph, the input's last axis is one whole ring, of its length rounded up to a
+    graph sets them on the op (`op.input_value`, `op.internal_n`). Outside a traced graph (the op run on its own, or
+    `forward_clear` without `hom_params`), the input's last axis is one whole ring, of its length rounded up to a
     power of 2."""
     value, internal_n = op.input_value, op.internal_n
-    if value is not None and value.n_axis is not None and internal_n is not None:
-        return (value if value.n_slots is not None else value.make_copy(n_slots=internal_n)), internal_n
-    ring = next_pow2(x.shape[-1])
-    return HomValue(tensor_shape=tuple(x.shape), n_axis=x.dim() - 1, n_slots=ring), ring
+    if value is None:
+        ring = next_pow2(x.shape[-1])
+        return HomValue(tensor_shape=tuple(x.shape), n_axis=x.dim() - 1, n_slots=ring), ring
+    return value, internal_n
 
 
 def full_period(value: HomValue, n_slots: int) -> HomValue:

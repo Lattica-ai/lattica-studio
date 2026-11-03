@@ -4,13 +4,13 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 
 ## At a glance
 
-| Operator | Operational intent |
-| --- | --- |
+| Operator | Operational intent                                                                                                                                             |
+| --- |----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `HomConj` | Conjugates every slot with one key switch. Adding the input back (`x + HomConj()(x)`) gives `2 * Re(x)`, e.g. to get a real result from complex-packed inputs. |
-| `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots. |
-| `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration. |
-| `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns) induced by slot layout. |
-| `HomSumSlots` | Performs slot-axis reduction into `nb_cols` sums, one per column of the period seen as rows of `nb_cols` slots. |
+| `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots.       |
+| `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration.                            |
+| `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns) induced by slot layout.     |
+| `HomSumSlots` | Performs slot-axis reduction over consecutive `internal_n // nb_cols` elements, simultaneously across all `nb_cols` groups (columns)..                         |
 
 ## What `k` means
 
