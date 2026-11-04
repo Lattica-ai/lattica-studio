@@ -35,6 +35,11 @@ traces it with `hom_params`) gives each slot operator its input's traced value
 on its own takes the input's last axis as the slot axis and as one whole ring,
 of its length rounded up to a power of 2.
 
+The slot operators take no zero padding: the slot axis holds `n_slots`
+values, or whole rings when `n_slots` is `internal_n`, or tracing raises
+`ValueError`. `HomSumSlots` is the exception: the padding adds nothing to its
+sums.
+
 Per operator:
 
 - `HomExpand` puts value `i` of the slot axis in every slot of the ring of
@@ -50,9 +55,7 @@ Per operator:
   blocks are the rings of the slot axis, or the entries of
   `blocks_axis_external`. `k` must be a power of 2 dividing `n_slots`. The ring
   repeats the period, so every repeat gets the same sums and the output keeps
-  the input's shape and `n_slots`. The input's slot axis must have no zero
-  padding: `n_slots` values, or whole rings when `n_slots` is `internal_n`, or
-  tracing raises `ValueError`.
+  the input's shape and `n_slots`.
 - `HomSumSlots` adds, in each period of `n_slots` slots, the `n_slots / nb_cols`
   slots `nb_cols` apart: slot `j` gets `x[j] + x[j + nb_cols] + ...`, and the
   output's period is `nb_cols`. `nb_cols` (by default 1, the sum of the period)
@@ -62,10 +65,7 @@ Per operator:
   over several rings needs.
 - `HomRotateSum` rotates every ring and sums or stacks the requested views.
   Sum mode always includes the original input once; stack mode includes it
-  only when `add_identity_rotation` is set. The rotations bring values into the
-  zero padding of a shorter slot axis, so with `full_period_output` (the
-  default) the output's slot axis is rounded up to a multiple of `n_slots`;
-  without it, it keeps the input's length.
+  only when `add_identity_rotation` is set.
 
 ### Homomorphic execution
 

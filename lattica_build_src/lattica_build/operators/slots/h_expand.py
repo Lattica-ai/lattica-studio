@@ -41,7 +41,7 @@ class HomExpand(SlotOp):
         self.stages_per_level = stages_per_level
         self.rows_budget = rows_budget
 
-    def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
+    def infer_slot_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
         """Infer shape by inserting axis `expand_axis` with dimension `n_slots`. Each output holds one value in
         every slot of the ring (internal_n on the slot axis), so its period is 1. The slot axis must hold exactly
         n_slots values."""

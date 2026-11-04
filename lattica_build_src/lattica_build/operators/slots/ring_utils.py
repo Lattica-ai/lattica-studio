@@ -11,8 +11,6 @@ spans whole rings (ciphertexts) of `internal_n` slots, the last one zero-padded.
 hold the values, dropping the padding and the repeats.
 """
 
-import math
-
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp
@@ -28,6 +26,19 @@ class SlotOp(HomOp):
     input_value: HomValue | None = None
     internal_n: int | None = None
 
+    def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
+        """The input's slot axis takes no zero padding: it holds n_slots values, or whole rings when n_slots is
+        internal_n. Then the operator's own inference, `infer_slot_output_shape`."""
+        length = input.tensor_shape[input.n_axis]
+        whole_rings = input.n_slots == internal_n and length % internal_n == 0
+        if length != input.n_slots and not whole_rings:
+            raise ValueError(f"{type(self).__name__} takes no padded input: a slot axis of n_slots={input.n_slots} "
+                             f"values, or of whole rings when n_slots is internal_n={internal_n}: got {length}")
+        return self.infer_slot_output_shape(input, internal_n, **kwargs)
+
+    def infer_slot_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
+        raise NotImplementedError
+
 
 def input_layout(op: SlotOp, x: torch.Tensor) -> tuple[HomValue, int]:
     """The traced value of the slot operator's input and its ring size `internal_n`, as clear execution of a traced
@@ -39,15 +50,6 @@ def input_layout(op: SlotOp, x: torch.Tensor) -> tuple[HomValue, int]:
         ring = next_pow2(x.shape[-1])
         return HomValue(tensor_shape=tuple(x.shape), n_axis=x.dim() - 1, n_slots=ring), ring
     return value, internal_n
-
-
-def full_period(value: HomValue, n_slots: int) -> HomValue:
-    """`value` with its slot axis rounded up to a multiple of `n_slots`: the slots that held its zero padding are
-    part of the value."""
-    length = value.tensor_shape[value.n_axis]
-    shape = list(value.tensor_shape)
-    shape[value.n_axis] = math.ceil(length / n_slots) * n_slots
-    return value.make_copy(tensor_shape=tuple(shape))
 
 
 def to_ring(x: torch.Tensor, value: HomValue, internal_n: int) -> torch.Tensor:

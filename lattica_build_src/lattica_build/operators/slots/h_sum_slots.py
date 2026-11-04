@@ -40,8 +40,11 @@ class HomSumSlots(SlotOp):
         self.stage_sizes = stage_sizes
         self.reduce_output = reduce_output
 
-    def infer_output_shape(self, input: HomValue, internal_n=None) -> HomValue:
-        """The sum folds the input's period to nb_cols. With reduce_output, the slot axis holds the nb_cols sums."""
+    def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
+        """The sum folds the input's period to nb_cols. With reduce_output, the slot axis holds the nb_cols sums.
+
+        Unlike the other slot operators, SumSlots takes a zero-padded slot axis: the padding adds nothing to the
+        sums, and afterwards holds their repeats at the output's period nb_cols."""
         nb_cols = self.nb_cols if self.nb_cols is not None else 1
         if not self.reduce_output:
             return input.make_copy(n_slots=nb_cols)
