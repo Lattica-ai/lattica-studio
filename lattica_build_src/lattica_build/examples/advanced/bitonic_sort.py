@@ -129,7 +129,7 @@ class Pipeline(PipelineWrapper):
             n=2 ** LOG_N,
             full_q_list_precision=Q_ROWS * ((LOG_SCALE * 2, LOG_SCALE),),
             pt_scale=2 ** LOG_SCALE,
-            sk_hw=192,
+            sk_hw=1024,
             num_special_primes=SPECIAL_PRIMES,
             n_slots=self.array_len,
         )
