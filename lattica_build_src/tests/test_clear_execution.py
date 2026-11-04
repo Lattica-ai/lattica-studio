@@ -329,7 +329,6 @@ def test_bitonic_sort_composite_example_sorts_input():
 
 def test_resnet_composite_example_matches_pretrained_model():
     from lattica_build.examples.advanced import resnet20
-    from lattica_build.operators.ml.h_mux_conv import MuxLayout
 
     examples_data = (
         Path(__file__).resolve().parents[1]
@@ -343,7 +342,7 @@ def test_resnet_composite_example_matches_pretrained_model():
         batch = pickle.load(batch_file, encoding="bytes")
 
     sample_index = random.Random(0).randrange(len(batch[b"labels"]))
-    normalized_image, _ = resnet20.Pipeline.load_cifar_sample(sample_index)
+    raw_image, _ = resnet20.Pipeline.load_cifar_sample(sample_index)
     reference_model = torch.hub.load(
         "chenyaofo/pytorch-cifar-models",
         "cifar10_resnet20",
@@ -355,20 +354,18 @@ def test_resnet_composite_example_matches_pretrained_model():
     params = example.build_params()
     with torch.no_grad():
         expected_class = reference_model(
-            normalized_image.to(torch.float32).reshape(1, 3, 32, 32)
+            resnet20.Pipeline.normalize(raw_image).to(torch.float32).reshape(1, 3, 32, 32)
         ).argmax(dim=-1).item()
 
-    # The client zero-pads RGB to the stem's channels and packs the image into the mux
-    # layout; there is no client_pre.
-    padded_image = torch.nn.functional.pad(
-        normalized_image, (0, 0, 0, 0, 0, resnet20.STEM_CHANNELS - normalized_image.shape[0]))
-    packed_image = MuxLayout(*resnet20.STEM_LAYOUT, resnet20.SUBRING_SLOTS).pack(padded_image)
+    # The client packs the raw pixels; client_pre normalizes them and client_post leaves
+    # the ten class probabilities.
     result = pipeline.forward_clear(
-        packed_image,
+        resnet20.Pipeline.pack_image(raw_image),
         hom_params=params,
     )
-    # The head's 1x1 output layout puts logit c at slot c.
-    predicted_class = result[..., :10].argmax().item()
+    assert result.shape[-1] == resnet20.N_CLASSES
+    assert torch.isclose(result.sum(), torch.tensor(1.0, dtype=result.dtype))
+    predicted_class = result.argmax().item()
     assert predicted_class == expected_class, (
         f"clear ResNet predicted {predicted_class} for CIFAR sample "
         f"{sample_index}, expected pretrained-model class {expected_class}"
