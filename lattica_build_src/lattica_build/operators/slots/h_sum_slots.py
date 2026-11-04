@@ -43,7 +43,7 @@ class HomSumSlots(SlotOp):
     def infer_output_shape(self, input: HomValue, internal_n=None) -> HomValue:
         """The sum folds the input's period to nb_cols. With reduce_output, the slot axis holds the nb_cols sums."""
         nb_cols = self.nb_cols if self.nb_cols is not None else 1
-        if not self.reduce_output or input.n_axis is None:
+        if not self.reduce_output:
             return input.make_copy(n_slots=nb_cols)
         return _reduced(self, input, nb_cols, internal_n)
 

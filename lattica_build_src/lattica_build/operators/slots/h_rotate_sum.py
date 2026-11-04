@@ -43,7 +43,7 @@ class HomRotateSum(SlotOp):
         """Keep shape for sum mode, or stack per-rotation outputs on axis 0. With full_period_output, the slot axis
         is rounded up to a multiple of its period n_slots (internal_n without one)."""
         n_slots = input.n_slots if input.n_slots is not None else internal_n
-        if self.full_period_output and input.n_axis is not None and n_slots is not None:
+        if self.full_period_output and n_slots is not None:
             input = full_period(input, n_slots)
         if self.perform_sum:
             return input
