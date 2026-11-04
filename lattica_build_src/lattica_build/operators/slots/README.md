@@ -9,7 +9,7 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 | `HomConj` | Conjugates every slot with one key switch. Adding the input back (`x + HomConj()(x)`) gives `2 * Re(x)`, e.g. to get a real result from complex-packed inputs. |
 | `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots.       |
 | `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration.                            |
-| `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `internal_n // k` groups (columns) induced by slot layout.     |
+| `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `n_slots // k` groups (columns) of each period of the slot layout. |
 | `HomSumSlots` | Performs slot-axis reduction over consecutive `internal_n // nb_cols` elements, simultaneously across all `nb_cols` groups (columns)..                         |
 
 ## What `k` means
@@ -37,21 +37,22 @@ of its length rounded up to a power of 2.
 
 Per operator:
 
-- `HomExpand` puts value `i` of the zero-padded period in every slot of the
-  ring of output `i`: the values go on a new axis inserted at `expand_axis`
-  (in the input's axes; -1 inserts before the last one), and the slot axis has
-  `internal_n` slots. The slot axis must fit in its period. An `expand_axis`
-  outside `[-(rank + 1), rank]` raises `ValueError`.
+- `HomExpand` puts value `i` of the slot axis in every slot of the ring of
+  output `i`: the values go on a new axis inserted at `expand_axis` (in the
+  input's axes; -1 inserts before the last one), and the slot axis has
+  `internal_n` slots. The slot axis must hold exactly `n_slots` values, or
+  tracing raises `ValueError`. An `expand_axis` outside `[-(rank + 1), rank]`
+  raises `ValueError`.
 - `HomRunningSum` along `cumsum_axis`, when it is not the slot axis, is a
-  cumulative sum. Along the slot axis, each ring is `k` rows of
-  `internal_n / k` columns, and the sum runs down the rows of all blocks (row
-  `r` of every block, then row `r + 1`); the blocks are the rings, or the
-  entries of `blocks_axis_external`. `k` must be a power of 2 dividing
-  `internal_n`. The input's slot axis must have no zero padding (a multiple of
-  `n_slots`), or tracing raises `ValueError`. The sums fill the repeats of an
-  `n_slots` shorter than the ring, so with `full_period_output` (the default)
-  the output's slot axis holds whole rings; without it, it keeps the input's
-  length.
+  cumulative sum. Along the slot axis, each period of `n_slots` slots is `k`
+  rows of `n_slots / k` columns (`k` defaults to `n_slots`), and the sum runs
+  down the rows of all blocks (row `r` of every block, then row `r + 1`); the
+  blocks are the rings of the slot axis, or the entries of
+  `blocks_axis_external`. `k` must be a power of 2 dividing `n_slots`. The ring
+  repeats the period, so every repeat gets the same sums and the output keeps
+  the input's shape and `n_slots`. The input's slot axis must have no zero
+  padding: `n_slots` values, or whole rings when `n_slots` is `internal_n`, or
+  tracing raises `ValueError`.
 - `HomSumSlots` adds, in each period of `n_slots` slots, the `n_slots / nb_cols`
   slots `nb_cols` apart: slot `j` gets `x[j] + x[j + nb_cols] + ...`, and the
   output's period is `nb_cols`. `nb_cols` (by default 1, the sum of the period)

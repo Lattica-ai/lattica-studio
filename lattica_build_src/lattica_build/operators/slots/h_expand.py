@@ -4,7 +4,7 @@ import math
 from typing import Sequence
 
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.slots.ring_utils import SlotOp, input_layout, to_ring
+from lattica_build.operators.slots.ring_utils import SlotOp, input_layout
 from lattica_build.params.level_and_scale_tracing import infer_modswitch_by_num_levels
 
 from lattica_build.params.shape_tracing import infer_insert_axis_output_shape, insert_position
@@ -41,14 +41,15 @@ class HomExpand(SlotOp):
         self.stages_per_level = stages_per_level
         self.rows_budget = rows_budget
 
-    def infer_output_shape(self, input: HomValue, internal_n: int | None = None, **kwargs) -> HomValue:
+    def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
         """Infer shape by inserting axis `expand_axis` with dimension `n_slots`. Each output holds one value in
-        every slot of the ring (internal_n on the slot axis), so its period is 1."""
+        every slot of the ring (internal_n on the slot axis), so its period is 1. The slot axis must hold exactly
+        n_slots values."""
+        if input.tensor_shape[input.n_axis] != input.n_slots:
+            raise ValueError(f"Expand takes a slot axis of exactly n_slots={input.n_slots} values, "
+                             f"got {input.tensor_shape[input.n_axis]}")
         position = insert_position(self.expand_axis, len(input.tensor_shape))
         output = infer_insert_axis_output_shape(input, position, input.n_slots)
-        if internal_n is None or output.n_axis is None:
-            return output
-
         output_shape = list(output.tensor_shape)
         output_shape[output.n_axis] = internal_n
         return output.make_copy(tensor_shape=output_shape, n_slots=1)
@@ -80,14 +81,14 @@ class HomExpand(SlotOp):
         )
 
     def forward_clear(self, input):
-        """Value i of the input's (zero-padded) period becomes an output holding it in every slot of the ring: the
-        values go on a new axis inserted as `infer_output_shape` does, and the slot axis has internal_n slots."""
+        """Value i of the input's slot axis becomes an output holding it in every slot of the ring: the values go on
+        a new axis inserted as `infer_output_shape` does, and the slot axis has internal_n slots."""
         value, internal_n = input_layout(self, input)
         length = value.tensor_shape[value.n_axis]
-        if length > value.n_slots:
-            raise ValueError(f"Expand needs the slot axis ({length}) to fit in its period ({value.n_slots})")
-        period = to_ring(input, value, value.n_slots).squeeze(-2)  # (..., n_slots)
-        expanded = period.unsqueeze(-1).expand(*period.shape, internal_n)  # (..., values, slots)
+        if length != value.n_slots:
+            raise ValueError(f"Expand takes a slot axis of exactly n_slots={value.n_slots} values, got {length}")
+        values = input.movedim(value.n_axis, -1)  # (..., n_slots)
+        expanded = values.unsqueeze(-1).expand(*values.shape, internal_n)  # (..., values, slots)
 
         # Order the axes as the traced output: the input's, with the values axis inserted at expand_axis
         axes = [axis for axis in range(input.dim()) if axis != value.n_axis] + ['values', value.n_axis]
