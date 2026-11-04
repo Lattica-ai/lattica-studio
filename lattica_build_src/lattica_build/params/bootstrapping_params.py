@@ -56,12 +56,12 @@ BOOT_PARAMS_PER_N_SLOTS = {
 }
 
 
-# The most terms (key products) a level-conserving first CtS level takes: the toolkit's lcr_rotations_sum kernel stages
-# each term's source indices in 48 KB of shared memory (256 bytes per term). A sparse bootstrap's level folds the
-# SubSum trace in, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
+# The most terms (key products) a level-conserving first CtS level takes: the level's kernel stages each term's source
+# indices in 48 KB of shared memory (256 bytes per term). A sparse bootstrap's level folds the SubSum trace in, so its
+# terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
 LCR_MAX_TERMS = 192
-# The special primes P' that level's keys need, in bits (the toolkit's BACKEND_Context.set_lcr_key_metadata takes the
-# fewest with more). The level's key switch noise is about T N |m| q0 e / P' for T terms of plaintexts m at the CtS
+# The special primes P' that level's keys need, in bits: the backend gives the keys the fewest special primes whose
+# product has more bits. The level's key switch noise is about T N |m| q0 e / P' for T terms of plaintexts m at the CtS
 # scale (up to 2**60): at N = 2**16, q0 = 2**53 and 192 terms it is about 2**-42 with three 61-bit primes, well below
 # the ModDown's rounding, and about 2**19 with two.
 LCR_MIN_SPECIAL_BITS = 170
@@ -107,10 +107,10 @@ class BootstrappingParams:
 
     def lcr_first_cts_fits(self, n_slots: int, n: int) -> bool:
         """Whether an n_slots bootstrap in a ring of dimension n can run its first CtS level level-conserving: its split
-        needs another CtS level after that one, and the level's terms must fit the toolkit's kernel (LCR_MAX_TERMS).
+        needs another CtS level after that one, and the level's terms must fit its kernel (LCR_MAX_TERMS).
         The first CtS factor collapses the last split component's s stages, whose 2**s diagonals are the multiples of
         n_slots / 2**s, and a sparse bootstrap's level takes each of them once per rotation of the SubSum trace, of
-        which there are N / (2 n_slots). At N = 2**16 the level fits from 2**12 slots up."""
+        which there are N / (2 n_slots)."""
         split = self.dft_split(n_slots)
         return len(split) > 1 and 2 ** split[-1] * (n // 2 // n_slots) <= LCR_MAX_TERMS
 
