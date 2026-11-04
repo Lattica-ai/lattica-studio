@@ -216,7 +216,10 @@ class Pipeline(PipelineWrapper):
             ],
             hom=_MuxResnetGraph(self._model),
             # the FC's 1x1 output layout puts logit c at slot c
-            client_post=[HomSlice(dim=0, key=slice(0, N_CLASSES)), Softmax(dim=-1)],
+            client_post=[
+                HomSlice(dim=0, key=slice(0, N_CLASSES)),
+                Softmax(dim=-1),
+            ],
             input_shape=(SUBRING_SLOTS,),
         )
         pipeline.add_client_preprocessing_data(json.dumps({"labels": CIFAR10_CLASSES}).encode())
@@ -265,7 +268,7 @@ class Pipeline(PipelineWrapper):
         # actual holds the class probabilities the client's post block computed
         with torch.no_grad():
             model_logits = self._model(self.normalize(self._img).to(torch.float32).unsqueeze(0))[0]
-        fhe_category = CIFAR10_CLASSES[int(actual[:N_CLASSES].argmax())]
+        fhe_category = CIFAR10_CLASSES[int(actual.argmax())]
         model_category = CIFAR10_CLASSES[int(model_logits.argmax())]
         print(f"[resnet20] image category: {self._category}   |   "
               f"predicted (decrypted): {fhe_category}   |   (torch model): {model_category}")
