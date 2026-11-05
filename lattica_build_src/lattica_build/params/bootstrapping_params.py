@@ -65,12 +65,14 @@ BOOT_PARAMS_PER_N_SLOTS = {
 }
 
 
-# The most terms (key products) a level-conserving first CtS level takes: the toolkit's lcr_rotations_sum kernel stages
-# each term's source indices in 48 KB of shared memory (256 bytes per term). A sparse bootstrap's level folds the
-# SubSum trace in, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
+# The most terms (key products) a level-conserving first CtS level takes. The level runs as one kernel that keeps each
+# term's source indices in 48 KB of shared memory, 256 bytes per term. In a sparse bootstrap the level also computes
+# the SubSum trace, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
 LCR_MAX_TERMS = 192
-# The special primes that level's keys need, in bits: its key switch noise must stay below the ModDown's rounding,
-# which three 61-bit primes give and two do not (the toolkit's BACKEND_Context.LCR_MIN_SPECIAL_BITS).
+# The level's keys need special primes P' of more than this many bits in all, and the backend gives them the fewest
+# special primes that reach it. The bound comes from the level's key noise, about T N |m| q0 e / P' for T terms of
+# plaintexts m at the CtS scale (up to 2**60). At N = 2**16, q0 = 2**53 and 192 terms it is about 2**-42 with three
+# 61-bit primes, well below the ModDown's rounding, but about 2**19 with two.
 LCR_MIN_SPECIAL_BITS = 170
 # The most bits of log QP any key may have for 128-bit security under the secret key (hamming weight 192), by ring
 # dimension: the lattice estimator's limits, where the cheapest attack is the sparse-secret hybrid.
@@ -114,9 +116,10 @@ class BootstrappingParams:
         """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_N_SLOTS entry): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use.
-        The chain has one CtS prime fewer when every bootstrap can run its first CtS level level-conserving: the ring
-        dimension n is given, the special primes have more than LCR_MIN_SPECIAL_BITS bits in all (special_bits, 0
-        under BV), and every slot count's level fits the kernel (lcr_first_cts_fits)."""
+        The chain gets one CtS prime fewer, and lcr_first_cts is set, when every bootstrap can run its first CtS level
+        level-conserving. That needs the ring dimension n, special primes of more than LCR_MIN_SPECIAL_BITS bits in
+        all (special_bits, which is 0 under BV), and a level that fits the kernel for every slot count
+        (lcr_first_cts_fits)."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
         dft_levels = max(len(entry[0]) for entry in entries)
@@ -127,17 +130,14 @@ class BootstrappingParams:
             return params
         return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=True)
 
-    def lcr_first_cts_terms(self, n_slots: int, n: int) -> int:
-        """The most terms of the level-conserving first CtS level of an n_slots bootstrap in a ring of dimension n:
-        the first CtS factor collapses the last split component's s stages, whose diagonals are the 2**s multiples of
-        n_slots / 2**s, and a sparse bootstrap's level sums each over the N / (2 n_slots) rotations of the SubSum
-        trace."""
-        return 2 ** self.dft_split(n_slots)[-1] * (n // 2 // n_slots)
-
     def lcr_first_cts_fits(self, n_slots: int, n: int) -> bool:
-        """Whether that level fits the toolkit's kernel (LCR_MAX_TERMS), with another CtS level after it: 2**12 slots
-        and up at N = 2**16."""
-        return len(self.dft_split(n_slots)) > 1 and self.lcr_first_cts_terms(n_slots, n) <= LCR_MAX_TERMS
+        """Returns whether an n_slots bootstrap in a ring of dimension n can run its first CtS level level-conserving.
+        Its DFT split must have another CtS level after that one, and the level's terms must fit the kernel
+        (LCR_MAX_TERMS). The first CtS factor combines the last s stages of the split, so it has 2**s diagonals. In a
+        sparse bootstrap the level uses each diagonal once per rotation of the SubSum trace, and there are
+        N / (2 n_slots) of those."""
+        split = self.dft_split(n_slots)
+        return len(split) > 1 and 2 ** split[-1] * (n // 2 // n_slots) <= LCR_MAX_TERMS
 
     def one_digit_relin_key(self, chain_sections, num_special_primes: int, n: int) -> tuple[int, int] | None:
         """The one-digit relinearization key of EvalMod's lower levels, as (e, s): the relinearizations after e of
