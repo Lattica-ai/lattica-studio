@@ -15,14 +15,13 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
-from lattica_build.operators.ml.h_mux_conv import next_pow2
 
 
 class SlotOp(HomOp):
     """A slot operator: its clear execution computes on the slot layout of its input."""
 
     # The traced value of the input and its ring size, set by clear execution of a traced graph (run_clear_section)
-    # as it sets `data`. Without them, clear execution takes the input's last axis as one whole ring.
+    # as it sets `data`. Clear execution needs them: without a trace, the slot axis and the ring are unknown.
     input_value: HomValue | None = None
     internal_n: int | None = None
 
@@ -42,14 +41,12 @@ class SlotOp(HomOp):
 
 def input_layout(op: SlotOp, x: torch.Tensor) -> tuple[HomValue, int]:
     """The traced value of the slot operator's input and its ring size `internal_n`, as clear execution of a traced
-    graph sets them on the op (`op.input_value`, `op.internal_n`). Outside a traced graph (the op run on its own, or
-    `forward_clear` without `hom_params`), the input's last axis is one whole ring, of its length rounded up to a
-    power of 2."""
-    value, internal_n = op.input_value, op.internal_n
-    if value is None:
-        ring = next_pow2(x.shape[-1])
-        return HomValue(tensor_shape=tuple(x.shape), n_axis=x.dim() - 1, n_slots=ring), ring
-    return value, internal_n
+    graph sets them on the op (`op.input_value`, `op.internal_n`). A slot operator run outside a traced graph
+    raises: without a trace, its slot axis and ring size are unknown."""
+    if op.input_value is None or op.internal_n is None:
+        raise RuntimeError(f"{type(op).__name__} runs in clear only within a traced pipeline: use "
+                           "HomomorphicPipeline.forward_clear(..., hom_params=...)")
+    return op.input_value, op.internal_n
 
 
 def to_ring(x: torch.Tensor, value: HomValue, internal_n: int) -> torch.Tensor:

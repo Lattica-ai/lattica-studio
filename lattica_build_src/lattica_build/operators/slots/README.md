@@ -31,9 +31,9 @@ and returns what decryption reads back:
 
 Clear execution of a pipeline (`HomomorphicPipeline.forward_clear`, which
 traces it with `hom_params`) gives each slot operator its input's traced value
-(slot axis `n_axis`, `n_slots`) and the ring size `internal_n`. An operator run
-on its own takes the input's last axis as the slot axis and as one whole ring,
-of its length rounded up to a power of 2.
+(slot axis `n_axis`, `n_slots`) and the ring size `internal_n`. A slot operator
+run outside a traced pipeline (called on its own on tensors) raises
+`RuntimeError`: without a trace, its slot axis and ring size are unknown.
 
 The slot operators take no zero padding: the slot axis holds `n_slots`
 values, or whole rings when `n_slots` is `internal_n`, or tracing raises
