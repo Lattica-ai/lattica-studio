@@ -37,7 +37,7 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
 
 @pytest.mark.parametrize("slot_counts, special_bits, lcr", [
     ({2 ** 15}, 3 * 61, True),
-    ({2 ** 14, 2 ** 13, 2 ** 12}, 3 * 61, True),     # ResNet-20's bootstraps: 64 terms each
+    ({2 ** 14, 2 ** 13, 2 ** 12}, 3 * 61, True),     # ResNet-20's bootstraps: 32 to 64 terms
     ({2 ** 14, 2 ** 11}, 3 * 61, False),             # 2**11: 32 diagonals x 16 trace rotations
     ({2 ** 15}, 2 * 61, False),                      # two special primes: the keys' noise is too large
 ], ids=["full", "resnet", "too-sparse", "two-special-primes"])
@@ -51,7 +51,7 @@ def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_
     assert boot.lcr_first_cts == lcr and not plain.lcr_first_cts
     assert len(boot.cts_q_list_precision) == len(plain.cts_q_list_precision) - int(lcr)
     assert [boot.lcr_first_cts_terms(s, n) for s in (2 ** 15, 2 ** 14, 2 ** 13, 2 ** 12, 2 ** 11)] == \
-        [32, 64, 64, 64, 512]
+        [16, 32, 64, 64, 512]
     params = HomParams(n=n, full_q_list_precision=((30,),) + ((60, 30),) * 3, pt_scale=2 ** 30, num_special_primes=3,
                        n_slots=min(slot_counts))
     params.boot_params = boot
