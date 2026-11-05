@@ -50,8 +50,9 @@ def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_
     boot = BootstrappingParams.for_slot_counts(True, False, slot_counts, n=n, special_bits=special_bits)
     assert boot.lcr_first_cts == lcr and not plain.lcr_first_cts
     assert len(boot.cts_q_list_precision) == len(plain.cts_q_list_precision) - int(lcr)
-    assert [boot.lcr_first_cts_terms(s, n) for s in (2 ** 15, 2 ** 14, 2 ** 13, 2 ** 12, 2 ** 11)] == \
-        [16, 32, 64, 64, 512]
+    # 16, 32, 64 and 64 terms fit; 2**11's 32 diagonals x 16 trace rotations do not
+    assert [boot.lcr_first_cts_fits(s, n) for s in (2 ** 15, 2 ** 14, 2 ** 13, 2 ** 12, 2 ** 11)] == \
+        [True, True, True, True, False]
     params = HomParams(n=n, full_q_list_precision=((30,),) + ((60, 30),) * 3, pt_scale=2 ** 30, num_special_primes=3,
                        n_slots=min(slot_counts))
     params.boot_params = boot
