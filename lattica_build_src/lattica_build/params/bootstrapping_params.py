@@ -252,7 +252,11 @@ class BootstrappingParams:
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.dft_levels - self.lcr_first_cts)
-        if self.lcr_first_cts and not self.slim_boot:
+        # The shared double-angle word needs every slot count's exit scale. A chain's DFT level count is its slot
+        # counts' split length, and only the 4-level splits (2**12 to 2**15 slots, the production ones) have exits:
+        # the chains of the shorter splits keep one EvalMod row per level.
+        if self.lcr_first_cts and not self.slim_boot and all(
+                entry[3] is not None for entry in BOOT_PARAMS_PER_N_SLOTS.values() if len(entry[0]) == dft_levels):
             self.stc_scale = LCR_STC_SCALE
             self.eval_mod_q_list_precision = LCR_EVAL_MOD_ROWS
             self.double_angle_rows = LCR_DOUBLE_ANGLE_ROWS
