@@ -89,6 +89,17 @@ LCR_DOUBLE_ANGLE_ROWS = (6, 5, 6)
 # A level-conserving chain's StC scale: its words hold two primes just below 2**31 (62-bit rows, the kernels' limit)
 # rather than 2**30, so the StC has room for the bits the higher EvalMod exit leaves it.
 LCR_STC_SCALE = 31
+# A chain with a conjugate-invariant (CI) ring EvalMod (ci_evalmod): CtS's output goes into the CI ring through a
+# conversion that drops a row of its own (CI_IN_ROWS, right after the CtS rows), one EvalMod runs on the real and
+# imaginary parts there, and the conversion back drops a prime of EvalMod's last word. That word is (61, 26): double
+# angle 3, then the conversion's 26-bit prime, so double angle 1 takes the 38-bit word of its own. Each conversion's
+# prime scales its mask: wide enough that rounding the mask costs no precision, narrow enough that the key switches
+# above it keep their gadget digit count. The CI ring rounds with twice the variance, which the last double angle's
+# 61-bit prime absorbs. CI_EXIT_SCALE: EvalMod's exit scale by slot count, the only slot counts the layout is tuned for.
+CI_IN_ROWS = ((38,),)
+CI_EVAL_MOD_ROWS = LCR_EVAL_MOD_ROWS[:6] + ((38,), (61, 26))
+CI_DOUBLE_ANGLE_ROWS = (6, 5, 7)
+CI_EXIT_SCALE = {2 ** 15: 56}
 
 
 class BootstrappingParams:
@@ -119,7 +130,8 @@ class BootstrappingParams:
         The chain gets one CtS prime fewer, and lcr_first_cts is set, when every bootstrap can run its first CtS level
         level-conserving. That needs the ring dimension n, special primes of more than LCR_MIN_SPECIAL_BITS bits in
         all (special_bits, which is 0 under BV), and a level that fits the kernel for every slot count
-        (lcr_first_cts_fits)."""
+        (lcr_first_cts_fits). Such a chain also runs EvalMod in the conjugate-invariant ring (ci_evalmod) when it is
+        for complex CtS-first bootstraps of N / 2 slots only, at a slot count of CI_EXIT_SCALE."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
         dft_levels = max(len(entry[0]) for entry in entries)
@@ -128,7 +140,9 @@ class BootstrappingParams:
         if (n is None or special_bits <= LCR_MIN_SPECIAL_BITS
                 or not all(params.lcr_first_cts_fits(n_slots, n) for n_slots in slot_counts)):
             return params
-        return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=True)
+        ci_evalmod = not real_boot and not slim_boot and set(slot_counts) == {n // 2} and n // 2 in CI_EXIT_SCALE
+        return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=True,
+                   ci_evalmod=ci_evalmod)
 
     def lcr_first_cts_fits(self, n_slots: int, n: int) -> bool:
         """Returns whether an n_slots bootstrap in a ring of dimension n can run its first CtS level level-conserving.
@@ -200,11 +214,13 @@ class BootstrappingParams:
         budget. So each section comes before every row still active while it is consumed: every rescale then
         drops the leading limb, and a level drop is a slice view rather than a gather. After ModRaise the
         bootstrap consumes its CtS rows, then its EvalMod rows, then (StC last) its StC rows; the pipeline's are
-        consumed after that, and q0 stays last. SLIM's StC runs on the input, after the pipeline's rows."""
+        consumed after that, and q0 stays last. SLIM's StC runs on the input, after the pipeline's rows. With
+        ci_evalmod, the conversion into the CI ring consumes its row (boot_ci_in) between CtS and EvalMod."""
         pipeline = ("pipeline", pipeline_q_list_precision)
         stc = ("boot_stc", self.stc_q_list_precision)
         consumed = [pipeline, stc] if self.slim_boot else [stc, pipeline]
-        return ([("boot_cts", self.cts_q_list_precision), ("boot_eval", self.eval_mod_q_list_precision)]
+        ci = [("boot_ci_in", CI_IN_ROWS)] if self.ci_evalmod else []
+        return ([("boot_cts", self.cts_q_list_precision)] + ci + [("boot_eval", self.eval_mod_q_list_precision)]
                 + consumed + [("boot_base", ((self.q_base_precision,),))])
 
     def log_delta_for(self, n_slots: int) -> int:
@@ -220,17 +236,20 @@ class BootstrappingParams:
         scale."""
         if self.double_angle_rows is None:
             return None
+        if self.ci_evalmod:
+            return CI_EXIT_SCALE[n_slots]
         return self._n_slots_entry(n_slots)[3]
 
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int,
-                 lcr_first_cts: bool = False) -> None:
+                 lcr_first_cts: bool = False, ci_evalmod: bool = False) -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
         (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: the first CtS level is level-conserving, so it consumes no prime and the chain has one CtS
         prime fewer; for_slot_counts picks it. A one-level split keeps its prime: its single factor has every
-        diagonal."""
+        diagonal. ci_evalmod: EvalMod runs in the conjugate-invariant ring (CI_EVAL_MOD_ROWS), on a level-conserving
+        chain of complex CtS-first bootstraps; for_slot_counts picks it."""
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(
@@ -239,6 +258,7 @@ class BootstrappingParams:
                     f"they bootstrap gives it.")
         self.real_boot = real_boot
         self.slim_boot = slim_boot
+        self.ci_evalmod = ci_evalmod
         self.stc_scale = BOOT_CONFIGURATION['stc_scale']
         self.eval_mod_scale = BOOT_CONFIGURATION['eval_mod_scale']
         self.cts_scale = cts_scale
@@ -258,15 +278,18 @@ class BootstrappingParams:
         if self.lcr_first_cts and not self.slim_boot and all(
                 entry[3] is not None for entry in BOOT_PARAMS_PER_N_SLOTS.values() if len(entry[0]) == dft_levels):
             self.stc_scale = LCR_STC_SCALE
-            self.eval_mod_q_list_precision = LCR_EVAL_MOD_ROWS
-            self.double_angle_rows = LCR_DOUBLE_ANGLE_ROWS
+            self.eval_mod_q_list_precision = CI_EVAL_MOD_ROWS if ci_evalmod else LCR_EVAL_MOD_ROWS
+            self.double_angle_rows = CI_DOUBLE_ANGLE_ROWS if ci_evalmod else LCR_DOUBLE_ANGLE_ROWS
         else:
+            if ci_evalmod:
+                raise ValueError("a CI-ring EvalMod needs a level-conserving chain of complex CtS-first bootstraps")
             self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
             self.double_angle_rows = None
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']
-        self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
+        self.q_list_precision = (self.cts_q_list_precision + (CI_IN_ROWS if ci_evalmod else ())
+                                 + self.eval_mod_q_list_precision + self.stc_q_list_precision)
         self.q_base_precision = self.get_q_base_precision()
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
         # The tree evaluates degree d in ceil(log2(d + 1)) levels: n levels fit degree 2^n - 1.

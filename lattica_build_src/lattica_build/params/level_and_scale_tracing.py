@@ -15,7 +15,9 @@ class ModulusChain():
 
     def __init__(self, hom_params):
         self._set_pipeline_sections(hom_params)
-        self.post_init()
+        # A chain with a conjugate-invariant ring EvalMod needs 4N-th roots of unity modulo every prime
+        boot_params = hom_params.boot_params
+        self.post_init(4 * hom_params.n if boot_params is not None and boot_params.ci_evalmod else 1)
         # the absolute rows the level tracing drops, in order (apply_drop_config)
         self.drop_order = []
 
@@ -35,7 +37,8 @@ class ModulusChain():
             ["special_primes", ((61,),) * num_special_primes],
         )
 
-    def post_init(self):
+    def post_init(self, root_order):
+        """root_order: every prime of the chain is 1 modulo it (get_primes_from_precisions_list)."""
         # Compute rows range for each section.
         self.section_rows = {}
         current_row = 0
@@ -62,7 +65,7 @@ class ModulusChain():
         # ring-switch subring chain gets.
         base_rows = self.section_rows.get("boot_base", [])
         order = base_rows + [row for row in range(self.num_rows) if row not in base_rows]
-        drawn = dict(zip(order, get_primes_from_precisions_list([self.full_q_list[row] for row in order])))
+        drawn = dict(zip(order, get_primes_from_precisions_list([self.full_q_list[row] for row in order], root_order)))
         self.factors_per_row = [drawn[row] for row in range(self.num_rows)]
 
     def get_rows_of_sections(self, section_names):
