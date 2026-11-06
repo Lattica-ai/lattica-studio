@@ -134,6 +134,30 @@ def test_unknown_boot_precision_is_refused():
                   boot_precision="medium")
 
 
+@pytest.mark.parametrize("real_boot, slim_boot, slot_counts, ci", [
+    (False, False, {2 ** 15}, True),
+    (True, False, {2 ** 15}, False),            # real slots: one EvalMod already
+    (False, True, {2 ** 15}, False),            # SLIM
+    (False, False, {2 ** 15, 2 ** 14}, False),  # a sparse bootstrap too
+], ids=["complex-full", "real", "slim", "sparse-too"])
+def test_ci_evalmod_chain_for_complex_full_slot_bootstraps(real_boot, slim_boot, slot_counts, ci):
+    """for_slot_counts runs EvalMod in the conjugate-invariant ring only for complex CtS-first bootstraps of N / 2
+    slots, and to_dict carries the choice. Such a chain has the conversion's row after the CtS rows, and every prime is
+    1 mod 4N."""
+    n = 2 ** 16
+    boot = BootstrappingParams.for_slot_counts(real_boot, slim_boot, slot_counts, n=n, special_bits=9 * 61)
+    assert boot.ci_evalmod == ci
+    params = HomParams(n=n, full_q_list_precision=((60, 30),) * 5, pt_scale=2 ** 30, num_special_primes=9,
+                       real_boot=real_boot, slim_boot=slim_boot)
+    params.boot_params = boot
+    assert HomParams.from_dict({**params.to_dict(), "bootstrapping": True}).boot_params.ci_evalmod == ci
+    chain = ModulusChain(params)
+    assert ("boot_ci_in" in chain.section_rows) == ci
+    if ci:
+        assert chain.section_rows["boot_ci_in"][0] == chain.section_rows["boot_cts"][-1] + 1
+        assert all((p - 1) % (4 * n) == 0 for primes in chain.factors_per_row for p in primes)
+
+
 def _boot_params(q_list, real_boot, slim_boot):
     boot = BootstrappingParams.for_slot_counts(real_boot, slim_boot, {2 ** 15})
     return HomParams.from_dict({**HomParams(n=2 ** 16, full_q_list_precision=q_list, pt_scale=2 ** 30,

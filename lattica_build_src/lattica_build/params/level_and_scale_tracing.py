@@ -12,17 +12,21 @@ from decimal import Decimal
 from lattica_build.params.primes_utils import get_primes_from_precisions_list
 
 
-def _draw_primes(q_list, base_row):
+def _draw_primes(q_list, base_row, root_order):
     """The primes of each row of q_list, the row base_row (the bootstrap base, None without one) drawn first, so q0 is
-    the same prime the one-row ring-switch subring chain gets."""
+    the same prime the one-row ring-switch subring chain gets. Every prime is 1 modulo root_order."""
     order = ([base_row] if base_row is not None else []) + [row for row in range(len(q_list)) if row != base_row]
-    drawn = dict(zip(order, get_primes_from_precisions_list([q_list[row] for row in order])))
+    drawn = dict(zip(order, get_primes_from_precisions_list([q_list[row] for row in order], root_order)))
     return [drawn[row] for row in range(len(q_list))]
 
 
 class ModulusChain():
 
     def __init__(self, hom_params):
+        # every prime of the chain is 1 modulo root_order: a chain with a conjugate-invariant ring EvalMod needs 4N-th
+        # roots of unity modulo every prime
+        boot_params = hom_params.boot_params
+        self.root_order = 4 * hom_params.n if boot_params is not None and boot_params.ci_evalmod else 1
         self._set_pipeline_sections(hom_params)
         self.post_init()
         # the absolute rows the level tracing drops, in order (apply_drop_config)
@@ -43,7 +47,7 @@ class ModulusChain():
             # rows are drawn before the special primes, so they get the same primes here
             q_list = [row for _, section_q_list in self.mod_chain_sections for row in section_q_list]
             names = [name for name, section_q_list in self.mod_chain_sections for _ in section_q_list]
-            drawn = _draw_primes(q_list, names.index("boot_base"))
+            drawn = _draw_primes(q_list, names.index("boot_base"), self.root_order)
             rows = iter(math.log2(math.prod(primes)) for primes in drawn)
             drawn_sections = [(name, tuple((next(rows),) for _ in section_q_list))
                               for name, section_q_list in self.mod_chain_sections]
@@ -79,7 +83,7 @@ class ModulusChain():
             self.full_active_cols[row_idx, :num_cols] = 1
 
         base_rows = self.section_rows.get("boot_base", [])
-        self.factors_per_row = _draw_primes(self.full_q_list, base_rows[0] if base_rows else None)
+        self.factors_per_row = _draw_primes(self.full_q_list, base_rows[0] if base_rows else None, self.root_order)
 
     def get_rows_of_sections(self, section_names):
         rows = []

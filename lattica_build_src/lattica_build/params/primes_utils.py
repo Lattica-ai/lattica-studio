@@ -20,11 +20,13 @@ def unflatten_rows_cols(a: Sequence[int], num_cols_per_row: Sequence[int]) -> Se
 WORD_LIMIT_BITS = 62
 
 
-def get_primes_from_precisions_list(full_q_list_precision):
+def get_primes_from_precisions_list(full_q_list_precision, root_order=1):
     """
         Create a tensor full_q_list with the same shape as full_q_list_precision,
         where each entry is a unique 'good prime' drawn from the JSON pool that
         matches its bit-length (precision value). Raises if any bucket runs out.
+        Every prime drawn is 1 modulo root_order, so that it has a primitive root_order-th root of unity (the pools'
+        primes have those of the ring dimensions they serve; a conjugate-invariant ring of dimension N needs 4N).
         """
     precisions = []   # (bits, below): a prime of about 2**bits, from below 2**bits for a row at the word limit
     # Verify precision is decreasing in each column
@@ -41,7 +43,8 @@ def get_primes_from_precisions_list(full_q_list_precision):
     pools: dict[tuple[int, bool], list[int]] = {}
     for name, below in (("good_primes.json", False), ("good_primes_below.json", True)):
         with open(f"{os.path.dirname(os.path.abspath(__file__))}/{name}", "r", encoding="utf-8") as f:
-            pools.update({(int(k), below): list(v) for k, v in json.load(f).items()})
+            pools.update({(int(k), below): [p for p in v if (p - 1) % root_order == 0]
+                          for k, v in json.load(f).items()})
 
     # Validate precisions exist in pools
     needed_counts = Counter(precisions)

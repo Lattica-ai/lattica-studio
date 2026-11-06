@@ -160,6 +160,7 @@ class HomParams:
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
             "boot_cts_scale": self.boot_params.cts_scale if self.boot_params is not None else None,
             "boot_lcr_first_cts": self.boot_params.lcr_first_cts if self.boot_params is not None else None,
+            "boot_ci_evalmod": self.boot_params.ci_evalmod if self.boot_params is not None else None,
         }
 
     @classmethod
@@ -171,6 +172,7 @@ class HomParams:
         boot_dft_levels = d.pop("boot_dft_levels", None)
         boot_cts_scale = d.pop("boot_cts_scale", None)
         boot_lcr_first_cts = d.pop("boot_lcr_first_cts", False)
+        boot_ci_evalmod = d.pop("boot_ci_evalmod", False)
         consumption_order = d.pop("consumption_order", None)
 
         special_primes = d.pop("ghs_keyswtich_scale_precision", None)
@@ -185,7 +187,8 @@ class HomParams:
         if bootstrapping:
             params.boot_params = BootstrappingParams(
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale,
-                lcr_first_cts=boot_lcr_first_cts, precision=params.boot_precision)
+                lcr_first_cts=boot_lcr_first_cts, precision=params.boot_precision,
+                ci_evalmod=boot_ci_evalmod)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         params.consumption_order = consumption_order
