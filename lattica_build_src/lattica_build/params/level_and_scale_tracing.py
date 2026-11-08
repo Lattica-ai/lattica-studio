@@ -106,7 +106,7 @@ class ModulusChain():
             # num_init_rows counts from the bottom of the chain: the last pipeline rows
             active_rows = active_rows[len(active_rows) - params.num_init_rows:]
         active_rows += self.section_rows["boot_base"]
-        if params.boot_params.slim_boot:
+        if params.boot_params.slim_boot or params.input_holds_stc_rows:
             active_rows += self.section_rows["boot_stc"]
         return sorted(active_rows)   # a ciphertext's limbs are its rows in chain order
 
