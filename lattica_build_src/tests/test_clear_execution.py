@@ -324,7 +324,9 @@ def test_bitonic_sort_composite_example_sorts_input():
     example.verify_results(result, expected)
 
 
-def test_resnet_composite_example_matches_pretrained_model():
+@pytest.mark.parametrize("module", ["resnet20", "resnet20_n15"])
+def test_resnet_composite_example_matches_pretrained_model(module):
+    import importlib
     from lattica_build.examples.advanced import resnet20
     from lattica_build.operators.ml.h_mux_conv import MuxLayout
 
@@ -341,15 +343,10 @@ def test_resnet_composite_example_matches_pretrained_model():
 
     sample_index = random.Random(0).randrange(len(batch[b"labels"]))
     normalized_image, _ = resnet20.Pipeline.load_cifar_sample(sample_index)
-    reference_model = torch.hub.load(
-        "chenyaofo/pytorch-cifar-models",
-        "cifar10_resnet20",
-        pretrained=True,
-        verbose=False,
-    ).eval()
-    example = resnet20.Pipeline()
+    example = importlib.import_module(f"lattica_build.examples.advanced.{module}").Pipeline()
     pipeline = example.build_pipeline()
     params = example.build_params()
+    reference_model = example._model
     with torch.no_grad():
         expected_class = reference_model(
             normalized_image.to(torch.float32).reshape(1, 3, 32, 32)
