@@ -158,9 +158,11 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
 
 - `HYBRID`:
   - requires `num_special_primes > 0`,
-  - derives `g_base_bits` from special-prime count: the toolkit splits the ciphertext primes of the whole chain
-    into digits of at most `g_base_bits` bits, filled along the order the pipeline consumes them, and each key
-    switch uses only the special primes its own largest digit needs.
+  - takes `special_prime_bits` (default 61), the special primes' size,
+  - derives `g_base_bits`, the special primes' product less `DIGIT_HEADROOM_BITS` (8): the toolkit splits the
+    ciphertext primes of the whole chain into digits of at most `g_base_bits` bits, filled along the order the
+    pipeline consumes them, and each key switch uses only the special primes its own largest digit needs (a key
+    switch's noise grows with its largest digit over the special primes' product).
   - With a bootstrap the chain is in the order its rescales consume the primes (`BootstrappingParams.chain_sections`):
     CtS, EvalMod, StC, the pipeline's, then q0 (SLIM: the pipeline's before StC's).
   - With a bootstrap at a ring dimension with a known 128-bit bound, EvalMod's lower levels relinearize with a

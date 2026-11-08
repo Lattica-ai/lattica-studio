@@ -5,7 +5,7 @@ from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
 
-from lattica_build.params.bootstrapping_params import BOOT_PRECISIONS, BootstrappingParams
+from lattica_build.params.bootstrapping_params import BOOT_PRECISIONS, DIGIT_HEADROOM_BITS, BootstrappingParams
 
 QListNorm = Tuple[Tuple[int, ...], ...]
 QListInput = Sequence[Sequence[int]]
@@ -29,6 +29,8 @@ class HomParams:
     sk_hw: int = 0
     bv_gadget_bits: int = 4
     num_special_primes: int = 0
+    # HYBRID: the special primes' size in bits
+    special_prime_bits: int = 61
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
     # With a bootstrap: fresh ciphertexts hold this many pipeline rows, counted from the bottom of the chain (the
     # last pipeline rows), plus the bootstrap base. None: all the pipeline rows.
@@ -76,8 +78,11 @@ class HomParams:
                     "num_special_primes must be greater than 0 when using HYBRID decomposition; "
                     f"got {self.num_special_primes}"
                 )
-            self.ghs_keyswtich_scale_precision = (61,) * self.num_special_primes
-            self.g_base_bits = 61 * self.num_special_primes
+            if not isinstance(self.special_prime_bits, int) or not 26 <= self.special_prime_bits <= 61:
+                raise ValueError(f"special_prime_bits must be an int from 26 to 61; got {self.special_prime_bits!r}.")
+            self.ghs_keyswtich_scale_precision = (self.special_prime_bits,) * self.num_special_primes
+            # the digits' capacity: DIGIT_HEADROOM_BITS below the special primes' product
+            self.g_base_bits = self.special_prime_bits * self.num_special_primes - DIGIT_HEADROOM_BITS
         else:
             if not isinstance(self.bv_gadget_bits, int) or self.bv_gadget_bits < 1:
                 raise ValueError(f"bv_gadget_bits must be an int >= 1; got {self.bv_gadget_bits!r}.")
@@ -160,12 +165,13 @@ class HomParams:
         boot_lcr_first_cts = d.pop("boot_lcr_first_cts", False)
         consumption_order = d.pop("consumption_order", None)
 
+        special_primes = d.pop("ghs_keyswtich_scale_precision", None)
         if "g_base_bits" in d:
             if d["decomposition_type"]==DecompositionType.BV:
                 d["bv_gadget_bits"] = d.pop("g_base_bits")
             else:
-                d["num_special_primes"] = d.pop("g_base_bits") // 61
-        d.pop("ghs_keyswtich_scale_precision", None)
+                d.pop("g_base_bits")
+                d["num_special_primes"], d["special_prime_bits"] = len(special_primes), special_primes[0]
 
         params = cls(**d)
         if bootstrapping:

@@ -68,7 +68,9 @@ LCR_MAX_TERMS = 192
 # about 2 bits costlier at this weight), less 2 bits of margin. 2**14 and 2**16 keep the hamming-weight-192 limits,
 # which are below the hamming-weight-1024 ones.
 MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 864, 2 ** 16: 1638}
-SPECIAL_PRIME_BITS = 61
+# A key switch's noise grows with its largest digit over the special primes' product P: every digit stays this many
+# bits below the special primes it uses (a digit filled up to P costs the key switch several bits of precision).
+DIGIT_HEADROOM_BITS = 8
 # A level-conserving chain's EvalMod rows, one word fewer than one per level: the cosine's rows, double angle 2's
 # row, then one word that double angles 1 and 3 share (a 38-bit and a 23-bit prime), last so that every row dropped
 # whole comes before the ones still active. A double angle's precision is the scale it keeps after its rescale, and
@@ -161,12 +163,13 @@ class BootstrappingParams:
         split = self.dft_split(n_slots)
         return len(split) > 1 and 2 ** split[-1] * (n // 2 // n_slots) <= LCR_MAX_TERMS
 
-    def one_digit_relin_key(self, chain_sections, num_special_primes: int, n: int) -> tuple[int, int] | None:
+    def one_digit_relin_key(self, chain_sections, num_special_primes: int, special_prime_bits: int,
+                            n: int) -> tuple[int, int] | None:
         """The one-digit relinearization key of EvalMod's lower levels, as (e, s): the relinearizations after e of
         EvalMod's rescales switch with one digit and s special primes, rather than with the square key's two or more
         digits, which read the key once per digit and add a ModUp. The key holds the q rows left at level e and the
-        fewest special primes with more bits than those rows, so its key switch noise, about N * sigma * Q / P, is a
-        few bits that the rescale after the relinearization divides away. e is the first level where the rows and
+        fewest special primes (of special_prime_bits bits) with DIGIT_HEADROOM_BITS more than those rows, so its key
+        switch noise, about N * sigma * Q / P, is a few bits that the rescale after the relinearization divides away. e is the first level where the rows and
         primes fit MAX_LOG_QP_128. The chain's special primes past num_special_primes are only this key's.
         chain_sections: the chain's ciphertext sections (chain_sections). None if no level both fits and needs
         more than one digit of the square key, or if n has no bound."""
@@ -178,10 +181,10 @@ class BootstrappingParams:
         below_bits = sum(row[0] for _, q_list in chain_sections[first_below:] for row in q_list)
         for e in range(len(eval_rows)):
             q_bits = below_bits + sum(row[0] for row in eval_rows[e:])
-            special = q_bits // SPECIAL_PRIME_BITS + 1
+            special = -(-(q_bits + DIGIT_HEADROOM_BITS) // special_prime_bits)
             if special <= num_special_primes:
                 return None   # the square key switches this level, and the ones after it, in one digit already
-            if q_bits + special * SPECIAL_PRIME_BITS <= MAX_LOG_QP_128[n]:
+            if q_bits + special * special_prime_bits <= MAX_LOG_QP_128[n]:
                 return e, special
         return None
 

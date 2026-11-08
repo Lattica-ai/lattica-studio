@@ -28,11 +28,12 @@ class ModulusChain():
         num_special_primes = hom_params.num_special_primes
         if boot_params is not None:
             # the special primes of EvalMod's one-digit relinearization key follow the square key's
-            one_digit_key = boot_params.one_digit_relin_key(self.mod_chain_sections, num_special_primes, hom_params.n)
+            one_digit_key = boot_params.one_digit_relin_key(
+                self.mod_chain_sections, num_special_primes, hom_params.special_prime_bits, hom_params.n)
             if one_digit_key is not None:
                 num_special_primes = one_digit_key[1]
         self.mod_chain_sections.append(
-            ["special_primes", ((61,),) * num_special_primes],
+            ["special_primes", ((hom_params.special_prime_bits,),) * num_special_primes],
         )
 
     def post_init(self):

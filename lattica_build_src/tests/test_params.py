@@ -77,7 +77,7 @@ def test_one_digit_relin_key_fits_the_128_bit_bound(n, num_special_primes, key):
     params = HomParams(n=n, full_q_list_precision=((60, 30),) * 5, pt_scale=2 ** 30,
                        num_special_primes=num_special_primes)
     params.boot_params = boot
-    assert boot.one_digit_relin_key(boot.chain_sections(params.full_q_list_precision), num_special_primes, n) == key
+    assert boot.one_digit_relin_key(boot.chain_sections(params.full_q_list_precision), num_special_primes, 61, n) == key
     special = ModulusChain(params).section_rows["special_primes"]
     assert len(special) == (num_special_primes if key is None else key[1])
 
