@@ -63,9 +63,11 @@ BOOT_PARAMS_PER_N_SLOTS = {
 # term's source indices in 48 KB of shared memory, 256 bytes per term. In a sparse bootstrap the level also computes
 # the SubSum trace, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
 LCR_MAX_TERMS = 192
-# The most bits of log QP any key may have for 128-bit security under the secret key (hamming weight 192), by ring
-# dimension: the lattice estimator's limits, where the cheapest attack is the sparse-secret hybrid.
-MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 809, 2 ** 16: 1638}
+# The most bits of log QP any key may have for 128-bit security under the secret key (hamming weight 1024), by ring
+# dimension. 2**15: the lattice estimator crosses 128 bits at 866 (cheapest attack bdd; the sparse-secret hybrids are
+# about 2 bits costlier at this weight), less 2 bits of margin. 2**14 and 2**16 keep the hamming-weight-192 limits,
+# which are below the hamming-weight-1024 ones.
+MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 864, 2 ** 16: 1638}
 SPECIAL_PRIME_BITS = 61
 # A level-conserving chain's EvalMod rows, one word fewer than one per level: the cosine's rows, double angle 2's
 # row, then one word that double angles 1 and 3 share (a 38-bit and a 23-bit prime), last so that every row dropped
