@@ -39,7 +39,7 @@ BOOT_CONFIGURATION = {
 # with the exit below, on the level-conserving chain at output scale 2**30.
 # An input with only q0 left must be at most 2 * q0 / 2**log_delta.
 # Last, on a level-conserving chain (lcr_first_cts), EvalMod's exit scale in bits. Double angles 1 and 3 share one
-# word there (LCR_EVAL_MOD_ROWS), so the double angles divide the scale by less than their squarings multiply it, and
+# word there (the profile's eval_mod_rows), so the double angles divide the scale by less than their squarings multiply it, and
 # the cosine is aimed so that EvalMod ends at 2**exit. The StC then brings exit - log_delta bits down to the output
 # scale: a higher exit keeps more precision in the double angles and leaves fewer bits to the StC's plaintexts.
 # Tuned per slot count at output scale 2**30, between the best REAL and the best COMPLEX exit. None: the slot count
@@ -71,26 +71,17 @@ MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 864, 2 ** 16: 1638}
 # A key switch's noise grows with its largest digit over the special primes' product P: every digit stays this many
 # bits below the special primes it uses (a digit filled up to P costs the key switch several bits of precision).
 DIGIT_HEADROOM_BITS = 8
-# A level-conserving chain's EvalMod rows, one word fewer than one per level: the cosine's rows, double angle 2's
-# row, then one word that double angles 1 and 3 share (a 38-bit and a 23-bit prime), last so that every row dropped
-# whole comes before the ones still active. A double angle's precision is the scale it keeps after its rescale, and
-# each later double angle doubles its error. Double angle 3's error is doubled by none, so it takes the small prime;
-# double angle 2 then keeps the scale (exit + 23) / 2, and double angle 1 gets its scale back from double angle 2's
-# 61-bit prime. LCR_DOUBLE_ANGLE_ROWS: the EvalMod row each double angle drops a prime of.
-LCR_EVAL_MOD_ROWS = ((53,),) * 5 + ((61,), (61, 23))
-LCR_DOUBLE_ANGLE_ROWS = (6, 5, 6)
-# A level-conserving chain's StC scale: its words hold two primes just below 2**31 (62-bit rows, the kernels' limit)
-# rather than 2**30, so the StC has room for the bits the higher EvalMod exit leaves it.
-LCR_STC_SCALE = 31
 
 
 @dataclass(frozen=True)
 class BootPrecision:
     """How precise a bootstrap is, and the chain it needs for that.
     eval_mod_scale: the EvalMod prime size in bits, which is also q0's: EvalMod running at scale q0 makes the division
-    by delta a free scale relabel. stc_scale: the StC prime size (a level-conserving chain with exit scales uses
-    LCR_STC_SCALE). per_n_slots: by log2(n_slots), the split, the CtS prime size, log_delta and the exit scale
-    (BOOT_PARAMS_PER_N_SLOTS explains them); the profile bootstraps only these slot counts. lcr_min_special_bits: the
+    by delta a free scale relabel. stc_scale: the StC prime size. per_n_slots: by log2(n_slots), the split, the CtS
+    prime size, log_delta and the exit scale (BOOT_PARAMS_PER_N_SLOTS explains them); the profile bootstraps only these
+    slot counts. On a level-conserving chain whose slot counts all have an exit scale, EvalMod runs on eval_mod_rows
+    (the cosine's rows, then the double angles'), double angle i drops a prime of row double_angle_rows[i], and the
+    StC primes take exit_stc_scale bits; other chains have one eval_mod_scale row per EvalMod level. lcr_min_special_bits: the
     level-conserving CtS keys need special primes P' of more than this many bits in all, and the backend gives them the
     fewest that reach it. Their key noise, about T N |m| q0 e / P' for T terms of plaintexts m at the CtS scale, must
     stay below the bootstrap's own error."""
@@ -98,24 +89,41 @@ class BootPrecision:
     stc_scale: int
     per_n_slots: dict[int, tuple[tuple[int, ...], int, int, int | None]]
     lcr_min_special_bits: int
+    eval_mod_rows: tuple[tuple[int, ...], ...]
+    double_angle_rows: tuple[int, ...]
+    exit_stc_scale: int
 
 
 BOOT_PRECISIONS = {
     # The general-purpose bootstrap, about 18 to 21 bits. q0 = 53 bits is the smallest without accuracy loss. The
     # level-conserving keys' noise at N = 2**16, q0 = 2**53, 192 terms and plaintexts up to 2**60 is about 2**-42 with
     # three 61-bit special primes, well below the ModDown's rounding, but about 2**19 with two.
+    # Its EvalMod rows on a level-conserving chain are one word fewer than one per level: the cosine's rows, double
+    # angle 2's row, then one word that double angles 1 and 3 share (a 38-bit and a 23-bit prime), last so that every
+    # row dropped whole comes before the ones still active. A double angle's precision is the scale it keeps after its
+    # rescale, and each later double angle doubles its error. Double angle 3's error is doubled by none, so it takes the
+    # small prime; double angle 2 then keeps the scale (exit + 23) / 2, and double angle 1 gets its scale back from
+    # double angle 2's 61-bit prime. The StC words there hold two primes just below 2**31 (62-bit rows, the kernels'
+    # limit) rather than 2**30, so the StC has room for the bits the higher EvalMod exit leaves it.
     "full": BootPrecision(eval_mod_scale=53, stc_scale=30, per_n_slots=BOOT_PARAMS_PER_N_SLOTS,
-                          lcr_min_special_bits=170),
-    # About 10 bits, for computations that tolerate it. Its chain is small enough for N = 2**15 at 128 bits, with one
-    # DFT level fewer than "full" on each side. The level-conserving keys' noise is about 2**-24 with two special
-    # primes, far below this bootstrap's error. Inputs need |x| <= 0.75 and a slot mean of at most about 0.1: with
-    # log_delta 2, the sine's cubic error on the largest coefficient EvalMod sees, the mean, is about 2**-10, and a
-    # larger mean loses precision. It has no exit scales, so its chain keeps one EvalMod row per level.
-    "low": BootPrecision(eval_mod_scale=36, stc_scale=26, per_n_slots={
-        12: ((4, 4, 4), 34, 2, None),
-        13: ((4, 4, 5), 34, 2, None),
-        14: ((4, 5, 5), 34, 2, None),
-    }, lcr_min_special_bits=100),
+                          lcr_min_special_bits=170, eval_mod_rows=((53,),) * 5 + ((61,), (61, 23)),
+                          double_angle_rows=(6, 5, 6), exit_stc_scale=31),
+    # About 10 bits, for computations that tolerate it, at 2**12 to 2**14 slots: a chain small enough for N = 2**15 at
+    # 128 bits with 4 special primes of 57 bits (3 digits), with one DFT level fewer than "full" on each side. Its
+    # precision is the cosine's own rounding noise, which follows the cosine's primes, so the cosine takes 37-bit rows
+    # while q0 stays at 35 bits; the double angles, whose noise is far below it, take 38, 33 and 31 bits with EvalMod's
+    # exit at 2**31. The sparse slot counts' last split component is small, since the level-conserving first CtS
+    # level's terms are its diagonals times the trace rotations. The StC primes are 26 bits, no narrower than a
+    # pipeline scale of 2**26, so that a pipeline can run its first ops on the input's StC rows (input_holds_stc_rows).
+    # The level-conserving keys' noise with two special primes is far below this bootstrap's error. Inputs need
+    # |x| <= 0.75 and a slot mean of at most about 0.1: with log_delta 1, the sine's cubic error on the largest
+    # coefficient EvalMod sees, the mean, stays near this bootstrap's error.
+    "low": BootPrecision(eval_mod_scale=35, stc_scale=26, per_n_slots={
+        12: ((5, 4, 3), 34, 1, 31),
+        13: ((5, 4, 4), 34, 1, 31),
+        14: ((4, 5, 5), 34, 1, 31),
+    }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 5 + ((38,), (33,), (31,)), double_angle_rows=(5, 6, 7),
+        exit_stc_scale=26),
 }
 
 
@@ -241,9 +249,8 @@ class BootstrappingParams:
         return self._n_slots_entry(n_slots, self.precision)[2]
 
     def exit_scale_for(self, n_slots: int) -> int | None:
-        """EvalMod's exit scale, in bits, of a bootstrap of n_slots slots on a level-conserving chain, whose double
-        angles 1 and 3 share a word (LCR_EVAL_MOD_ROWS); None on the other chains, where EvalMod ends at its own
-        scale."""
+        """EvalMod's exit scale, in bits, of a bootstrap of n_slots slots on a chain that runs EvalMod on the profile's
+        eval_mod_rows; None on the other chains, where EvalMod ends at its own scale."""
         if self.double_angle_rows is None:
             return None
         return self._n_slots_entry(n_slots, self.precision)[3]
@@ -281,14 +288,13 @@ class BootstrappingParams:
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.dft_levels - self.lcr_first_cts)
-        # The shared double-angle word needs every slot count's exit scale. A chain's DFT level count is its slot
-        # counts' split length, and only "full"'s 4-level splits (2**12 to 2**15 slots) have exits: the other chains
-        # keep one EvalMod row per level.
+        # The profile's EvalMod rows need every slot count's exit scale. A chain's DFT level count is its slot counts'
+        # split length; the chains of a level count whose splits lack exits keep one EvalMod row per level.
         if self.lcr_first_cts and not self.slim_boot and all(
                 entry[3] is not None for entry in profile.per_n_slots.values() if len(entry[0]) == dft_levels):
-            self.stc_scale = LCR_STC_SCALE
-            self.eval_mod_q_list_precision = LCR_EVAL_MOD_ROWS
-            self.double_angle_rows = LCR_DOUBLE_ANGLE_ROWS
+            self.stc_scale = profile.exit_stc_scale
+            self.eval_mod_q_list_precision = profile.eval_mod_rows
+            self.double_angle_rows = profile.double_angle_rows
         else:
             self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
             self.double_angle_rows = None

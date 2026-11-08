@@ -96,21 +96,23 @@ def test_lcr_chain_shares_a_double_angle_word_and_stays_below_the_word_limit():
 
 def test_low_precision_chain_fits_n_2_15_at_128_bits():
     """The "low" profile's chain for ResNet-20 at N = 2**15 (bootstraps at 2**12 to 2**14 slots, (52, 26) rows after
-    them, 3 special primes) is level-conserving with its 3 DFT levels, its q rows plus the square key's special primes
-    fit MAX_LOG_QP_128, and serialization keeps the profile."""
+    them, 4 special primes of 57 bits) runs EvalMod on the profile's rows, every key fits MAX_LOG_QP_128, and
+    serialization keeps the profile and the special primes."""
     n = 2 ** 15
-    boot = BootstrappingParams.for_slot_counts(False, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=n, special_bits=3 * 61,
+    boot = BootstrappingParams.for_slot_counts(True, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=n, special_bits=4 * 57,
                                                precision="low")
-    params = HomParams(n=n, full_q_list_precision=((52, 26), (52, 26), (26,)), pt_scale=2 ** 26, n_slots=2 ** 14,
-                       num_special_primes=3, boot_precision="low")
+    params = HomParams(n=n, full_q_list_precision=((52, 26),) * 3, pt_scale=2 ** 26, n_slots=2 ** 14,
+                       num_special_primes=4, special_prime_bits=57, boot_precision="low")
     params.boot_params = boot
-    assert boot.lcr_first_cts and boot.dft_levels == 3
+    assert boot.lcr_first_cts and boot.exit_scale_for(2 ** 12) == 31
     chain = ModulusChain(params)
     q_rows = [row for name, rows in chain.section_rows.items() if name != "special_primes" for row in rows]
-    square_key_rows = q_rows + chain.section_rows["special_primes"][:3]
-    assert sum(math.log2(math.prod(chain.factors_per_row[row])) for row in square_key_rows) <= MAX_LOG_QP_128[n]
+    special = chain.section_rows["special_primes"]
+    log_qp = sum(math.log2(math.prod(chain.factors_per_row[row])) for row in q_rows + special[:4])
+    assert log_qp <= MAX_LOG_QP_128[n]
     back = HomParams.from_dict({**params.to_dict(), "bootstrapping": True})
     assert back.boot_params.q_list_precision == boot.q_list_precision
+    assert (back.num_special_primes, back.special_prime_bits) == (4, 57)
 
 
 def test_unknown_boot_precision_is_refused():
