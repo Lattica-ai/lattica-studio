@@ -1,6 +1,7 @@
 """See `params/README.md` for usage details."""
 
 import copy
+import math
 
 import torch
 
@@ -9,6 +10,14 @@ from typing import Sequence, Tuple
 from decimal import Decimal
 
 from lattica_build.params.primes_utils import get_primes_from_precisions_list
+
+
+def _draw_primes(q_list, base_row):
+    """The primes of each row of q_list, the row base_row (the bootstrap base, None without one) drawn first, so q0 is
+    the same prime the one-row ring-switch subring chain gets."""
+    order = ([base_row] if base_row is not None else []) + [row for row in range(len(q_list)) if row != base_row]
+    drawn = dict(zip(order, get_primes_from_precisions_list([q_list[row] for row in order])))
+    return [drawn[row] for row in range(len(q_list))]
 
 
 class ModulusChain():
@@ -26,12 +35,22 @@ class ModulusChain():
         else:
             self.mod_chain_sections = [list(s) for s in boot_params.chain_sections(hom_params.full_q_list_precision)]
         num_special_primes = hom_params.num_special_primes
+        # EvalMod's one-digit relinearization key, (e, s) or None (BootstrappingParams.one_digit_relin_key); its special
+        # primes follow the square key's
+        self.one_digit_relin_key = None
         if boot_params is not None:
-            # the special primes of EvalMod's one-digit relinearization key follow the square key's
-            one_digit_key = boot_params.one_digit_relin_key(
-                self.mod_chain_sections, num_special_primes, hom_params.special_prime_bits, hom_params.n)
-            if one_digit_key is not None:
-                num_special_primes = one_digit_key[1]
+            # sized on the bits of the primes the chain draws for its q rows, which exceed their nominal sizes; the q
+            # rows are drawn before the special primes, so they get the same primes here
+            q_list = [row for _, section_q_list in self.mod_chain_sections for row in section_q_list]
+            names = [name for name, section_q_list in self.mod_chain_sections for _ in section_q_list]
+            drawn = _draw_primes(q_list, names.index("boot_base"))
+            rows = iter(math.log2(math.prod(primes)) for primes in drawn)
+            drawn_sections = [(name, tuple((next(rows),) for _ in section_q_list))
+                              for name, section_q_list in self.mod_chain_sections]
+            self.one_digit_relin_key = boot_params.one_digit_relin_key(
+                drawn_sections, num_special_primes, hom_params.special_prime_bits, hom_params.n)
+            if self.one_digit_relin_key is not None:
+                num_special_primes = self.one_digit_relin_key[1]
         self.mod_chain_sections.append(
             ["special_primes", ((hom_params.special_prime_bits,),) * num_special_primes],
         )
@@ -59,12 +78,8 @@ class ModulusChain():
         for row_idx, num_cols in enumerate(num_cols_per_row):
             self.full_active_cols[row_idx, :num_cols] = 1
 
-        # Sample primes, boot_base first, so q0 is the same prime the one-row
-        # ring-switch subring chain gets.
         base_rows = self.section_rows.get("boot_base", [])
-        order = base_rows + [row for row in range(self.num_rows) if row not in base_rows]
-        drawn = dict(zip(order, get_primes_from_precisions_list([self.full_q_list[row] for row in order])))
-        self.factors_per_row = [drawn[row] for row in range(self.num_rows)]
+        self.factors_per_row = _draw_primes(self.full_q_list, base_rows[0] if base_rows else None)
 
     def get_rows_of_sections(self, section_names):
         rows = []

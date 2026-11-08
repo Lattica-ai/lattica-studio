@@ -1,5 +1,6 @@
 """See `params/README.md` for usage details."""
 
+import math
 from dataclasses import dataclass
 
 BOOT_CONFIGURATION = {
@@ -189,7 +190,7 @@ class BootstrappingParams:
         below_bits = sum(row[0] for _, q_list in chain_sections[first_below:] for row in q_list)
         for e in range(len(eval_rows)):
             q_bits = below_bits + sum(row[0] for row in eval_rows[e:])
-            special = -(-(q_bits + DIGIT_HEADROOM_BITS) // special_prime_bits)
+            special = math.ceil((q_bits + DIGIT_HEADROOM_BITS) / special_prime_bits)
             if special <= num_special_primes:
                 return None   # the square key switches this level, and the ones after it, in one digit already
             if q_bits + special * special_prime_bits <= MAX_LOG_QP_128[n]:
