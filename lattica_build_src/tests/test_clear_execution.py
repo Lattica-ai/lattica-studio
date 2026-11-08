@@ -35,6 +35,15 @@ from lattica_build.params.params import HomParams
 from lattica_build.serialization.clear_execution import run_clear_section
 
 
+def _slot_op_clear(op, x, n_slots):
+    """Clear execution of the slot operator `op` on `x` in a traced pipeline (a slot operator runs in clear only
+    there), the slot axis of `x` holding n_slots values. Returns the result and the ring size internal_n."""
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=n_slots)
+    pipeline = HomomorphicPipeline(hom=op, input_shape=tuple(x.shape))
+    return pipeline.forward_clear(x, hom_params=params), params.internal_n
+
+
 def test_leaf_clear_execution_and_data():
     x = torch.arange(6, dtype=torch.float32).reshape(2, 3)
 
@@ -56,39 +65,50 @@ def test_leaf_clear_execution_and_data():
 
 def test_slot_client_and_fhe_clear_execution():
     x = torch.arange(8, dtype=torch.float32)
-    assert torch.equal(HomExpand()(x), x.unsqueeze(1).expand(8, 8))
+    expanded, internal_n = _slot_op_clear(HomExpand(), x, 8)
+    assert torch.equal(expanded, x.unsqueeze(1).expand(8, internal_n))
     z = torch.complex(x, -x)
     assert torch.equal(HomConj()(z), z.conj())
-    assert torch.equal(HomRotateSum((1,), add_identity_rotation=True)(x), x + x.roll(-1, -1))
-    assert torch.equal(HomRunningSum()(x), x.cumsum(-1))
-    assert torch.equal(HomSumSlots(k=4)(x), x.reshape(4, 2).sum(0).repeat(4))
+    assert torch.equal(_slot_op_clear(HomRotateSum((1,), add_identity_rotation=True), x, 8)[0], x + x.roll(-1, -1))
+    assert torch.equal(_slot_op_clear(HomRunningSum(), x, 8)[0], x.cumsum(-1))
+    assert torch.equal(_slot_op_clear(HomSumSlots(nb_cols=2), x, 8)[0], x.reshape(4, 2).sum(0))
     assert torch.equal(HomModSwitch()(x), x)
     assert torch.equal(Bootstrap()(x), x)
     assert torch.equal(HomRingSwitch(10)(x), x)
-    assert torch.equal(HomomorphicPipeline(hom=SequentialHomOp(Clamp(0, 8)), input_shape=x.shape).forward_clear(x), x)
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4, pt_scale=2**30, num_special_primes=1)
+    pipeline = HomomorphicPipeline(client_pre=[Clamp(0, 8)], hom=HomModSwitch(), input_shape=x.shape)
+    assert torch.equal(pipeline.forward_clear(x, hom_params=params), x)
 
     probabilities = Softmax(-1)(x)
     assert torch.allclose(probabilities.sum(), torch.tensor(1.0))
     assert torch.equal(Clamp(2, 5)(x), x.clamp(2, 5))
 
 
+@pytest.mark.parametrize('op', [HomExpand(), HomRotateSum((1,)), HomRunningSum(), HomSumSlots(nb_cols=2)])
+def test_slot_op_clear_outside_a_traced_pipeline_raises(op):
+    """Without a trace, a slot operator's slot axis and ring size are unknown: it does not guess them."""
+    with pytest.raises(RuntimeError, match='traced pipeline'):
+        op(torch.arange(8.))
+
+
 @pytest.mark.parametrize('axis', [0, 1, -1, -2])
-def test_expand_clear_accepts_every_vector_insertion_axis(axis):
-    x = torch.tensor([2., 3., 5.])
-    expected = torch.tensor([[2., 3., 5.]]).repeat(3, 1)
-    if axis in (0, -2):
+def test_expand_clear_inserts_the_values_axis_as_traced(axis):
+    """The values axis goes where infer_output_shape inserts it: in the input's axes, so -1 and -2 of a vector
+    both put it first."""
+    x = torch.tensor([2., 3., 5., 7.])
+    result, internal_n = _slot_op_clear(HomExpand(expand_axis=axis), x, 4)
+    expected = x[:, None].expand(4, internal_n)
+    if axis == 1:
         expected = expected.T
-    torch.testing.assert_close(HomExpand(expand_axis=axis)(x), expected)
+    torch.testing.assert_close(result, expected)
 
 
 def test_expand_clear_preserves_batch_dimensions():
-    x = torch.arange(6.).reshape(2, 3)
-    result = HomExpand(expand_axis=1)(x)
-    assert result.shape == (2, 3, 3)
-    for index in range(3):
-        torch.testing.assert_close(result[:, :, index], x)
-    with pytest.raises(IndexError):
-        HomExpand(expand_axis=3)(x)
+    x = torch.arange(8.).reshape(2, 4)
+    result, internal_n = _slot_op_clear(HomExpand(expand_axis=1), x, 4)
+    assert result.shape == (2, 4, internal_n)
+    for slot in range(internal_n):
+        torch.testing.assert_close(result[:, :, slot], x)
 
 
 def test_serialized_clear_execution_expands_to_ring_size():
@@ -118,20 +138,21 @@ def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
 
 
 def test_running_sum_clear_uses_only_the_logical_axis():
-    x = torch.tensor([[1., 2., 3.], [4., 5., 6.]])
-    op = HomRunningSum(cumsum_axis=0, k=64, stage_sizes=[8, 8])
-    torch.testing.assert_close(op(x), torch.tensor([[1., 2., 3.], [5., 7., 9.]]))
+    x = torch.tensor([[1., 2., 3., 4.], [5., 6., 7., 8.]])
+    result, _ = _slot_op_clear(HomRunningSum(cumsum_axis=0), x, 4)
+    torch.testing.assert_close(result, torch.tensor([[1., 2., 3., 4.], [6., 8., 10., 12.]]))
 
 
 @pytest.mark.parametrize('include_identity', [False, True])
 @pytest.mark.parametrize('perform_sum', [False, True])
 def test_rotate_sum_clear_counts_each_requested_view_once(include_identity, perform_sum):
-    x = torch.tensor([1., 2., 4.])
-    views = [torch.tensor([2., 4., 1.])]
+    x = torch.tensor([1., 2., 4., 8.])
+    views = [torch.tensor([2., 4., 8., 1.])]
     if perform_sum or include_identity:
         views.insert(0, x)
     expected = sum(views) if perform_sum else torch.stack(views)
-    torch.testing.assert_close(HomRotateSum([1], perform_sum, include_identity)(x), expected)
+    result, _ = _slot_op_clear(HomRotateSum([1], perform_sum, include_identity), x, 4)
+    torch.testing.assert_close(result, expected)
 
 
 @pytest.mark.parametrize('batched', [False, True])
@@ -191,7 +212,8 @@ def test_composites_and_pipeline_clear_execution():
         input_shape=(2,),
     )
     expected = (x.clamp(0, 2) * torch.tensor([2.0, 3.0])).clamp(0, 3)
-    assert torch.equal(pipeline.forward_clear(x), expected)
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4, pt_scale=2**30, num_special_primes=1)
+    assert torch.equal(pipeline.forward_clear(x, hom_params=params), expected)
 
 
 @pytest.mark.parametrize("c_in,c_out,hw,kernel,stride,padding", [
@@ -248,14 +270,14 @@ def test_mux_conv_bn_fused_clear_matches_torch(delta):
     assert torch.allclose(out[MuxLayout(c_out, *op.output_hw).slot_map()], expected)
 
 
-def _ciphertext_slot_sums(x, n_slots, ks, internal_n):
+def _ciphertext_slot_sums(x, n_slots, nb_cols_list, internal_n):
     """Independent oracle: x zero-padded to its period n_slots and repeated over the
-    ring's internal_n slots; each SumSlots(k) adds the slots rotated by every multiple of
-    n_slots / k, leaving period n_slots / k. Read back at x's positions."""
+    ring's internal_n slots; each SumSlots(nb_cols) adds the slots rotated by every multiple of
+    nb_cols, leaving period nb_cols. Read back at x's positions."""
     slots = torch.nn.functional.pad(x, (0, n_slots - len(x))).repeat(internal_n // n_slots)
-    for k in ks:
-        n_slots //= k
-        slots = sum(slots.roll(-m * n_slots) for m in range(k))
+    for nb_cols in nb_cols_list:
+        slots = sum(slots.roll(-m * nb_cols) for m in range(n_slots // nb_cols))
+        n_slots = nb_cols
     return slots[:len(x)]
 
 
@@ -263,20 +285,20 @@ def test_sum_slots_clear_matches_the_ciphertext():
     """The clear graph sums the slots the ciphertext does: 28 values zero-padded to their
     32-slot period, so padding and data mix in every sum."""
     x = torch.randn(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    pipeline = HomomorphicPipeline(hom=HomSumSlots(k=8), input_shape=(28,))
+    pipeline = HomomorphicPipeline(hom=HomSumSlots(nb_cols=4, reduce_output=False), input_shape=(28,))
     params = HomParams(n=2 ** 13, full_q_list_precision=((61,), (61, 30), (61,)),
                        pt_scale=2 ** 44, num_special_primes=1, n_slots=32)
     graph, _ = pipeline.serialize(params)
     section = json.loads(graph)['pipeline_sections']['hom']
     result = run_clear_section(section, [x], lambda path: pytest.fail('No weights expected'))
-    torch.testing.assert_close(result, _ciphertext_slot_sums(x, 32, (8,), params.internal_n))
+    torch.testing.assert_close(result, _ciphertext_slot_sums(x, 32, (4,), params.internal_n))
 
 
 def test_sum_slots_output_period():
-    """The output's period is the input's (internal_n without one) over k."""
+    """The output's period is nb_cols."""
     value = HomValue(tensor_shape=(32,), n_axis=-1)
-    assert HomSumSlots(k=8).infer_output_shape(value.make_copy(n_slots=4096)).n_slots == 512
-    assert HomSumSlots(k=8).infer_output_shape(value, internal_n=4096).n_slots == 512
+    assert HomSumSlots(nb_cols=512).infer_output_shape(value.make_copy(n_slots=4096)).n_slots == 512
+    assert HomSumSlots(nb_cols=512).infer_output_shape(value, internal_n=4096).n_slots == 512
 
 
 def test_clear_execution_does_not_trace():
@@ -309,9 +331,53 @@ def test_mnist_composite_example_predicts_known_digits():
     labels = labels[sample_indices]
 
     pipeline = mnist_fc.Pipeline()
-    predictions = pipeline.build_pipeline().forward_clear(images).argmax(dim=-1)
+    predictions = pipeline.build_pipeline().forward_clear(images, hom_params=pipeline.build_params()).argmax(dim=-1)
     accuracy = (predictions == labels).float().mean()
     assert accuracy >= 0.95, f"clear MNIST accuracy was only {accuracy.item():.1%}"
+
+
+def test_forward_clear_runs_a_built_artifact_without_serializing(tmp_path, monkeypatch):
+    """forward_clear on the artifact of build(), its zip's path, or its bytes gives the result it gives with the
+    params, and does not serialize the pipeline again."""
+    from lattica_build.build import build
+    from lattica_build.examples.advanced import mnist_fc
+
+    example = mnist_fc.Pipeline()
+    pipeline = example.build_pipeline()
+    params = example.build_params()
+    x = torch.rand(mnist_fc.INPUT_SHAPE) * 255
+    expected = pipeline.forward_clear(x, hom_params=params)
+
+    artifact = build(pipeline, params, tmp_path / "mnist.zip")
+    serialized = HomomorphicPipeline.load(artifact.path)
+
+    def no_serialize(*args, **kwargs):
+        pytest.fail("forward_clear serialized the pipeline although it was given an artifact")
+
+    monkeypatch.setattr(pipeline, "serialize", no_serialize)
+    for given in (artifact, artifact.path, str(artifact.path), serialized):
+        assert torch.equal(pipeline.forward_clear(x, artifact=given), expected)
+
+
+def test_forward_clear_uses_the_artifact_over_hom_params(tmp_path, monkeypatch):
+    """Given an artifact and hom_params, forward_clear runs the artifact; given neither, it raises."""
+    from lattica_build.build import build
+    from lattica_build.examples.advanced import mnist_fc
+
+    example = mnist_fc.Pipeline()
+    pipeline = example.build_pipeline()
+    params = example.build_params()
+    x = torch.rand(mnist_fc.INPUT_SHAPE)
+    expected = pipeline.forward_clear(x, hom_params=params)
+    artifact = build(pipeline, params, tmp_path / "mnist.zip")
+
+    def no_serialize(*args, **kwargs):
+        pytest.fail("forward_clear serialized the pipeline although it was given an artifact")
+
+    monkeypatch.setattr(pipeline, "serialize", no_serialize)
+    assert torch.equal(pipeline.forward_clear(x, hom_params=params, artifact=artifact), expected)
+    with pytest.raises(TypeError, match="needs hom_params to serialize the pipeline, or an artifact"):
+        pipeline.forward_clear(x)
 
 
 def test_bitonic_sort_composite_example_sorts_input():
