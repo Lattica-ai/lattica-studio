@@ -8,7 +8,7 @@ from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
-from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.bootstrapping_params import MAX_LOG_QP_128, BootstrappingParams
 from lattica_build.params.level_and_scale_tracing import ModulusChain, _get_config_for_row_or_col
 from lattica_build.params.params import HomParams
 
@@ -92,6 +92,31 @@ def test_lcr_chain_shares_a_double_angle_word_and_stays_below_the_word_limit():
     assert len(chain.section_rows["boot_eval"]) == 7
     assert all(math.prod(primes) < 2 ** 62 for primes in chain.factors_per_row)
     assert all(math.prod(chain.factors_per_row[row]) > 2 ** 61.9 for row in chain.section_rows["boot_stc"])
+
+
+def test_low_precision_chain_fits_n_2_15_at_128_bits():
+    """The "low" profile's chain for ResNet-20 at N = 2**15 (bootstraps at 2**12 to 2**14 slots, (52, 26) rows after
+    them, 3 special primes) is level-conserving with its 3 DFT levels, its q rows plus the square key's special primes
+    fit MAX_LOG_QP_128, and serialization keeps the profile."""
+    n = 2 ** 15
+    boot = BootstrappingParams.for_slot_counts(False, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=n, special_bits=3 * 61,
+                                               precision="low")
+    params = HomParams(n=n, full_q_list_precision=((52, 26), (52, 26), (26,)), pt_scale=2 ** 26, n_slots=2 ** 14,
+                       num_special_primes=3, boot_precision="low")
+    params.boot_params = boot
+    assert boot.lcr_first_cts and boot.dft_levels == 3
+    chain = ModulusChain(params)
+    q_rows = [row for name, rows in chain.section_rows.items() if name != "special_primes" for row in rows]
+    square_key_rows = q_rows + chain.section_rows["special_primes"][:3]
+    assert sum(math.log2(math.prod(chain.factors_per_row[row])) for row in square_key_rows) <= MAX_LOG_QP_128[n]
+    back = HomParams.from_dict({**params.to_dict(), "bootstrapping": True})
+    assert back.boot_params.q_list_precision == boot.q_list_precision
+
+
+def test_unknown_boot_precision_is_refused():
+    with pytest.raises(ValueError, match="boot_precision must be one of"):
+        HomParams(n=2 ** 15, full_q_list_precision=((60,),), pt_scale=2 ** 30, num_special_primes=3,
+                  boot_precision="medium")
 
 
 def _boot_params(q_list, real_boot, slim_boot):

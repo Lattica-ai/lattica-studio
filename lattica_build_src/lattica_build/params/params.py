@@ -5,7 +5,7 @@ from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
 
-from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.bootstrapping_params import BOOT_PRECISIONS, BootstrappingParams
 
 QListNorm = Tuple[Tuple[int, ...], ...]
 QListInput = Sequence[Sequence[int]]
@@ -37,6 +37,8 @@ class HomParams:
     real_boot: bool = True
     slim_boot: bool = False
     n_slots: int | None = None
+    # Bootstrapping: the BOOT_PRECISIONS profile, which sets the bootstrap's precision and chain.
+    boot_precision: str = "full"
 
     @property
     def internal_n(self) -> int:
@@ -117,6 +119,8 @@ class HomParams:
         for name in ("real_boot", "slim_boot"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")
+        if self.boot_precision not in BOOT_PRECISIONS:
+            raise ValueError(f"boot_precision must be one of {sorted(BOOT_PRECISIONS)}; got {self.boot_precision!r}.")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -137,6 +141,7 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            "boot_precision": self.boot_precision,
             "consumption_order": self.consumption_order,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
@@ -166,7 +171,7 @@ class HomParams:
         if bootstrapping:
             params.boot_params = BootstrappingParams(
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale,
-                lcr_first_cts=boot_lcr_first_cts)
+                lcr_first_cts=boot_lcr_first_cts, precision=params.boot_precision)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         params.consumption_order = consumption_order

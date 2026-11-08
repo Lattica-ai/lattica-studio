@@ -25,7 +25,7 @@ from safetensors.torch import save as safetensors_save
 
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
-from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.bootstrapping_params import BOOT_PRECISIONS, BootstrappingParams
 from lattica_build.params.params import HomParams, DecompositionType
 
 
@@ -285,7 +285,7 @@ class HomomorphicPipeline:
         ring_switch_input = first_op is not None and first_op.OP_TYPE == HomOpType.RingSwitch
         if ring_switch_input:
             hom_params.ring_switch_params = HomParams(
-                full_q_list_precision=((BootstrappingParams.get_q_base_precision(),),),
+                full_q_list_precision=((BOOT_PRECISIONS[hom_params.boot_precision].eval_mod_scale,),),
                 n=2 ** first_op.log_n_subring,
                 pt_scale=hom_params.pt_scale,
                 decomposition_type=DecompositionType.BV,
@@ -302,7 +302,7 @@ class HomomorphicPipeline:
             # from the inputs' (e.g. HomSumSlots, HomMuxConv)
             hom_params.boot_params = BootstrappingParams.for_slot_counts(
                 hom_params.real_boot, hom_params.slim_boot, self._bootstrap_slot_counts(hom_params), n=hom_params.n,
-                special_bits=sum(hom_params.ghs_keyswtich_scale_precision or ()))
+                special_bits=sum(hom_params.ghs_keyswtich_scale_precision or ()), precision=hom_params.boot_precision)
         hom_params.mod_chain = ModulusChain(hom_params)
 
         tensors = {}
