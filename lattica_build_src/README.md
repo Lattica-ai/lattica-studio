@@ -12,6 +12,8 @@ Clear execution is also available locally through `HomOp.forward_clear(...)` and
 `HomomorphicPipeline.forward_clear(..., hom_params=...)`. It uses ordinary torch
 tensors and the data attached to operators. The pipeline's clear execution traces
 it with the `HomParams` used for the build, so its result matches the ciphertext's.
+To skip tracing it again after a build, pass the build's result instead:
+`forward_clear(..., artifact=build(pipeline, hom_params, path))`.
 
 ## Installation
 

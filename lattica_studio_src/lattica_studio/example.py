@@ -59,7 +59,8 @@ def main() -> None:
     )
 
     # Optional, forward_clear runs the pipeline locally on plaintext tensors for verification.
-    clear_result = hom_pipeline.forward_clear(x[0], hom_params=hom_params)
+    # It runs the artifact built above, so it checks exactly what gets deployed.
+    clear_result = hom_pipeline.forward_clear(x[0], artifact=artifact)
     clear_prediction = clear_result.argmax(dim=-1)
     clear_accuracy = (clear_prediction == y[0]).sum().item() / mnist_fc.BATCH
     print(f"Clear query: accuracy {clear_accuracy * 100:.1f}%")

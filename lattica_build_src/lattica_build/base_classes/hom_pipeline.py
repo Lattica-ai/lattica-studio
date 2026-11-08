@@ -117,9 +117,17 @@ class HomomorphicPipeline:
     def set_data(self, name: str | int | tuple[int, ...] | None, *data: Tensor, section: PipeSec = PipeSec.HOM) -> None:
         self._get_pipe_section(section).set_data(*data, name=name)
 
-    def forward_clear(self, *inputs, hom_params, **named_inputs):
-        """Run the complete pipeline on clear torch tensors: the pipeline is traced with `hom_params` and its graph
-        run, so each op computes on its input's traced layout and the result matches the ciphertext's."""
+    def forward_clear(self, *inputs, hom_params=None, artifact=None, **named_inputs):
+        """Run the complete pipeline on clear torch tensors: its traced graph is run, so each op computes on its
+        input's traced layout and the result matches the ciphertext's.
+
+        artifact: a pipeline already built, so it isn't serialized again. Pass what `build()` returned, the
+            path to its zip, or the bytes from `serialize()` or `load()`. Rebuild it if you change the pipeline's
+            weights or params, otherwise the old version runs.
+        hom_params: without an artifact, the params the pipeline is serialized with, on each call.
+        """
+        if artifact is None and hom_params is None:
+            raise TypeError("forward_clear needs hom_params to serialize the pipeline, or an artifact")
         input_names = list(inspect.signature(self.hom.forward).parameters)
         if inputs and named_inputs:
             raise TypeError("forward_clear accepts positional or named inputs, not both")
@@ -145,7 +153,13 @@ class HomomorphicPipeline:
 
         from lattica_build.serialization.clear_execution import run_clear_graph
 
-        graph_bytes, tensors_bytes = self.serialize(hom_params)
+        if artifact is None:
+            graph_bytes, tensors_bytes = self.serialize(hom_params)
+        elif isinstance(artifact, tuple):
+            graph_bytes, tensors_bytes = artifact
+        else:
+            # A BuildArtifact holds the path of the zip build() wrote
+            graph_bytes, tensors_bytes = self.load(getattr(artifact, "path", artifact))
         graph = json.loads(graph_bytes)['pipeline_sections']
         tensors = safetensors_load(tensors_bytes)
 

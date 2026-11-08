@@ -336,6 +336,50 @@ def test_mnist_composite_example_predicts_known_digits():
     assert accuracy >= 0.95, f"clear MNIST accuracy was only {accuracy.item():.1%}"
 
 
+def test_forward_clear_runs_a_built_artifact_without_serializing(tmp_path, monkeypatch):
+    """forward_clear on the artifact of build(), its zip's path, or its bytes gives the result it gives with the
+    params, and does not serialize the pipeline again."""
+    from lattica_build.build import build
+    from lattica_build.examples.advanced import mnist_fc
+
+    example = mnist_fc.Pipeline()
+    pipeline = example.build_pipeline()
+    params = example.build_params()
+    x = torch.rand(mnist_fc.INPUT_SHAPE) * 255
+    expected = pipeline.forward_clear(x, hom_params=params)
+
+    artifact = build(pipeline, params, tmp_path / "mnist.zip")
+    serialized = HomomorphicPipeline.load(artifact.path)
+
+    def no_serialize(*args, **kwargs):
+        pytest.fail("forward_clear serialized the pipeline although it was given an artifact")
+
+    monkeypatch.setattr(pipeline, "serialize", no_serialize)
+    for given in (artifact, artifact.path, str(artifact.path), serialized):
+        assert torch.equal(pipeline.forward_clear(x, artifact=given), expected)
+
+
+def test_forward_clear_uses_the_artifact_over_hom_params(tmp_path, monkeypatch):
+    """Given an artifact and hom_params, forward_clear runs the artifact; given neither, it raises."""
+    from lattica_build.build import build
+    from lattica_build.examples.advanced import mnist_fc
+
+    example = mnist_fc.Pipeline()
+    pipeline = example.build_pipeline()
+    params = example.build_params()
+    x = torch.rand(mnist_fc.INPUT_SHAPE)
+    expected = pipeline.forward_clear(x, hom_params=params)
+    artifact = build(pipeline, params, tmp_path / "mnist.zip")
+
+    def no_serialize(*args, **kwargs):
+        pytest.fail("forward_clear serialized the pipeline although it was given an artifact")
+
+    monkeypatch.setattr(pipeline, "serialize", no_serialize)
+    assert torch.equal(pipeline.forward_clear(x, hom_params=params, artifact=artifact), expected)
+    with pytest.raises(TypeError, match="needs hom_params to serialize the pipeline, or an artifact"):
+        pipeline.forward_clear(x)
+
+
 def test_bitonic_sort_composite_example_sorts_input():
     from lattica_build.examples.advanced import bitonic_sort
     example = bitonic_sort.Pipeline()
