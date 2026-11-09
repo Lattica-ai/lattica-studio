@@ -117,8 +117,13 @@ class KeysAPI:
         return mark_key_uploaded(record)
 
     def _fetch_client_data(self) -> QueryInitialization:
+        # A lattica_fhe_core without expand_client_data takes the full data, lookup tables included.
+        expand = getattr(fhe_core, "expand_client_data", None)
         with OperationLog("retrieving initialization data", theme=QUERY_THEME):
-            return QueryInitialization.from_bytes(self._worker.fetch_initialization())
+            data = self._worker.fetch_initialization(compact=expand is not None)
+            if expand is not None:
+                data = expand(data, True)
+        return QueryInitialization.from_bytes(data)
 
     def _upload_evaluation_key(self, evaluation_key_path: Path) -> None:
         evaluation_key_size = evaluation_key_path.stat().st_size

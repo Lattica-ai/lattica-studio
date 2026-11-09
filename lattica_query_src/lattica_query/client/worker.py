@@ -35,10 +35,11 @@ class WorkerGateway:
     def last_timing(self) -> WorkerTiming:
         return self._transport.timing
 
-    def fetch_initialization(self) -> bytes:
+    def fetch_initialization(self, compact: bool = False) -> bytes:
+        """The model's client data; compact leaves out the lookup tables for fhe_core.expand_client_data to rebuild."""
         return self._require_binary_result(
             "get_user_init_data",
-            self._transport.invoke("get_user_init_data"),
+            self._transport.invoke("get_user_init_data", {"compact": True} if compact else None),
         )
 
     def preprocess_evaluation_key(self) -> None:
