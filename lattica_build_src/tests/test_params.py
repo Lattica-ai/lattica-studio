@@ -9,7 +9,7 @@ from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.bootstrapping_params import MAX_LOG_QP_128, BootstrappingParams
-from lattica_build.params.level_and_scale_tracing import ModulusChain, _get_config_for_row_or_col
+from lattica_build.params.level_and_scale_tracing import ModulusChain, _get_config_for_row_or_col, init_active_rows_cols
 from lattica_build.params.params import HomParams
 
 
@@ -174,3 +174,18 @@ def test_slim_bootstrap_rescales_drop_the_leading_limb():
     raised = [row for name, rows in mod_chain.section_rows.items() if name != "special_primes" for row in rows]
     _drop_levels(mod_chain, raised, ["boot_cts", "boot_eval", "pipeline"], dropped)
     assert all(rel_row == 0 for rel_row, _ in dropped)
+
+
+def test_fresh_input_holding_the_stc_rows_leaves_out_the_double_angle_prime():
+    """With input_holds_stc_rows, a fresh ciphertext of the "low" profile holds the StC words, and of the first one only
+    its StC prime: the double-angle prime at the start of that word belongs to the bootstrap."""
+    n = 2 ** 15
+    params = HomParams(n=n, full_q_list_precision=((52, 26),) * 3, pt_scale=2 ** 26, n_slots=2 ** 14,
+                       num_special_primes=4, special_prime_bits=57, boot_precision="low", input_holds_stc_rows=True)
+    params.boot_params = BootstrappingParams.for_slot_counts(True, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=n,
+                                                             special_bits=4 * 57, precision="low")
+    chain = params.mod_chain = ModulusChain(params)   # as the pipeline sets it
+    rows, cols = init_active_rows_cols(params)
+    first_stc = chain.section_rows["boot_stc"][0]
+    assert first_stc in rows and params.boot_params.double_angle_stc_primes == 1
+    assert cols[rows.index(first_stc)][:2] == [0, 1]

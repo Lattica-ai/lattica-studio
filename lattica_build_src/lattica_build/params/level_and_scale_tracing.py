@@ -110,15 +110,20 @@ class ModulusChain():
             active_rows += self.section_rows["boot_stc"]
         return sorted(active_rows)   # a ciphertext's limbs are its rows in chain order
 
+    def get_init_cols(self, params, rows):
+        """The active columns of a fresh ciphertext's rows (get_init_rows): all of them, except that an input holding
+        the StC rows does not hold the double-angle primes at the start of the first StC word."""
+        cols = self.full_active_cols[rows].clone()
+        if params.bootstrapping and params.input_holds_stc_rows:
+            cols[rows.index(self.section_rows["boot_stc"][0]), :params.boot_params.double_angle_stc_primes] = 0
+        return cols
+
 
 def init_active_rows_cols(hom_params):
     """Initialize the active rows and cols for a fresh ciphertext."""
     mod_chain = hom_params.mod_chain
     rows = mod_chain.get_init_rows(hom_params)
-    return (
-        mod_chain.full_active_rows[rows].tolist(),
-        mod_chain.full_active_cols[rows].tolist()
-    )
+    return mod_chain.full_active_rows[rows].tolist(), mod_chain.get_init_cols(hom_params, rows).tolist()
 
 def _get_drop_row_config(mod_chain, active_rows, relative_row_idx, active_cols_in_chosen_row, **kwargs):
     factors_of_active_rows = [row_factors for i, row_factors in enumerate(mod_chain.factors_per_row) if i in active_rows]
