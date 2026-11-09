@@ -81,11 +81,13 @@ class BootPrecision:
     by delta a free scale relabel. stc_scale: the StC prime size. per_n_slots: by log2(n_slots), the split, the CtS
     prime size, log_delta and the exit scale (BOOT_PARAMS_PER_N_SLOTS explains them); the profile bootstraps only these
     slot counts. On a level-conserving chain whose slot counts all have an exit scale, EvalMod runs on eval_mod_rows
-    (the cosine's rows, then the double angles'), double angle i drops a prime of row double_angle_rows[i], and the
-    StC primes take exit_stc_scale bits; other chains have one eval_mod_scale row per EvalMod level. lcr_min_special_bits: the
-    level-conserving CtS keys need special primes P' of more than this many bits in all, and the backend gives them the
-    fewest that reach it. Their key noise, about T N |m| q0 e / P' for T terms of plaintexts m at the CtS scale, must
-    stay below the bootstrap's own error."""
+    (the cosine's rows, then the double angles'), double angle i drops a prime of row double_angle_rows[i] (an index
+    into the EvalMod rows followed by the StC rows), and the StC primes take exit_stc_scale bits. With
+    double_angle_stc_bits, the first StC word holds a double-angle prime of that many bits before its StC prime.
+    Other chains have one eval_mod_scale row per EvalMod level. lcr_min_special_bits: the level-conserving CtS keys
+    need special primes P' of more than this many bits in all, and the backend gives them the fewest that reach it.
+    Their key noise, about T N |m| q0 e / P' for T terms of plaintexts m at the CtS scale, must stay below the
+    bootstrap's own error."""
     eval_mod_scale: int
     stc_scale: int
     per_n_slots: dict[int, tuple[tuple[int, ...], int, int, int | None]]
@@ -93,6 +95,7 @@ class BootPrecision:
     eval_mod_rows: tuple[tuple[int, ...], ...]
     double_angle_rows: tuple[int, ...]
     exit_stc_scale: int
+    double_angle_stc_bits: int | None = None
 
 
 BOOT_PRECISIONS = {
@@ -112,21 +115,21 @@ BOOT_PRECISIONS = {
     # About 10 bits, for computations that tolerate it, at 2**12 to 2**14 slots: a chain small enough for N = 2**15 at
     # 128 bits with 4 special primes of 57 bits (3 digits), with one DFT level fewer than "full" on each side. Its
     # precision is the cosine's own rounding noise, which follows the cosine's primes, so the cosine takes 37-bit rows
-    # while q0 stays at 35 bits. The double angles, whose noise is far below it, run on two words: double angle 2 on a
-    # 33-bit prime, and double angles 1 and 3 on a 35-bit and a 26-bit prime that share one word. With EvalMod's exit
-    # at 2**38, every double angle keeps a scale of at least 2**32 after its rescale. The sparse slot counts' last split
-    # component is small, since the level-conserving first CtS level's terms are its diagonals times the trace
-    # rotations. The StC primes are 26 bits, no narrower than a pipeline scale of 2**26, so that a pipeline can run its
-    # first ops on the input's StC rows (input_holds_stc_rows).
-    # The level-conserving keys' noise with two special primes is far below this bootstrap's error. Inputs need
-    # |x| <= 0.75 and a slot mean of at most about 0.1: with log_delta 1, the sine's cubic error on the largest
-    # coefficient EvalMod sees, the mean, stays near this bootstrap's error.
+    # while q0 stays at 35 bits. The double angles, whose noise is far below it, share words with other primes: double
+    # angles 1 and 3 take a 35-bit and a 26-bit prime of one word, and double angle 2 a 33-bit prime that shares the
+    # first StC word with the first StC prime. With EvalMod's exit at 2**38, every double angle keeps a scale of at
+    # least 2**32 after its rescale. The sparse slot counts' last split component is small, since the level-conserving
+    # first CtS level's terms are its diagonals times the trace rotations. The StC primes are 26 bits, no narrower than
+    # a pipeline scale of 2**26, so that a pipeline can run its first ops on the input's StC rows
+    # (input_holds_stc_rows). The level-conserving keys' noise with two special primes is far below this bootstrap's
+    # error. Inputs need |x| <= 0.75 and a slot mean of at most about 0.1: with log_delta 1, the sine's cubic error on
+    # the largest coefficient EvalMod sees, the mean, stays near this bootstrap's error.
     "low": BootPrecision(eval_mod_scale=35, stc_scale=26, per_n_slots={
         12: ((5, 4, 3), 34, 1, 38),
         13: ((5, 4, 4), 34, 1, 38),
         14: ((4, 5, 5), 34, 1, 38),
-    }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 5 + ((33,), (61, 26)), double_angle_rows=(6, 5, 6),
-        exit_stc_scale=26),
+    }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 5 + ((61, 26),), double_angle_rows=(5, 6, 5),
+        exit_stc_scale=26, double_angle_stc_bits=33),
 }
 
 
@@ -302,6 +305,12 @@ class BootstrappingParams:
             self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
             self.double_angle_rows = None
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
+        # the number of double-angle primes at the start of the first StC word
+        self.double_angle_stc_primes = 0
+        if self.double_angle_rows is not None and profile.double_angle_stc_bits is not None:
+            self.stc_q_list_precision = ((profile.double_angle_stc_bits + self.stc_scale, self.stc_scale),) \
+                + self.get_q_list_precision(self.stc_scale, self.dft_levels - 1)
+            self.double_angle_stc_primes = 1
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
