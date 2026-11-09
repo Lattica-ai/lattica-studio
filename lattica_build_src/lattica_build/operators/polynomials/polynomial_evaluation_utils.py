@@ -195,14 +195,16 @@ def heaviside_peacewise_linear_cheb_coeffs(deg, margin, out_val=1, tol=None, plo
     return get_cheb_coefs(deg, _piecewise_linear, x_fit=x_fit, tol=tol, plot=plot)
 
 
-def threshold_cheb_coeffs_minimax(deg, margin, out_val=1, domain_start=-1, tol=None, plot=False):
+def threshold_cheb_coeffs_minimax(deg, margin, out_val=1, domain_start=-1, tol=None, plot=False, core=None):
     """
     Calculates the Minimax Chebyshev coefficients for a threshold function ignoring the margin using the Remez algorithm.
 
     margin: [left, right] of the ignored transition region
     domain_start: ignored region on the left of the domain
+    core: [left, right] inside the zero band, fitted 100 times tighter than the rest of it (None: evenly).
     """
     assert domain_start < margin[0], "domain must start left to the margin"
+    assert core is None or domain_start < core[0] < core[1] < margin[0], "the core must lie inside the zero band"
 
     # 1. Number of taps must be odd to create a symmetric Type I filter
     # A filter of length 2*deg + 1 yields a polynomial of degree 'deg'
@@ -238,6 +240,15 @@ def threshold_cheb_coeffs_minimax(deg, margin, out_val=1, domain_start=-1, tol=N
     # We weight the regions we care about heavily
     # We weight the empty region lightly just to keep it bounded
     weights = None if domain_start == -1 else [100, 100, 1]
+
+    if core is not None:
+        # Band 2 split in three: [core[1], margin[0]], the core and [domain_start, core[0]], with tiny frequency gaps
+        # between them, like the leash's; the core weighted 100 times the rest
+        f_core_start, f_core_end = np.arccos(core[1]) / np.pi, np.arccos(core[0]) / np.pi
+        gap = 0.002
+        bands[3:3] = [f_core_start, f_core_start + gap, f_core_end, f_core_end + gap]
+        desired[2:2] = [0, 0]
+        weights = [100, 100, 10_000, 100] + ([] if domain_start == -1 else [1])
 
     # 4. Run the Parks-McClellan (Remez) algorithm
     h = signal.remez(numtaps, bands, desired, weight=weights, fs=2)

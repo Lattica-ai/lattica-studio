@@ -22,6 +22,7 @@ class HomPolyThreshold(HomPolyEvalBase):
         sharpness: Sigmoid steepness (required for `variant="sigmoid"`).
         out_val: Output value above the threshold region.
         domain_start: Left boundary used by the minimax builder.
+        core: Minimax only: optional `[low, high]` inside the zero band, fitted tighter than the rest of it.
         tol: Coefficient trimming / fitting tolerance.
         plot: Whether to render approximation diagnostics.
         rows_budget: Optional allowed modulus rows for internal modswitch.
@@ -35,6 +36,7 @@ class HomPolyThreshold(HomPolyEvalBase):
         sharpness: int | None = None,
         out_val: float = 1,
         domain_start: float = -1,
+        core: Sequence[float] | None = None,
         tol: float = 1e-5,
         plot: bool = False,
         rows_budget: Sequence[int] | None = None,
@@ -66,6 +68,7 @@ class HomPolyThreshold(HomPolyEvalBase):
                 domain_start=domain_start,
                 tol=tol,
                 plot=plot,
+                core=core,
             )
         else:
             raise ValueError(f"Unknown variant: {variant}")

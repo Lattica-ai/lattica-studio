@@ -47,4 +47,4 @@ class HomModSwitch(HomOp):
             self.relative_row,
             num_cols_to_drop,
         )
-        return apply_drop_config(input, drop_config)
+        return apply_drop_config(hom_params.mod_chain, input, drop_config)
