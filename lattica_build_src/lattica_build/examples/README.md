@@ -73,10 +73,13 @@ These modules live under `lattica_build.examples.advanced`.
 | `bootstrap` | Two bootstrapping operations |
 | `bitonic_sort` | Composite compare/exchange stages with bootstrapping |
 | `resnet20` | A full ResNet-20 pipeline using downloaded weights |
+| `cryptoface` | CryptoFace face verification: four patch CNNs with HerPN (quadratic) activations per face, and the cosine of the two faces' embeddings |
 | `rnn` | A recurrent layer unrolled over 128 timesteps with a polynomial tanh and bootstrapping |
 
-`resnet20` downloads a pretrained model when its pipeline is built. All basic
-examples are self-contained.
+`resnet20` and `cryptoface` download pretrained models when their pipelines are
+built; `cryptoface` also downloads the FHE benchmark's face pairs for its example
+query, and aligns them with InsightFace when it is installed. All basic examples
+are self-contained.
 
 ## Use the Python API
 
