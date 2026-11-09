@@ -36,7 +36,7 @@ class WorkerGateway:
         return self._transport.timing
 
     def fetch_initialization(self, compact: bool = False) -> bytes:
-        """The model's client data; compact leaves out the lookup tables for fhe_core.expand_client_data to rebuild."""
+        """Download the model's client data, without its lookup tables when compact."""
         return self._require_binary_result(
             "get_user_init_data",
             self._transport.invoke("get_user_init_data", {"compact": True} if compact else None),
