@@ -112,18 +112,20 @@ BOOT_PRECISIONS = {
     # About 10 bits, for computations that tolerate it, at 2**12 to 2**14 slots: a chain small enough for N = 2**15 at
     # 128 bits with 4 special primes of 57 bits (3 digits), with one DFT level fewer than "full" on each side. Its
     # precision is the cosine's own rounding noise, which follows the cosine's primes, so the cosine takes 37-bit rows
-    # while q0 stays at 35 bits; the double angles, whose noise is far below it, take 38, 33 and 31 bits with EvalMod's
-    # exit at 2**31. The sparse slot counts' last split component is small, since the level-conserving first CtS
-    # level's terms are its diagonals times the trace rotations. The StC primes are 26 bits, no narrower than a
-    # pipeline scale of 2**26, so that a pipeline can run its first ops on the input's StC rows (input_holds_stc_rows).
+    # while q0 stays at 35 bits. The double angles, whose noise is far below it, run on two words: double angle 2 on a
+    # 33-bit prime, and double angles 1 and 3 on a 35-bit and a 26-bit prime that share one word. With EvalMod's exit
+    # at 2**38, every double angle keeps a scale of at least 2**32 after its rescale. The sparse slot counts' last split
+    # component is small, since the level-conserving first CtS level's terms are its diagonals times the trace
+    # rotations. The StC primes are 26 bits, no narrower than a pipeline scale of 2**26, so that a pipeline can run its
+    # first ops on the input's StC rows (input_holds_stc_rows).
     # The level-conserving keys' noise with two special primes is far below this bootstrap's error. Inputs need
     # |x| <= 0.75 and a slot mean of at most about 0.1: with log_delta 1, the sine's cubic error on the largest
     # coefficient EvalMod sees, the mean, stays near this bootstrap's error.
     "low": BootPrecision(eval_mod_scale=35, stc_scale=26, per_n_slots={
-        12: ((5, 4, 3), 34, 1, 31),
-        13: ((5, 4, 4), 34, 1, 31),
-        14: ((4, 5, 5), 34, 1, 31),
-    }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 5 + ((38,), (33,), (31,)), double_angle_rows=(5, 6, 7),
+        12: ((5, 4, 3), 34, 1, 38),
+        13: ((5, 4, 4), 34, 1, 38),
+        14: ((4, 5, 5), 34, 1, 38),
+    }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 5 + ((33,), (61, 26)), double_angle_rows=(6, 5, 6),
         exit_stc_scale=26),
 }
 

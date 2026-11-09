@@ -104,7 +104,7 @@ def test_low_precision_chain_fits_n_2_15_at_128_bits():
     params = HomParams(n=n, full_q_list_precision=((52, 26),) * 3, pt_scale=2 ** 26, n_slots=2 ** 14,
                        num_special_primes=4, special_prime_bits=57, boot_precision="low")
     params.boot_params = boot
-    assert boot.lcr_first_cts and boot.exit_scale_for(2 ** 12) == 31
+    assert boot.lcr_first_cts and boot.exit_scale_for(2 ** 12) == 38
     chain = ModulusChain(params)
     q_rows = [row for name, rows in chain.section_rows.items() if name != "special_primes" for row in rows]
     special = chain.section_rows["special_primes"]
