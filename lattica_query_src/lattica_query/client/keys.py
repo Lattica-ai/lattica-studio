@@ -121,6 +121,7 @@ class KeysAPI:
         expand = getattr(fhe_core, "expand_client_data", None)
         with OperationLog("retrieving initialization data", theme=QUERY_THEME):
             data = self._worker.fetch_initialization(compact=expand is not None)
+            log_size_info("initialization data", len(data))
             if expand is not None:
                 data = expand(data, True)
         return QueryInitialization.from_bytes(data)
