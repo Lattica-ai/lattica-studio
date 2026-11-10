@@ -84,8 +84,10 @@ class BootPrecision:
     (the cosine's rows, then the double angles'), double angle i drops a prime of row double_angle_rows[i] (an index
     into the EvalMod rows followed by the StC rows), and the StC primes take exit_stc_scale bits. With
     double_angle_stc_bits, the first StC word holds a double-angle prime of that many bits before its StC prime.
-    Other chains have one eval_mod_scale row per EvalMod level. lcr_min_special_bits: the level-conserving CtS keys
-    need special primes P' of more than this many bits in all, and the backend gives them the fewest that reach it.
+    With base_host_bits, the base word holds a pipeline prime of that many bits before q0, so the pipeline's last
+    level runs on one limb. Other chains have one eval_mod_scale row per EvalMod level. lcr_min_special_bits: the
+    level-conserving CtS keys need special primes P' of more than this many bits in all, and the backend gives them the
+    fewest that reach it.
     Their key noise, about T N |m| q0 e / P' for T terms of plaintexts m at the CtS scale, must stay below the
     bootstrap's own error."""
     eval_mod_scale: int
@@ -96,6 +98,7 @@ class BootPrecision:
     double_angle_rows: tuple[int, ...]
     exit_stc_scale: int
     double_angle_stc_bits: int | None = None
+    base_host_bits: int | None = None
 
 
 BOOT_PRECISIONS = {
@@ -123,13 +126,15 @@ BOOT_PRECISIONS = {
     # a pipeline scale of 2**26, so that a pipeline can run its first ops on the input's StC rows
     # (input_holds_stc_rows). The level-conserving keys' noise with two special primes is far below this bootstrap's
     # error. Inputs need |x| <= 0.75 and a slot mean of at most about 0.1: with log_delta 1, the sine's cubic error on
-    # the largest coefficient EvalMod sees, the mean, stays near this bootstrap's error.
+    # the largest coefficient EvalMod sees, the mean, stays near this bootstrap's error. The base word holds a 26-bit
+    # pipeline prime before q0, below the kernels' 2**62 together: a pipeline whose last word is that prime alone runs
+    # its last level on one limb.
     "low": BootPrecision(eval_mod_scale=35, stc_scale=26, per_n_slots={
         12: ((5, 4, 3), 34, 1, 38),
         13: ((5, 4, 4), 34, 1, 38),
         14: ((4, 5, 5), 34, 1, 38),
     }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 5 + ((61, 26),), double_angle_rows=(5, 6, 5),
-        exit_stc_scale=26, double_angle_stc_bits=33),
+        exit_stc_scale=26, double_angle_stc_bits=33, base_host_bits=26),
 }
 
 
@@ -245,7 +250,7 @@ class BootstrappingParams:
         stc = ("boot_stc", self.stc_q_list_precision)
         consumed = [pipeline, stc] if self.slim_boot else [stc, pipeline]
         return ([("boot_cts", self.cts_q_list_precision), ("boot_eval", self.eval_mod_q_list_precision)]
-                + consumed + [("boot_base", ((self.q_base_precision,),))])
+                + consumed + [("boot_base", (self.base_row_precision,))])
 
     def log_delta_for(self, n_slots: int) -> int:
         """The headroom q0/|m| of a bootstrap of n_slots slots: SLIM's own (its EvalMod sees the slots),
@@ -316,7 +321,11 @@ class BootstrappingParams:
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
         # q0, the ModRaise base modulus, has the EvalMod prime size
         self.q_base_precision = self.eval_mod_scale
-        self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
+        # The base word: q0, or a hosted pipeline prime and q0. The hosted prime comes first, so a pipeline rescale
+        # drops it and leaves q0.
+        self.base_row_precision = (self.q_base_precision,)
+        if self.double_angle_rows is not None and profile.base_host_bits is not None:
+            self.base_row_precision = (profile.base_host_bits + self.q_base_precision, self.q_base_precision)
         # The tree evaluates degree d in ceil(log2(d + 1)) levels: n levels fit degree 2^n - 1.
         # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so its top degree is 2^n - 2.
         self.cosine_deg = 2 ** self.n_cosine_levels - 2
