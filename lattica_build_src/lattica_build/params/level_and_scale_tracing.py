@@ -112,10 +112,19 @@ class ModulusChain():
 
     def get_init_cols(self, params, rows):
         """The active columns of a fresh ciphertext's rows (get_init_rows): all of them, except that an input holding
-        the StC rows does not hold the double-angle primes at the start of the first StC word."""
+        the StC rows does not hold the double-angle primes at the start of the first StC word, and the double-angle
+        prime at the start of the pipeline's first word (without_double_angle_pipeline_prime)."""
         cols = self.full_active_cols[rows].clone()
         if params.bootstrapping and params.input_holds_stc_rows:
             cols[rows.index(self.section_rows["boot_stc"][0]), :params.boot_params.double_angle_stc_primes] = 0
+        return self.without_double_angle_pipeline_prime(params, rows, cols)
+
+    def without_double_angle_pipeline_prime(self, params, rows, cols):
+        """cols, the active columns of rows, without the double-angle prime at the start of the pipeline's first word,
+        when rows hold that word: only a ciphertext inside a bootstrap holds the prime."""
+        first = self.section_rows["pipeline"][0]
+        if params.bootstrapping and params.boot_params.double_angle_pipeline_bits is not None and first in rows:
+            cols[rows.index(first), 0] = 0
         return cols
 
 
@@ -284,7 +293,5 @@ def init_levels_after_bootstrap(input, hom_params):
     if hom_params.slim_boot:
         rows += mod_chain.section_rows["boot_stc"]
     rows += mod_chain.section_rows["boot_base"]
-    return input.make_copy(
-        active_rows=mod_chain.full_active_rows[rows].tolist(),
-        active_cols=mod_chain.full_active_cols[rows].tolist()
-    )
+    cols = mod_chain.without_double_angle_pipeline_prime(hom_params, rows, mod_chain.full_active_cols[rows].clone())
+    return input.make_copy(active_rows=mod_chain.full_active_rows[rows].tolist(), active_cols=cols.tolist())

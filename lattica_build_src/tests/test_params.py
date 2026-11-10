@@ -104,11 +104,12 @@ def test_low_precision_chain_fits_n_2_15_at_128_bits():
     params = HomParams(n=n, full_q_list_precision=((26,), (52, 26), (52, 26)), pt_scale=2 ** 26, n_slots=2 ** 14,
                        num_special_primes=4, special_prime_bits=57, boot_precision="low")
     params.boot_params = boot
-    assert boot.lcr_first_cts and boot.exit_scale_for(2 ** 12) == 38
+    assert boot.lcr_first_cts and boot.exit_scale_for(2 ** 12) == 40
     chain = ModulusChain(params)
     base = chain.factors_per_row[chain.section_rows["boot_base"][0]]
     assert [int(math.log2(p)) for p in base] == [26, 35] and math.prod(base) < 2 ** 62
     q_rows = [row for name, rows in chain.section_rows.items() if name != "special_primes" for row in rows]
+    assert len(q_rows) == 13
     special = chain.section_rows["special_primes"]
     log_qp = sum(math.log2(math.prod(chain.factors_per_row[row])) for row in q_rows + special[:4])
     assert log_qp <= MAX_LOG_QP_128[n]
@@ -179,10 +180,11 @@ def test_slim_bootstrap_rescales_drop_the_leading_limb():
 
 
 def test_fresh_input_holding_the_stc_rows_leaves_out_the_double_angle_prime():
-    """With input_holds_stc_rows, a fresh ciphertext of the "low" profile holds the StC words, and of the first one only
-    its StC prime: the double-angle prime at the start of that word belongs to the bootstrap."""
+    """With input_holds_stc_rows, a fresh ciphertext of the "low" profile holds the StC words, and of the first StC word
+    and the first pipeline word only their own prime: the double-angle primes at the start of those words belong to the
+    bootstrap."""
     n = 2 ** 15
-    params = HomParams(n=n, full_q_list_precision=((52, 26),) * 3, pt_scale=2 ** 26, n_slots=2 ** 14,
+    params = HomParams(n=n, full_q_list_precision=((26,), (52, 26), (52, 26)), pt_scale=2 ** 26, n_slots=2 ** 14,
                        num_special_primes=4, special_prime_bits=57, boot_precision="low", input_holds_stc_rows=True)
     params.boot_params = BootstrappingParams.for_slot_counts(True, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=n,
                                                              special_bits=4 * 57, precision="low")
@@ -191,3 +193,4 @@ def test_fresh_input_holding_the_stc_rows_leaves_out_the_double_angle_prime():
     first_stc = chain.section_rows["boot_stc"][0]
     assert first_stc in rows and params.boot_params.double_angle_stc_primes == 1
     assert cols[rows.index(first_stc)][:2] == [0, 1]
+    assert cols[rows.index(chain.section_rows["pipeline"][0])][:2] == [0, 1]
