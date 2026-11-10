@@ -35,11 +35,10 @@ class WorkerGateway:
     def last_timing(self) -> WorkerTiming:
         return self._transport.timing
 
-    def fetch_initialization(self, compact: bool = False) -> bytes:
-        """Download the model's client data, without its lookup tables when compact."""
+    def fetch_initialization(self) -> bytes:
         return self._require_binary_result(
             "get_user_init_data",
-            self._transport.invoke("get_user_init_data", {"compact": True} if compact else None),
+            self._transport.invoke("get_user_init_data"),
         )
 
     def preprocess_evaluation_key(self) -> None:
