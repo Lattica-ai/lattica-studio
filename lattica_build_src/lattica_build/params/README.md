@@ -198,7 +198,8 @@ For users, the key point is to size initial budget and scale assumptions to the 
 ## Slot-stage level behavior
 
 For staged slot ops (`HomRunningSum`, `HomExpand`, `HomSumSlots`):
-- `k` is the work size (for example: `HomExpand` expands one ciphertext to `k` outputs,
+- `k` is the work size (for example: `HomExpand` expands the `k = n_slots` slots of one
+  ciphertext's period, keeping one output per value of its slot axis, padding excluded,
   while `HomRunningSum` and `HomSumSlots` reduce/sum `k` elements),
 - the schedule is implemented as a binary-tree-style staged structure,
 - stage depth is `log2(k)` by default or `len(stage_sizes)` for custom schedule,
