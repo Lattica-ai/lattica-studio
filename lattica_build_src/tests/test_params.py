@@ -82,6 +82,16 @@ def test_one_digit_relin_key_fits_the_128_bit_bound(n, num_special_primes, key):
     assert len(special) == (num_special_primes if key is None else key[1])
 
 
+@pytest.mark.parametrize("q_list, num_special_primes, g_base_bits", [
+    (((61,), (61,)), 1, 61),        # one special prime: a digit holds one 61-bit prime
+    (((60, 30),) * 5, 9, 9 * 61 - 8),
+], ids=["one-special-prime", "nine-special-primes"])
+def test_digits_hold_a_prime_and_keep_their_headroom_below_p(q_list, num_special_primes, g_base_bits):
+    """The digits stay DIGIT_HEADROOM_BITS below the special primes' product, unless that is less than one prime."""
+    params = HomParams(n=2 ** 10, full_q_list_precision=q_list, pt_scale=2 ** 30, num_special_primes=num_special_primes)
+    assert params.g_base_bits == g_base_bits
+
+
 def test_lcr_chain_shares_a_double_angle_word_and_stays_below_the_word_limit():
     """The REAL 2**15-slot level-conserving chain: double angles 1 and 3 share EvalMod's last word (7 rows for 8
     levels), and every row's modulus stays below the kernels' 2**62, the StC's two-prime 62-bit words included."""

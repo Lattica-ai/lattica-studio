@@ -159,7 +159,8 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
 - `HYBRID`:
   - requires `num_special_primes > 0`,
   - takes `special_prime_bits` (default 61), the special primes' size,
-  - derives `g_base_bits`, the special primes' product less `DIGIT_HEADROOM_BITS` (8): the toolkit splits the
+  - derives `g_base_bits`, the special primes' product less `DIGIT_HEADROOM_BITS` (8), but at least the largest
+    prime of `full_q_list_precision` (with one special prime, a digit still holds one prime): the toolkit splits the
     ciphertext primes of the whole chain into digits of at most `g_base_bits` bits, filled along the order the
     pipeline consumes them, and each key switch uses only the special primes its own largest digit needs (a key
     switch's noise grows with its largest digit over the special primes' product).
