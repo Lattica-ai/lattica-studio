@@ -2,9 +2,10 @@
 
 The client aligns two faces to 64x64, cuts each into four 32x32 patches (row-major) and sends the
 eight patches. The server runs one small ResNet per patch position, with HerPN activations (a
-per-channel quadratic in place of ReLU + BatchNorm), sums the four patch features of each face
-into its 256-d embedding and returns the cosine of the two embeddings. The client decrypts that one
-score; the faces are the same person above a threshold.
+per-channel quadratic in place of ReLU + BatchNorm), on both faces' patches at once (a batch of two
+ciphertexts through every op), sums the four patch features of each face into its 256-d embedding
+and returns the cosine of the two embeddings. The client decrypts that one score; the faces are the
+same person above a threshold.
 
 Weights: the benchmark's checkpoint, downloaded when the pipeline is built
 (https://huggingface.co/halmsu/cryptoface-v1, trained by https://github.com/human-analysis/CryptoFace).
@@ -333,8 +334,8 @@ class _Backbone(HomOp):
 
 
 class _CosineScore(HomOp):
-    """<e0, e1> / (|e0| |e1|) of the two scaled embeddings: three products summed over the slots, and
-    1/|e| as a Chebyshev polynomial in |e|^2."""
+    """<e0, e1> / (|e0| |e1|) of the two scaled embeddings (a batch of two): products summed over the slots,
+    and 1/|e| as a Chebyshev polynomial in |e|^2, both faces' at once."""
 
     def __init__(self):
         super().__init__()
@@ -345,29 +346,25 @@ class _CosineScore(HomOp):
                                         left=INV_NORM_LO, right=INV_NORM_HI)
         self.scale = HomMul()
 
-    def forward(self, e0: HomValue, e1: HomValue) -> HomValue:
-        dot = self.sum(self.product(e0, e1))
-        inverse0 = self.inverse_norm(self.sum(self.product(e0, e0)))
-        inverse1 = self.inverse_norm(self.sum(self.product(e1, e1)))
-        return self.scale(self.scale(dot, inverse0), inverse1)
+    def forward(self, embeddings: HomValue) -> HomValue:
+        inverse = self.inverse_norm(self.sum(self.product(embeddings, embeddings)))
+        dot = self.sum(self.product(embeddings[0], embeddings[1]))
+        return self.scale(self.scale(dot, inverse[0]), inverse[1])
 
 
 class _CryptoFaceGraph(HomOp):
-    """Eight patches (face 0's four, then face 1's) to the cosine score, in every slot."""
+    """Eight patches (each position's on both faces) to the cosine score, in every slot."""
 
     def __init__(self, state):
         super().__init__()
-        # one network per patch position, run on both faces (its weights are stored once)
+        # one network per patch position, run on both faces at once
         self.backbones = ModuleListHomOp(_Backbone(state, patch) for patch in range(N_PATCHES))
         self.bootstrap = Bootstrap(target_output_scale=PT_SCALE)
         self.score = _CosineScore()
 
     def forward(self, patches: HomValue) -> HomValue:
-        embeddings = []
-        for face in range(2):
-            terms = [backbone(patches[face * N_PATCHES + patch]) for patch, backbone in enumerate(self.backbones)]
-            embeddings.append(self.bootstrap((terms[0] + terms[1]) + (terms[2] + terms[3])))
-        return self.score(*embeddings)
+        terms = [backbone(patches[patch]) for patch, backbone in enumerate(self.backbones)]
+        return self.score(self.bootstrap((terms[0] + terms[1]) + (terms[2] + terms[3])))
 
 
 # ---------- example pairs ----------
@@ -465,7 +462,7 @@ class Pipeline(PipelineWrapper):
             hom=_CryptoFaceGraph(_load_checkpoint()),
             # the score fills every slot
             client_post=[HomSlice(dim=0, key=slice(0, 1))],
-            input_shape=(2 * N_PATCHES, SUBRING_SLOTS),
+            input_shape=(N_PATCHES, 2, SUBRING_SLOTS),
         )
 
     def build_params(self):
@@ -489,15 +486,15 @@ class Pipeline(PipelineWrapper):
 
     @staticmethod
     def pack_pair(face0, face1) -> torch.Tensor:
-        """Two 64x64 RGB faces (uint8, HWC), raw 0-255, as the (8, 2^14) slots the client encrypts."""
+        """Two 64x64 RGB faces (uint8, HWC), raw 0-255, as the (4 patch positions, 2 faces, 2^14) slots the
+        client encrypts."""
         packed = []
         for face in (face0, face1):
             image = torch.tensor(np.asarray(face), dtype=torch.float64).permute(2, 0, 1)
-            for patch in _patches(image):
-                # RGB zero-padded to the stem's channels, so the stem has the layout of block 1
-                padded = torch.nn.functional.pad(patch, (0, 0, 0, 0, 0, STEM_CHANNELS - 3))
-                packed.append(_stem_layout().pack(padded))
-        return torch.stack(packed)
+            # RGB zero-padded to the stem's channels, so the stem has the layout of block 1
+            patches = [torch.nn.functional.pad(patch, (0, 0, 0, 0, 0, STEM_CHANNELS - 3)) for patch in _patches(image)]
+            packed.append(torch.stack([_stem_layout().pack(patch) for patch in patches]))
+        return torch.stack(packed, dim=1)
 
     @staticmethod
     def reference_score(face0, face1) -> float:

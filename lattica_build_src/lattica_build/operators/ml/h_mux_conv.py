@@ -78,12 +78,13 @@ class MuxLayout:
 
 
 def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n) -> HomValue:
-    """The output ciphertext, packed at the output layout's slot count."""
+    """The output ciphertext, packed at the output layout's slot count; axes before the slots are a batch of
+    maps and pass through."""
     if max(in_slots, out_slots) > internal_n:
         raise NotImplementedError(
             "mux layouts must fit one ciphertext; "
             f"this one needs {max(in_slots, out_slots)} of {internal_n} slots")
-    return input.make_copy(tensor_shape=(out_slots,), n_slots=out_slots)
+    return input.make_copy(tensor_shape=(*input.tensor_shape[:-1], out_slots), n_slots=out_slots)
 
 
 class HomMuxConv(HomConvBase):
