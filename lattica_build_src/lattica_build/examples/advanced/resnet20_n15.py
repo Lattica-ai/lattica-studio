@@ -16,8 +16,9 @@ from lattica_build.params.params import HomParams
 
 N = 2 ** 15
 PT_SCALE = 2 ** 26
-# 6 levels after each bootstrap: a degree-30 ReLU (5) and a conv (1), on 26-bit primes
-Q_LIST_PRECISION = ((52, 26),) * 3
+# 6 levels after each bootstrap: a degree-30 ReLU (5) and a conv (1), on 26-bit primes. The sixth is the 26-bit prime
+# the "low" bootstrap's base word holds, so the conv, the last level, runs on one limb.
+Q_LIST_PRECISION = ((26,), (52, 26), (52, 26))
 # 4 special primes of 57 bits: 3 digits, and every key within the 128-bit bound at N = 2**15
 N_SPECIAL_PRIMES = 4
 SPECIAL_PRIME_BITS = 57
