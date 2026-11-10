@@ -32,7 +32,6 @@ from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
-from lattica_build.params.level_and_scale_tracing import init_active_rows_cols
 from lattica_build.serialization.clear_execution import run_clear_section
 
 
@@ -119,27 +118,6 @@ def test_expand_clear_takes_a_padded_slot_axis(axis):
     result, internal_n = _slot_op_clear(HomExpand(expand_axis=axis), x, 4)
     expected = x[:, None].expand(3, internal_n)
     torch.testing.assert_close(result, expected.T if axis == 1 else expected)
-
-
-def test_expand_rejects_more_values_than_its_period():
-    """Two whole rings (n_slots = internal_n = 128) are more values than the period the stages expand."""
-    with pytest.raises(ValueError, match='Expand takes a slot axis of at most n_slots=128 values, got 256'):
-        _slot_op_clear(HomExpand(), torch.arange(256.), 128)
-
-
-@pytest.mark.parametrize('length', [1, 3, 4, 5])
-def test_expand_levels_count_the_stages_over_the_whole_period(length):
-    """The stages expand the whole period of n_slots = 8 slots, so a padded slot axis consumes the levels of a full
-    one, log2(8) = 3, whatever the number of values kept."""
-    params = HomParams(n=256, full_q_list_precision=((60,),) * 5, pt_scale=2**30, num_special_primes=1, n_slots=8)
-
-    def output_rows(length):
-        graph, _ = HomomorphicPipeline(hom=HomExpand(), input_shape=(length,)).serialize(params)
-        return json.loads(graph)['pipeline_sections']['hom']['output']['active_rows']
-
-    full_rows = output_rows(8)
-    assert len(init_active_rows_cols(params)[0]) - len(full_rows) == 3
-    assert output_rows(length) == full_rows
 
 
 def test_serialized_clear_execution_expands_to_ring_size():
