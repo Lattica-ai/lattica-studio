@@ -37,15 +37,18 @@ RELU_COEFS = json.loads((Path(__file__).parent / "data" / "resnet20_relu_coefs.j
 
 
 class _ReLU(HomOp):
-    """max(0, x / delta) = x / (2 delta) + |x| / (2 delta), with |x| from the position's fit."""
+    """max(0, x / delta) = x / (2 delta) + |x| / (2 delta), with |x| from the position's fit: one polynomial, whose
+    T_1 coefficient is the slope 1 / (2 delta). The backend evaluates its even part in T_2(x) and adds the linear term
+    to the last product before its rescale."""
 
     def __init__(self, name: str, delta: float):
         super().__init__()
-        self.slope = 1 / (2 * delta)
-        self.abs = HomPolyEvalBase(coefs=np.asarray(RELU_COEFS[name]) / (2 * delta))
+        coefs = np.asarray(RELU_COEFS[name]) / (2 * delta)
+        coefs[1] += 1 / (2 * delta)
+        self.relu = HomPolyEvalBase(coefs=coefs)
 
     def forward(self, x: HomValue) -> HomValue:
-        return self.abs(x) + self.slope * x   # the add writes into the polynomial's output, at the lower level
+        return self.relu(x)
 
 
 class Pipeline(resnet20.Pipeline):
