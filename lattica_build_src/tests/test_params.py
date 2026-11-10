@@ -95,17 +95,19 @@ def test_lcr_chain_shares_a_double_angle_word_and_stays_below_the_word_limit():
 
 
 def test_low_precision_chain_fits_n_2_15_at_128_bits():
-    """The "low" profile's chain for ResNet-20 at N = 2**15 (bootstraps at 2**12 to 2**14 slots, (52, 26) rows after
-    them, 4 special primes of 57 bits) runs EvalMod on the profile's rows, every key fits MAX_LOG_QP_128, and
-    serialization keeps the profile and the special primes."""
+    """The "low" profile's chain for ResNet-20 at N = 2**15 (bootstraps at 2**12 to 2**14 slots, resnet20_n15's rows
+    after them, 4 special primes of 57 bits) runs EvalMod on the profile's rows, its base word holds a 26-bit prime and
+    q0 below 2**62, every key fits MAX_LOG_QP_128, and serialization keeps the profile and the special primes."""
     n = 2 ** 15
     boot = BootstrappingParams.for_slot_counts(True, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=n, special_bits=4 * 57,
                                                precision="low")
-    params = HomParams(n=n, full_q_list_precision=((52, 26),) * 3, pt_scale=2 ** 26, n_slots=2 ** 14,
+    params = HomParams(n=n, full_q_list_precision=((26,), (52, 26), (52, 26)), pt_scale=2 ** 26, n_slots=2 ** 14,
                        num_special_primes=4, special_prime_bits=57, boot_precision="low")
     params.boot_params = boot
     assert boot.lcr_first_cts and boot.exit_scale_for(2 ** 12) == 38
     chain = ModulusChain(params)
+    base = chain.factors_per_row[chain.section_rows["boot_base"][0]]
+    assert [int(math.log2(p)) for p in base] == [26, 35] and math.prod(base) < 2 ** 62
     q_rows = [row for name, rows in chain.section_rows.items() if name != "special_primes" for row in rows]
     special = chain.section_rows["special_primes"]
     log_qp = sum(math.log2(math.prod(chain.factors_per_row[row])) for row in q_rows + special[:4])
