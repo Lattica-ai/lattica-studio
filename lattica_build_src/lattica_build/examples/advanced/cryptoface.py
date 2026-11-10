@@ -12,9 +12,13 @@ Weights: the benchmark's checkpoint, downloaded when the pipeline is built
 Example pairs: the FHE benchmark's 1,024 CelebA pairs (https://fhe-benchmarking.github.io/face-recognition),
 aligned with InsightFace when it is installed, as the benchmark's client does, else center-cropped.
 
-Every level is a 30-bit prime: a conv or a constant multiply takes one, a HerPN's square one. A
-segment of 9 levels runs two residual blocks, so each patch bootstraps twice (the HerPN output at the
-head of blocks 2 and 4, which both of that block's branches read) and each face's embedding once.
+Every level is a 30-bit prime: a conv or a constant multiply takes one, a HerPN's square one. A patch
+takes 23 levels (the stem, five blocks of 4, the pooling HerPN and the head) and a bootstrap gives 9,
+so each patch bootstraps twice and each face's embedding once. Each segment spends all its levels,
+so every bootstrap gets a ciphertext down to its last limb and no op carries levels it won't use: the
+fresh patches hold only the 5 levels of the stem and block 1, the first bootstrap takes block 1's
+output, and the second takes the output of block 4's first HerPN (which both of that block's
+branches read).
 """
 import io
 import math
@@ -49,7 +53,11 @@ SUBRING_SLOTS = 2 ** 14                      # a patch: 16 channels (RGB zero-pa
 # s^2 / q, doubling its distance in bits from the prime q: from 2^30 it fell to 2^21 by block 4 and the
 # circuit lost all precision. From here it stays within 0.04 bits; the bootstraps reset it.
 PT_SCALE = round(2 ** 30.07)
-Q_LIST_PRECISION = ((60, 30),) * 4 + ((30,),)   # nine 30-bit primes: two blocks between bootstraps
+# nine 30-bit levels in five limbs (a two-level row keeps its limb until both levels are spent); the one-level
+# row third puts levels 6 to 8 after a bootstrap (the convs of block 3) a limb lower, and the last three rows
+# still hold the 5 levels of the fresh patches
+Q_LIST_PRECISION = ((60, 30),) * 2 + ((30,),) + ((60, 30),) * 2
+NUM_INIT_ROWS = 3                            # the fresh patches take the chain's last three rows: 5 levels
 N_SPECIAL_PRIMES = 9
 
 CHECKPOINT_URL = "https://huggingface.co/halmsu/cryptoface-v1/resolve/main/backbone-64x64.ckpt"
@@ -63,7 +71,8 @@ EMBEDDING_DIM = 256
 STEM_CHANNELS = 16                           # RGB (3) zero-padded up to 16 channels
 # (input channels, output channels, stride, input height and width) of the five residual blocks
 BLOCKS = ((16, 16, 1, 32), (16, 32, 2, 32), (32, 32, 1, 16), (32, 64, 2, 16), (64, 64, 1, 8))
-BOOTSTRAPPED_BLOCKS = (1, 3)                 # bootstrap the first HerPN's output of these blocks
+BOOTSTRAPPED_INPUTS = (1,)                   # bootstrap these blocks' inputs (0-based)
+BOOTSTRAPPED_HERPNS = (3,)                   # bootstrap the first HerPN's output of these blocks
 POOL_LAYOUT = (64, 8, 8)
 POOL_WINDOW = 4                              # AdaptiveAvgPool2d((2, 2)) of the 8x8 map: 4x4 windows
 
@@ -245,8 +254,10 @@ class _Block(HomOp):
         super().__init__()
         c_in, c_out, stride, size = BLOCKS[block]
         in_layout, out_layout = _layout(c_in, size), _layout(c_out, size // stride)
+        # the block's input is the first HerPN's input, already scaled to at most 1 in magnitude
+        self.input_bootstrap = Bootstrap(target_output_scale=PT_SCALE) if block in BOOTSTRAPPED_INPUTS else None
         self.herpn1 = _HerPN(herpn1, in_layout)
-        self.bootstrap = Bootstrap(target_output_scale=PT_SCALE) if block in BOOTSTRAPPED_BLOCKS else None
+        self.bootstrap = Bootstrap(target_output_scale=PT_SCALE) if block in BOOTSTRAPPED_HERPNS else None
         weight1 = state[prefix + "conv1.weight"] * herpn1.gain[None, :, None, None]
         self.conv1 = _conv(weight1 * herpn2.input_scale[:, None, None, None], herpn2.shift, size, stride=stride)
         self.herpn2 = _HerPN(herpn2, out_layout)
@@ -268,6 +279,8 @@ class _Block(HomOp):
         self.conv2 = _conv(weight2 * next_herpn.input_scale[:, None, None, None], bias2, size // stride)
 
     def forward(self, x: HomValue) -> HomValue:
+        if self.input_bootstrap is not None:
+            x = self.input_bootstrap(x)
         z = self.herpn1(x)
         if self.bootstrap is not None:
             z = self.bootstrap(z)
@@ -472,6 +485,7 @@ class Pipeline(PipelineWrapper):
             pt_scale=PT_SCALE,
             sk_hw=192,
             num_special_primes=N_SPECIAL_PRIMES,
+            num_init_rows=NUM_INIT_ROWS,
             n_slots=SUBRING_SLOTS,
         )
 
