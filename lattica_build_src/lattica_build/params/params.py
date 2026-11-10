@@ -84,8 +84,12 @@ class HomParams:
             if not isinstance(self.special_prime_bits, int) or not 26 <= self.special_prime_bits <= 61:
                 raise ValueError(f"special_prime_bits must be an int from 26 to 61; got {self.special_prime_bits!r}.")
             self.ghs_keyswtich_scale_precision = (self.special_prime_bits,) * self.num_special_primes
-            # the digits' capacity: DIGIT_HEADROOM_BITS below the special primes' product
-            self.g_base_bits = self.special_prime_bits * self.num_special_primes - DIGIT_HEADROOM_BITS
+            # The digits' capacity is DIGIT_HEADROOM_BITS below the special primes' product, but a digit holds at
+            # least one prime: a row (a, b, c) has primes of a - b, b - c and c bits.
+            largest_prime_bits = max(
+                max(a - b for a, b in zip(row, (*row[1:], 0))) for row in self.full_q_list_precision)
+            self.g_base_bits = max(self.special_prime_bits * self.num_special_primes - DIGIT_HEADROOM_BITS,
+                                   largest_prime_bits)
         else:
             if not isinstance(self.bv_gadget_bits, int) or self.bv_gadget_bits < 1:
                 raise ValueError(f"bv_gadget_bits must be an int >= 1; got {self.bv_gadget_bits!r}.")
