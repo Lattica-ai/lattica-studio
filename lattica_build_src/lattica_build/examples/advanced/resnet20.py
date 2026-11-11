@@ -1,3 +1,4 @@
+import json
 import pickle
 import random
 from pathlib import Path
@@ -8,9 +9,13 @@ from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.pipeline_wrapper import PipelineWrapper
+from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
+from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
+from lattica_build.operators.client_ops import Softmax
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBnFused, MuxLayout
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
+from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
 
@@ -37,13 +42,29 @@ DELTAS = [
     [[0.2563, 0.1762], [0.2739, 0.1279], [0.2108, 0.0348]],   # layer 3
 ]
 
-# The official CIFAR-10 test batch, and the normalization the model expects.
+# The official CIFAR-10 test batch, and the normalization the model was trained with.
 CIFAR_BATCH = Path(__file__).parent / "data" / "cifar10_test_batch"
 CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD = (0.2023, 0.1994, 0.2010)
-# CIFAR-10 labels in the model's output-index order.
+# CIFAR-10 labels in the model's output-index order; the query client gets them as metadata.
 CIFAR10_CLASSES = ('airplane', 'automobile', 'bird', 'cat', 'deer',
                    'dog', 'frog', 'horse', 'ship', 'truck')
+N_CLASSES = len(CIFAR10_CLASSES)
+
+
+def stem_layout() -> MuxLayout:
+    """The slot of every channel of every pixel of the image the client packs."""
+    return MuxLayout(*STEM_LAYOUT, SUBRING_SLOTS)
+
+
+def _normalization() -> tuple[torch.Tensor, torch.Tensor]:
+    """Per-slot scale and shift that turn the client's raw 0-255 pixels into (x / 255 - mean) / std."""
+    scale = torch.zeros(STEM_LAYOUT, dtype=torch.float64)
+    shift = torch.zeros(STEM_LAYOUT, dtype=torch.float64)
+    for channel, (mean, std) in enumerate(zip(CIFAR10_MEAN, CIFAR10_STD)):
+        scale[channel] = 1 / (255 * std)
+        shift[channel] = -mean / std
+    return stem_layout().pack(scale), stem_layout().pack(shift)
 
 
 class _ReLU(HomOp):
@@ -154,7 +175,8 @@ class _MuxHead(HomOp):
         channels, height, width = LAYER_OUT[3]
         spatial_positions = height * width
         # the last ReLU leaves one level, for the FC
-        self.avgpool = HomSumSlots(k=spatial_positions)
+        # one sum per channel, over its spatial positions
+        self.avgpool = HomSumSlots(nb_cols=channels)
         self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0),
                              bias=True)
         # SumSlots supplies a sum; fold the averaging factor into the FC weights.
@@ -190,47 +212,74 @@ class Pipeline(PipelineWrapper):
         model.eval()
         return model
 
+    def build_graph(self):
+        """The homomorphic part of the pipeline: the network self._model on the packed, normalized image."""
+        return _MuxResnetGraph(self._model)
+
     def build_pipeline(self):
         self._model = self._load_model()
-        return HomomorphicPipeline(
-            hom=_MuxResnetGraph(self._model), input_shape=(SUBRING_SLOTS,),
+        scale, shift = _normalization()
+        pipeline = HomomorphicPipeline(
+            # The client normalizes the raw pixels it packed, and turns the logits into probabilities.
+            client_pre=[
+                HomConstMul(dims=(SUBRING_SLOTS,)).set_data(scale),
+                HomConstAdd(dims=(SUBRING_SLOTS,)).set_data(shift),
+            ],
+            hom=self.build_graph(),
+            # the FC's 1x1 output layout puts logit c at slot c
+            client_post=[
+                HomSlice(dim=0, key=slice(0, N_CLASSES)),
+                Softmax(dim=-1),
+            ],
+            input_shape=(SUBRING_SLOTS,),
         )
+        pipeline.add_client_preprocessing_data(json.dumps({"labels": CIFAR10_CLASSES}).encode())
+        return pipeline
 
     def build_params(self):
         return HomParams(
             full_q_list_precision=Q_LIST_PRECISION,
             n=N,
             pt_scale=PT_SCALE,
-            sk_hw=192,
+            sk_hw=1024,
             num_special_primes=N_SPECIAL_PRIMES,
             n_slots=SUBRING_SLOTS,
         )
 
     @staticmethod
     def load_cifar_sample(index=None):
-        """A test image as the model sees it, normalized float64 (3, 32, 32), and its class.
+        """A test image as the client sends it, raw 0-255 pixels as float64 (3, 32, 32), and its class.
         index None picks a random image."""
         with CIFAR_BATCH.open("rb") as batch_file:
             batch = pickle.load(batch_file, encoding="bytes")
         if index is None:
             index = random.randrange(len(batch[b"labels"]))
-        image = torch.tensor(batch[b"data"][index], dtype=torch.float64).reshape(3, 32, 32) / 255
+        image = torch.tensor(batch[b"data"][index], dtype=torch.float64).reshape(3, 32, 32)
+        return image, CIFAR10_CLASSES[int(batch[b"labels"][index])]
+
+    @staticmethod
+    def normalize(image):
+        """Raw 0-255 pixels as the torch model reads them: (x / 255 - mean) / std."""
         mean = torch.tensor(CIFAR10_MEAN, dtype=torch.float64)[:, None, None]
         std = torch.tensor(CIFAR10_STD, dtype=torch.float64)[:, None, None]
-        return (image - mean) / std, CIFAR10_CLASSES[int(batch[b"labels"][index])]
+        return (image / 255 - mean) / std
+
+    @staticmethod
+    def pack_image(image):
+        """An RGB (3, 32, 32) image as the slot vector the client encrypts."""
+        # RGB zero-padded to the stem's channels, so the stem has the layout of layer 1.
+        padded = torch.nn.functional.pad(image, (0, 0, 0, 0, 0, STEM_CHANNELS - image.shape[0]))
+        return stem_layout().pack(padded)
 
     def _set_example_pt(self):
         self._img, self._category = self.load_cifar_sample()
-        # RGB zero-padded to the stem's channels, so the stem has the layout of layer 1.
-        image = torch.nn.functional.pad(self._img, (0, 0, 0, 0, 0, STEM_CHANNELS - self._img.shape[0]))
-        return MuxLayout(*STEM_LAYOUT, SUBRING_SLOTS).pack(image)
+        return self.pack_image(self._img)
 
     def verify_results(self, actual, expected):
-        # the FC's 1x1 output layout puts logit c at slot c
-        fhe_logits = actual[:10]
+        # actual holds the class probabilities the client's post block computed
         with torch.no_grad():
-            model_logits = self._model(self._img.to(torch.float32).unsqueeze(0))[0]
-        fhe_category = CIFAR10_CLASSES[int(fhe_logits.argmax())]
+            model_logits = self._model(self.normalize(self._img).to(torch.float32).unsqueeze(0))[0]
+        fhe_category = CIFAR10_CLASSES[int(actual.argmax())]
         model_category = CIFAR10_CLASSES[int(model_logits.argmax())]
         print(f"[resnet20] image category: {self._category}   |   "
               f"predicted (decrypted): {fhe_category}   |   (torch model): {model_category}")

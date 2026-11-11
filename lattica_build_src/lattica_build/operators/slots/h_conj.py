@@ -1,5 +1,7 @@
 """See `operators/slots/README.md` for usage details."""
 
+import torch
+
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
@@ -10,4 +12,4 @@ class HomConj(HomOp):
     OP_TYPE = HomOpType.Conj
 
     def forward_clear(self, input):
-        return input.conj()
+        return torch.conj_physical(input)

@@ -8,7 +8,6 @@ import numpy as np
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp
-from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.examples.advanced import resnet20
 from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
@@ -60,10 +59,8 @@ class Pipeline(resnet20.Pipeline):
         model.eval()
         return model
 
-    def build_pipeline(self):
-        self._model = self._load_model()
-        graph = resnet20._MuxResnetGraph(self._model, _ReLU, DELTA_INITIAL, DELTAS, stem_bootstrap=False)
-        return HomomorphicPipeline(hom=graph, input_shape=(resnet20.SUBRING_SLOTS,))
+    def build_graph(self):
+        return resnet20._MuxResnetGraph(self._model, _ReLU, DELTA_INITIAL, DELTAS, stem_bootstrap=False)
 
     def build_params(self):
         return HomParams(full_q_list_precision=Q_LIST_PRECISION, n=N, pt_scale=PT_SCALE, sk_hw=1024,
