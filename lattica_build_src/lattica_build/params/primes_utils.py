@@ -15,13 +15,18 @@ def unflatten_rows_cols(a: Sequence[int], num_cols_per_row: Sequence[int]) -> Se
         idx += col_len
     return res
 
+# The kernels keep every modulus below 2**62, so the primes of a 62-bit row come from just below their powers of two
+# (good_primes_below.json) rather than just above them (good_primes.json), and the row's modulus stays under it.
+WORD_LIMIT_BITS = 62
+
+
 def get_primes_from_precisions_list(full_q_list_precision):
     """
         Create a tensor full_q_list with the same shape as full_q_list_precision,
         where each entry is a unique 'good prime' drawn from the JSON pool that
         matches its bit-length (precision value). Raises if any bucket runs out.
         """
-    precisions = []
+    precisions = []   # (bits, below): a prime of about 2**bits, from below 2**bits for a row at the word limit
     # Verify precision is decreasing in each column
     for row in full_q_list_precision:
         row = torch.tensor(row)
@@ -29,25 +34,26 @@ def get_primes_from_precisions_list(full_q_list_precision):
         if not (diffs > 0).all():
             raise ValueError("Precision values must be strictly decreasing in each column.")
         relative_precisions_needed = diffs.tolist() + [int(row[-1])]
-        precisions += relative_precisions_needed
+        below = int(row[0]) == WORD_LIMIT_BITS
+        precisions += [(int(p), below) for p in relative_precisions_needed]
 
-    # Load pools: {"8": [...], "9": [...], ...}
-    with open(f"{os.path.dirname(os.path.abspath(__file__))}/good_primes.json", "r", encoding="utf-8") as f:
-        pools_raw = json.load(f)
-
-    # Normalize keys to int and copy lists so we can pop from them
-    pools: dict[int, list[int]] = {int(k): list(v) for k, v in pools_raw.items()}
+    # Load pools: {"8": [...], "9": [...], ...}, keyed (bits, below); copy the lists so we can pop from them
+    pools: dict[tuple[int, bool], list[int]] = {}
+    for name, below in (("good_primes.json", False), ("good_primes_below.json", True)):
+        with open(f"{os.path.dirname(os.path.abspath(__file__))}/{name}", "r", encoding="utf-8") as f:
+            pools.update({(int(k), below): list(v) for k, v in json.load(f).items()})
 
     # Validate precisions exist in pools
-    needed_counts = Counter(int(p) for p in precisions)
+    needed_counts = Counter(precisions)
     unknown = [p for p in needed_counts if p not in pools]
     if unknown:
-        raise ValueError(f"No primes available for precisions (bits): {sorted(set(unknown))}")
+        raise ValueError(f"No primes available for precisions (bits, below 2**bits): {sorted(unknown)}")
 
     # Ensure enough primes per bit bucket
     shortages = {p: (needed_counts[p], len(pools[p])) for p in needed_counts if needed_counts[p] > len(pools[p])}
     if shortages:
-        msg = ", ".join(f"{p}-bit need {need} but have {have}" for p, (need, have) in shortages.items())
+        msg = ", ".join(f"{bits}-bit{' (below)' if below else ''} need {need} but have {have}"
+                        for (bits, below), (need, have) in shortages.items())
         raise RuntimeError(f"Insufficient primes: {msg}")
 
     # Draw primes (unique globally because we pop from each pool)

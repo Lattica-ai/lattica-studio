@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import numpy as np
 
@@ -63,7 +65,7 @@ def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_
 
 
 @pytest.mark.parametrize("n, num_special_primes, key", [
-    (2 ** 16, 9, (2, 13)),   # 791 bits of q left after 2 EvalMod rescales, 13 special primes: 1584 bits
+    (2 ** 16, 9, (2, 13)),   # 758 bits of q left after 2 EvalMod rescales, 13 special primes: 1551 bits
     (2 ** 16, 13, None),     # the square key's digit already holds every level past the first
     (2 ** 10, 9, None),      # no 128-bit bound known
 ], ids=["2^16", "wide-square-key", "no-bound"])
@@ -78,6 +80,18 @@ def test_one_digit_relin_key_fits_the_128_bit_bound(n, num_special_primes, key):
     assert boot.one_digit_relin_key(boot.chain_sections(params.full_q_list_precision), num_special_primes, n) == key
     special = ModulusChain(params).section_rows["special_primes"]
     assert len(special) == (num_special_primes if key is None else key[1])
+
+
+def test_lcr_chain_shares_a_double_angle_word_and_stays_below_the_word_limit():
+    """The REAL 2**15-slot level-conserving chain: double angles 1 and 3 share EvalMod's last word (7 rows for 8
+    levels), and every row's modulus stays below the kernels' 2**62, the StC's two-prime 62-bit words included."""
+    boot = BootstrappingParams.for_slot_counts(True, False, {2 ** 15}, n=2 ** 16, special_bits=9 * 61)
+    params = HomParams(n=2 ** 16, full_q_list_precision=((60, 30),) * 5, pt_scale=2 ** 30, num_special_primes=9)
+    params.boot_params = boot
+    chain = ModulusChain(params)
+    assert len(chain.section_rows["boot_eval"]) == 7
+    assert all(math.prod(primes) < 2 ** 62 for primes in chain.factors_per_row)
+    assert all(math.prod(chain.factors_per_row[row]) > 2 ** 61.9 for row in chain.section_rows["boot_stc"])
 
 
 def _boot_params(q_list, real_boot, slim_boot):

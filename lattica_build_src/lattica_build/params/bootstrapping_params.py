@@ -2,7 +2,8 @@
 
 BOOT_CONFIGURATION = {
     # EvalMod and StC prime sizes (bits); the CtS ones and the DFT level counts come
-    # per slot count from BOOT_PARAMS_PER_N_SLOTS.
+    # per slot count from BOOT_PARAMS_PER_N_SLOTS. A level-conserving chain lays out its
+    # EvalMod and StC rows differently (LCR_EVAL_MOD_ROWS, LCR_STC_SCALE).
     # Also the size of q0: EvalMod running at scale q0 makes the division by
     # delta a free scale relabel; 53 is the smallest without accuracy loss.
     'eval_mod_scale' : 53,
@@ -40,20 +41,27 @@ BOOT_CONFIGURATION = {
 # each bit divides the sine's cubic error (~6.6 m**3 / 4**log_delta, m: a coefficient EvalMod
 # sees; for REAL the slots' mean lands on the constant one) by 4 but doubles EvalMod's noise,
 # which StC sums over the coefficients. Fewer slots leave less noise to sum and give larger
-# coefficients, so they take more. Tuned per slot count on zero-mean amplitude-1 data. 
+# coefficients, so they take more. Tuned per slot count on zero-mean amplitude-1 data; from 2**12 slots up, together
+# with the exit below, on the level-conserving chain at output scale 2**30.
 # An input with only q0 left must be at most 2 * q0 / 2**log_delta.
+# Last, on a level-conserving chain (lcr_first_cts), EvalMod's exit scale in bits. Double angles 1 and 3 share one
+# word there (LCR_EVAL_MOD_ROWS), so the double angles divide the scale by less than their squarings multiply it, and
+# the cosine is aimed so that EvalMod ends at 2**exit. The StC then brings exit - log_delta bits down to the output
+# scale: a higher exit keeps more precision in the double angles and leaves fewer bits to the StC's plaintexts.
+# Tuned per slot count at output scale 2**30, between the best REAL and the best COMPLEX exit. None: the slot count
+# has no such chain.
 BOOT_PARAMS_PER_N_SLOTS = {
-    5:  ((5,), 55, 9),
-    6:  ((3, 3), 44, 8),
-    7:  ((3, 4), 45, 8),
-    8:  ((3, 5), 46, 7),
-    9:  ((4, 5), 47, 7),
-    10: ((3, 3, 4), 45, 7),
-    11: ((3, 3, 5), 46, 6),
-    12: ((3, 3, 3, 3), 45, 6),
-    13: ((3, 3, 3, 4), 46, 5),
-    14: ((3, 3, 4, 4), 47, 5),
-    15: ((3, 4, 4, 4), 47, 4),
+    5:  ((5,), 55, 9, None),
+    6:  ((3, 3), 44, 8, None),
+    7:  ((3, 4), 45, 8, None),
+    8:  ((3, 5), 46, 7, None),
+    9:  ((4, 5), 47, 7, None),
+    10: ((3, 3, 4), 45, 7, None),
+    11: ((3, 3, 5), 46, 6, None),
+    12: ((3, 3, 3, 3), 45, 5, 64),
+    13: ((3, 3, 3, 4), 46, 5, 63),
+    14: ((3, 3, 4, 4), 47, 4, 62),
+    15: ((3, 4, 4, 4), 47, 3, 60),
 }
 
 
@@ -70,6 +78,17 @@ LCR_MIN_SPECIAL_BITS = 170
 # dimension: the lattice estimator's limits, where the cheapest attack is the sparse-secret hybrid.
 MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 809, 2 ** 16: 1638}
 SPECIAL_PRIME_BITS = 61
+# A level-conserving chain's EvalMod rows, one word fewer than one per level: the cosine's rows, double angle 2's
+# row, then one word that double angles 1 and 3 share (a 38-bit and a 23-bit prime), last so that every row dropped
+# whole comes before the ones still active. A double angle's precision is the scale it keeps after its rescale, and
+# each later double angle doubles its error. Double angle 3's error is doubled by none, so it takes the small prime;
+# double angle 2 then keeps the scale (exit + 23) / 2, and double angle 1 gets its scale back from double angle 2's
+# 61-bit prime. LCR_DOUBLE_ANGLE_ROWS: the EvalMod row each double angle drops a prime of.
+LCR_EVAL_MOD_ROWS = ((53,),) * 5 + ((61,), (61, 23))
+LCR_DOUBLE_ANGLE_ROWS = (6, 5, 6)
+# A level-conserving chain's StC scale: its words hold two primes just below 2**31 (62-bit rows, the kernels' limit)
+# rather than 2**30, so the StC has room for the bits the higher EvalMod exit leaves it.
+LCR_STC_SCALE = 31
 
 
 class BootstrappingParams:
@@ -103,8 +122,8 @@ class BootstrappingParams:
         (lcr_first_cts_fits)."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
-        dft_levels = max(len(split) for split, _, _ in entries)
-        cts_scale = max(bits for _, bits, _ in entries)
+        dft_levels = max(len(entry[0]) for entry in entries)
+        cts_scale = max(entry[1] for entry in entries)
         params = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
         if (n is None or special_bits <= LCR_MIN_SPECIAL_BITS
                 or not all(params.lcr_first_cts_fits(n_slots, n) for n_slots in slot_counts)):
@@ -158,7 +177,7 @@ class BootstrappingParams:
         the input's own primes."""
         n_levels = self.dft_levels
         if not self.slim_boot:
-            split, cts_bits, _ = self._n_slots_entry(n_slots)
+            split, cts_bits = self._n_slots_entry(n_slots)[:2]
             if len(split) > n_levels or cts_bits > self.cts_scale:
                 # fewer levels than the split would mean far more diagonals per DFT factor, and a CtS prime
                 # narrower than the split needs loses precision
@@ -195,6 +214,14 @@ class BootstrappingParams:
             return BOOT_CONFIGURATION['log_delta_slim']
         return self._n_slots_entry(n_slots)[2]
 
+    def exit_scale_for(self, n_slots: int) -> int | None:
+        """EvalMod's exit scale, in bits, of a bootstrap of n_slots slots on a level-conserving chain, whose double
+        angles 1 and 3 share a word (LCR_EVAL_MOD_ROWS); None on the other chains, where EvalMod ends at its own
+        scale."""
+        if self.double_angle_rows is None:
+            return None
+        return self._n_slots_entry(n_slots)[3]
+
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int,
                  lcr_first_cts: bool = False) -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
@@ -224,9 +251,19 @@ class BootstrappingParams:
         self.lcr_first_cts = lcr_first_cts and dft_levels > 1
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
-        self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.dft_levels - self.lcr_first_cts)
-        self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
+        # The shared double-angle word needs every slot count's exit scale. A chain's DFT level count is its slot
+        # counts' split length, and only the 4-level splits (2**12 to 2**15 slots, the production ones) have exits:
+        # the chains of the shorter splits keep one EvalMod row per level.
+        if self.lcr_first_cts and not self.slim_boot and all(
+                entry[3] is not None for entry in BOOT_PARAMS_PER_N_SLOTS.values() if len(entry[0]) == dft_levels):
+            self.stc_scale = LCR_STC_SCALE
+            self.eval_mod_q_list_precision = LCR_EVAL_MOD_ROWS
+            self.double_angle_rows = LCR_DOUBLE_ANGLE_ROWS
+        else:
+            self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
+            self.double_angle_rows = None
+        self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
         self.k = BOOT_CONFIGURATION['k']
         self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
