@@ -29,6 +29,7 @@ from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
 from lattica_build.operators.slots.h_conj import HomConj
 from lattica_build.operators.slots.h_expand import HomExpand
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
+from lattica_build.operators.slots.h_rotate_sum_elementwise import HomRotateSumElementwise
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
@@ -84,7 +85,8 @@ def test_slot_client_and_fhe_clear_execution():
     assert torch.equal(Clamp(2, 5)(x), x.clamp(2, 5))
 
 
-@pytest.mark.parametrize('op', [HomExpand(), HomRotateSum((1,)), HomRunningSum(), HomSumSlots(nb_cols=2)])
+@pytest.mark.parametrize('op', [HomExpand(), HomRotateSum((1,)), HomRotateSumElementwise((0,)),
+                               HomRunningSum(), HomSumSlots(nb_cols=2)])
 def test_slot_op_clear_outside_a_traced_pipeline_raises(op):
     """Without a trace, a slot operator's slot axis and ring size are unknown: it does not guess them."""
     with pytest.raises(RuntimeError, match='traced pipeline'):
@@ -153,6 +155,42 @@ def test_rotate_sum_clear_counts_each_requested_view_once(include_identity, perf
     expected = sum(views) if perform_sum else torch.stack(views)
     result, _ = _slot_op_clear(HomRotateSum([1], perform_sum, include_identity), x, 4)
     torch.testing.assert_close(result, expected)
+
+
+@pytest.mark.parametrize('n_axis,elements_axis', [(0, 1), (0, -1), (1, 0), (1, -1), (-1, 0), (-1, 1)])
+@pytest.mark.parametrize('rotations', [(0,), (0, 1, -3), (2, -1, 5)])
+@pytest.mark.parametrize('width,n_slots', [(8, 8), (256, 128)])
+def test_rotate_sum_elementwise_clear_uses_traced_layout(n_axis, elements_axis, rotations, width, n_slots):
+    """Each element rotates within its own ciphertext, on the traced slot axis, before reduction."""
+    shape = [2, 2, 2]
+    shape[n_axis] = width
+    shape[elements_axis] = len(rotations)
+    x = torch.arange(shape[0] * shape[1] * shape[2], dtype=torch.float64).reshape(shape)
+    op = HomRotateSumElementwise(rotations, elements_axis)
+    pipeline = HomomorphicPipeline(hom=op, input_shape=shape, n_axis=n_axis)
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=n_slots)
+    output_axis = n_axis % x.ndim - (elements_axis % x.ndim < n_axis % x.ndim)
+    positions = torch.arange(width)
+    expected = sum(x.select(elements_axis, i).index_select(
+        output_axis, positions // n_slots * n_slots + (positions + rotation) % n_slots)
+        for i, rotation in enumerate(rotations))
+
+    artifact = pipeline.serialize(params)
+    section = json.loads(artifact[0])['pipeline_sections']['hom']
+    for attr in ('n_slots', 'active_rows', 'active_cols', 'pt_scale'):
+        assert section['output'][attr] == section['input_values'][0][attr]
+    torch.testing.assert_close(pipeline.forward_clear(x, artifact=artifact), expected)
+
+
+def test_rotate_sum_elementwise_clear_uses_an_intermediate_period():
+    x = torch.arange(16.).reshape(2, 8)
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(nb_cols=4),
+                                                       HomRotateSumElementwise((0, 1))), input_shape=x.shape)
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=8)
+    sums = x[:, :4] + x[:, 4:]
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), sums[0] + sums[1].roll(-1))
 
 
 @pytest.mark.parametrize('batched', [False, True])
