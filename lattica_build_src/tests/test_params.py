@@ -8,7 +8,7 @@ from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
-from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.bootstrapping_params import MAX_LOG_QP_128, BootstrappingParams
 from lattica_build.params.level_and_scale_tracing import ModulusChain, _get_config_for_row_or_col
 from lattica_build.params.params import HomParams
 
@@ -65,8 +65,8 @@ def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_
 
 
 @pytest.mark.parametrize("n, num_special_primes, key", [
-    (2 ** 16, 9, (2, 13)),   # 758 bits of q left after 2 EvalMod rescales, 13 special primes: 1551 bits
-    (2 ** 16, 13, None),     # the square key's digit already holds every level past the first
+    (2 ** 16, 9, (1, 14)),   # 811 bits of q left after 1 EvalMod rescale, 14 special primes: 1665 bits
+    (2 ** 16, 14, None),     # the square key's digit already holds every level past the first
     (2 ** 10, 9, None),      # no 128-bit bound known
 ], ids=["2^16", "wide-square-key", "no-bound"])
 def test_one_digit_relin_key_fits_the_128_bit_bound(n, num_special_primes, key):
@@ -77,9 +77,19 @@ def test_one_digit_relin_key_fits_the_128_bit_bound(n, num_special_primes, key):
     params = HomParams(n=n, full_q_list_precision=((60, 30),) * 5, pt_scale=2 ** 30,
                        num_special_primes=num_special_primes)
     params.boot_params = boot
-    assert boot.one_digit_relin_key(boot.chain_sections(params.full_q_list_precision), num_special_primes, n) == key
+    assert boot.one_digit_relin_key(boot.chain_sections(params.full_q_list_precision), num_special_primes, 61, n) == key
     special = ModulusChain(params).section_rows["special_primes"]
     assert len(special) == (num_special_primes if key is None else key[1])
+
+
+@pytest.mark.parametrize("q_list, num_special_primes, g_base_bits", [
+    (((61,), (61,)), 1, 61),        # one special prime: a digit holds one 61-bit prime
+    (((60, 30),) * 5, 9, 9 * 61 - 8),
+], ids=["one-special-prime", "nine-special-primes"])
+def test_digits_hold_a_prime_and_keep_their_headroom_below_p(q_list, num_special_primes, g_base_bits):
+    """The digits stay DIGIT_HEADROOM_BITS below the special primes' product, unless that is less than one prime."""
+    params = HomParams(n=2 ** 10, full_q_list_precision=q_list, pt_scale=2 ** 30, num_special_primes=num_special_primes)
+    assert params.g_base_bits == g_base_bits
 
 
 def test_lcr_chain_shares_a_double_angle_word_and_stays_below_the_word_limit():
@@ -92,6 +102,35 @@ def test_lcr_chain_shares_a_double_angle_word_and_stays_below_the_word_limit():
     assert len(chain.section_rows["boot_eval"]) == 7
     assert all(math.prod(primes) < 2 ** 62 for primes in chain.factors_per_row)
     assert all(math.prod(chain.factors_per_row[row]) > 2 ** 61.9 for row in chain.section_rows["boot_stc"])
+
+
+def test_low_precision_chain_fits_n_2_15_at_128_bits():
+    """The "low" profile's chain for ResNet-20 at N = 2**15 (bootstraps at 2**12 to 2**14 slots, resnet20_n15's rows
+    after them, 4 special primes of 57 bits) runs EvalMod on the profile's rows, its base word holds a 26-bit prime and
+    q0 below 2**62, every key fits MAX_LOG_QP_128, and serialization keeps the profile and the special primes."""
+    n = 2 ** 15
+    boot = BootstrappingParams.for_slot_counts(True, False, {2 ** 12, 2 ** 13, 2 ** 14}, n=n, special_bits=4 * 57,
+                                               precision="low")
+    params = HomParams(n=n, full_q_list_precision=((26,), (52, 26), (52, 26)), pt_scale=2 ** 26, n_slots=2 ** 14,
+                       num_special_primes=4, special_prime_bits=57, boot_precision="low")
+    params.boot_params = boot
+    assert boot.lcr_first_cts and boot.exit_scale_for(2 ** 12) == 38
+    chain = ModulusChain(params)
+    base = chain.factors_per_row[chain.section_rows["boot_base"][0]]
+    assert [int(math.log2(p)) for p in base] == [26, 35] and math.prod(base) < 2 ** 62
+    q_rows = [row for name, rows in chain.section_rows.items() if name != "special_primes" for row in rows]
+    special = chain.section_rows["special_primes"]
+    log_qp = sum(math.log2(math.prod(chain.factors_per_row[row])) for row in q_rows + special[:4])
+    assert log_qp <= MAX_LOG_QP_128[n]
+    back = HomParams.from_dict({**params.to_dict(), "bootstrapping": True})
+    assert back.boot_params.q_list_precision == boot.q_list_precision
+    assert (back.num_special_primes, back.special_prime_bits) == (4, 57)
+
+
+def test_unknown_boot_precision_is_refused():
+    with pytest.raises(ValueError, match="boot_precision must be one of"):
+        HomParams(n=2 ** 15, full_q_list_precision=((60,),), pt_scale=2 ** 30, num_special_primes=3,
+                  boot_precision="medium")
 
 
 def _boot_params(q_list, real_boot, slim_boot):

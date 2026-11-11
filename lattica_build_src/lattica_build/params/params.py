@@ -5,7 +5,7 @@ from numbers import Real
 from dataclasses import dataclass
 from typing import Any, Sequence, Tuple, Union
 
-from lattica_build.params.bootstrapping_params import BootstrappingParams
+from lattica_build.params.bootstrapping_params import BOOT_PRECISIONS, DIGIT_HEADROOM_BITS, BootstrappingParams
 
 QListNorm = Tuple[Tuple[int, ...], ...]
 QListInput = Sequence[Sequence[int]]
@@ -29,6 +29,8 @@ class HomParams:
     sk_hw: int = 0
     bv_gadget_bits: int = 4
     num_special_primes: int = 0
+    # HYBRID: the special primes' size in bits
+    special_prime_bits: int = 61
     decomposition_type: Union[DecompositionType, str] = DecompositionType.HYBRID
     # With a bootstrap: fresh ciphertexts hold this many pipeline rows, counted from the bottom of the chain (the
     # last pipeline rows), plus the bootstrap base. None: all the pipeline rows.
@@ -37,6 +39,8 @@ class HomParams:
     real_boot: bool = True
     slim_boot: bool = False
     n_slots: int | None = None
+    # Bootstrapping: the BOOT_PRECISIONS profile, which sets the bootstrap's precision and chain.
+    boot_precision: str = "full"
 
     @property
     def internal_n(self) -> int:
@@ -74,8 +78,15 @@ class HomParams:
                     "num_special_primes must be greater than 0 when using HYBRID decomposition; "
                     f"got {self.num_special_primes}"
                 )
-            self.ghs_keyswtich_scale_precision = (61,) * self.num_special_primes
-            self.g_base_bits = 61 * self.num_special_primes
+            if not isinstance(self.special_prime_bits, int) or not 26 <= self.special_prime_bits <= 61:
+                raise ValueError(f"special_prime_bits must be an int from 26 to 61; got {self.special_prime_bits!r}.")
+            self.ghs_keyswtich_scale_precision = (self.special_prime_bits,) * self.num_special_primes
+            # The digits' capacity is DIGIT_HEADROOM_BITS below the special primes' product, but a digit holds at
+            # least one prime: a row (a, b, c) has primes of a - b, b - c and c bits.
+            largest_prime_bits = max(
+                max(a - b for a, b in zip(row, (*row[1:], 0))) for row in self.full_q_list_precision)
+            self.g_base_bits = max(self.special_prime_bits * self.num_special_primes - DIGIT_HEADROOM_BITS,
+                                   largest_prime_bits)
         else:
             if not isinstance(self.bv_gadget_bits, int) or self.bv_gadget_bits < 1:
                 raise ValueError(f"bv_gadget_bits must be an int >= 1; got {self.bv_gadget_bits!r}.")
@@ -117,6 +128,8 @@ class HomParams:
         for name in ("real_boot", "slim_boot"):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a bool; got {getattr(self, name)!r}.")
+        if self.boot_precision not in BOOT_PRECISIONS:
+            raise ValueError(f"boot_precision must be one of {sorted(BOOT_PRECISIONS)}; got {self.boot_precision!r}.")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -137,6 +150,7 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            "boot_precision": self.boot_precision,
             "consumption_order": self.consumption_order,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
@@ -155,18 +169,19 @@ class HomParams:
         boot_lcr_first_cts = d.pop("boot_lcr_first_cts", False)
         consumption_order = d.pop("consumption_order", None)
 
+        special_primes = d.pop("ghs_keyswtich_scale_precision", None)
         if "g_base_bits" in d:
             if d["decomposition_type"]==DecompositionType.BV:
                 d["bv_gadget_bits"] = d.pop("g_base_bits")
             else:
-                d["num_special_primes"] = d.pop("g_base_bits") // 61
-        d.pop("ghs_keyswtich_scale_precision", None)
+                d.pop("g_base_bits")
+                d["num_special_primes"], d["special_prime_bits"] = len(special_primes), special_primes[0]
 
         params = cls(**d)
         if bootstrapping:
             params.boot_params = BootstrappingParams(
                 params.real_boot, params.slim_boot, dft_levels=boot_dft_levels, cts_scale=boot_cts_scale,
-                lcr_first_cts=boot_lcr_first_cts)
+                lcr_first_cts=boot_lcr_first_cts, precision=params.boot_precision)
         if ring_switch_params is not None:
             params.ring_switch_params = cls.from_dict(ring_switch_params)
         params.consumption_order = consumption_order
