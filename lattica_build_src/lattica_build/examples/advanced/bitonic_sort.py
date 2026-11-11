@@ -1,3 +1,5 @@
+import json
+
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp
@@ -116,6 +118,10 @@ class Pipeline(PipelineWrapper):
             hom_pipeline.primary_input_name: self._set_example_pt(),
             "accuracy": 2 ** -3,
         }
+        # Tell the query client how many numbers the model sorts and the value range it accepts.
+        hom_pipeline.add_client_preprocessing_data(
+            json.dumps({"length": self.array_len, "min": VAL_LO, "max": VAL_HI}).encode()
+        )
         return hom_pipeline
 
     def build_params(self) -> HomParams:
@@ -123,7 +129,7 @@ class Pipeline(PipelineWrapper):
             n=2 ** LOG_N,
             full_q_list_precision=Q_ROWS * ((LOG_SCALE * 2, LOG_SCALE),),
             pt_scale=2 ** LOG_SCALE,
-            sk_hw=192,
+            sk_hw=1024,
             num_special_primes=SPECIAL_PRIMES,
             n_slots=self.array_len,
         )
