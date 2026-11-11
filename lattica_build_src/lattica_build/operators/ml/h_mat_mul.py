@@ -6,10 +6,11 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue, TensorShape
+from lattica_build.operators.ml.h_mux_conv import next_pow2
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
 
 from lattica_build.params.shape_tracing import infer_broadcast_output_shape, infer_remove_axis_output_shape, \
-    to_pos_axis, to_neg_axis
+    infer_constant_packing_n_slots, to_pos_axis, to_neg_axis
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 class HomMatMul(HomOp):
@@ -116,7 +117,7 @@ class HomMatMul(HomOp):
         # Choose the largest surviving axis
         return max(candidates, key=lambda ax: broadcasted_shape[ax]), impl_kind
 
-    def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
+    def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
         """Infer output shape after broadcast and `mul_axis` elimination."""
         after_mul = infer_broadcast_output_shape(input, dims=self.dims)
 
@@ -127,12 +128,20 @@ class HomMatMul(HomOp):
         mul_axis = to_pos_axis(self.mul_axis, after_mul.tensor_shape)
         if n_axis != mul_axis:
             chosen_axis = n_axis
+            n_slots = infer_constant_packing_n_slots(input, self.dims, internal_n)
         else:
-            chosen_axis, _ = self._choose_matmul_new_n_axis(input.tensor_shape, self.dims, mul_axis, self.new_n_axis)
+            chosen_axis, impl_kind = self._choose_matmul_new_n_axis(
+                input.tensor_shape, self.dims, mul_axis, self.new_n_axis)
             chosen_axis = to_pos_axis(chosen_axis, after_mul.tensor_shape)
+            n_slots = input.n_slots
+            if internal_n is not None:
+                output_size = after_mul.tensor_shape[chosen_axis]
+                n_slots = (min(internal_n, next_pow2(output_size))
+                           if impl_kind == 'diags' else internal_n)
         return after_mul.make_copy(
             tensor_shape=after_mul.tensor_shape[:mul_axis] + after_mul.tensor_shape[mul_axis + 1:],
-            n_axis=chosen_axis - (1 if mul_axis < chosen_axis else 0)
+            n_axis=chosen_axis - (1 if mul_axis < chosen_axis else 0),
+            n_slots=n_slots,
         )
 
     def infer_output_level_and_scale(
