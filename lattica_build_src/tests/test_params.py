@@ -65,8 +65,8 @@ def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_
 
 
 @pytest.mark.parametrize("n, num_special_primes, key", [
-    (2 ** 16, 9, (2, 13)),   # 758 bits of q left after 2 EvalMod rescales, 13 special primes: 1551 bits
-    (2 ** 16, 13, None),     # the square key's digit already holds every level past the first
+    (2 ** 16, 9, (1, 14)),   # 811 bits of q left after 1 EvalMod rescale, 14 special primes: 1665 bits
+    (2 ** 16, 14, None),     # the square key's digit already holds every level past the first
     (2 ** 10, 9, None),      # no 128-bit bound known
 ], ids=["2^16", "wide-square-key", "no-bound"])
 def test_one_digit_relin_key_fits_the_128_bit_bound(n, num_special_primes, key):

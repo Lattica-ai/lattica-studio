@@ -65,10 +65,10 @@ BOOT_PARAMS_PER_N_SLOTS = {
 # the SubSum trace, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
 LCR_MAX_TERMS = 192
 # The most bits of log QP any key may have for 128-bit security under the secret key (hamming weight 1024), by ring
-# dimension. 2**15: the lattice estimator crosses 128 bits at 866 (cheapest attack bdd; the sparse-secret hybrids are
-# about 2 bits costlier at this weight), less 2 bits of margin. 2**14 and 2**16 keep the hamming-weight-192 limits,
-# which are below the hamming-weight-1024 ones.
-MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 864, 2 ** 16: 1638}
+# dimension. The lattice estimator crosses 128 bits at 866 for 2**15, less 2 bits of margin, and at 1745 for 2**16
+# (cheapest attacks bdd and usvp; the sparse-secret hybrids are costlier at this weight). 2**14 keeps the
+# hamming-weight-192 limit, which is below the hamming-weight-1024 one.
+MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 864, 2 ** 16: 1744}
 # A key switch's noise grows with its largest digit over the special primes' product P: every digit stays this many
 # bits below the special primes it uses (a digit filled up to P costs the key switch several bits of precision).
 DIGIT_HEADROOM_BITS = 8
