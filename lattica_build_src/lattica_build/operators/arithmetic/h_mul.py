@@ -55,14 +55,15 @@ class HomMul(HomOp):
 
     def infer_output_level_and_scale(
         self,
-        input_1: HomValue,
+        shaped_output: HomValue,
         input_2: HomValue,
         hom_params=None,
         **kwargs,
     ) -> HomValue:
-        """Infer multiplication level/scale and optional modswitch adjustment."""
-        res = infer_adjust_levels_and_scale(input_1, input_2)
-        res = res.make_copy(pt_scale=input_1.pt_scale)
+        """Infer multiplication level/scale and optional modswitch adjustment: shaped_output (the broadcast shape,
+        at the first input's level and scale) at the lower input's level, scaled up by the second input's scale."""
+        res = infer_adjust_levels_and_scale(shaped_output, input_2)
+        res = res.make_copy(pt_scale=shaped_output.pt_scale)
         return infer_optional_modswitch(
             hom_params,
             res,

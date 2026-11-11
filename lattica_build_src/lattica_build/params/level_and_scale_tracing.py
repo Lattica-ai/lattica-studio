@@ -221,14 +221,21 @@ def _verify_rows_cols_are_subset(input_1, input_2):
     active_cols_2 = torch.tensor(input_2.active_cols)[rows_of_one_in_two]
     return ((1 - active_cols_1) + (active_cols_1 * active_cols_2)).all()
 
-def infer_adjust_levels_and_scale(input_1: HomValue, input_2: HomValue) -> HomValue:
+def infer_adjust_levels_and_scale(shaped_output: HomValue, input_2: HomValue) -> HomValue:
     """Infer a compatible level/scale metadata state for binary ops.
 
-    The two inputs are compatible if one input's active rows/cols are a subset
-    of the other's active rows/cols. In that case, the function returns a copy
-    of the subset-compatible input metadata (shape/rows/cols/scale state).
+    shaped_output is the op's output from its shape inference, which the tracer
+    passes to the level inference in place of the first input: the shape, slot
+    axis and period of both inputs combined (broadcast), at the first input's
+    rows/cols and scale. input_2 is the op's second input.
 
-    If neither input is a subset of the other, a `ValueError` is raised.
+    The two are compatible if one's active rows/cols are a subset of the
+    other's. The function then returns shaped_output at the subset-compatible
+    (lower) one's rows/cols and scale: the output keeps the combined shape
+    whichever input is lower (the lower input's own shape would drop the
+    broadcast, e.g. a 256-slot vector times a period-1 sum would take period 1).
+
+    If neither is a subset of the other, a `ValueError` is raised.
 
     Operation-specific nuance:
         - Add/Sub path: if inputs are already at the same level (same rows/cols)
@@ -241,21 +248,22 @@ def infer_adjust_levels_and_scale(input_1: HomValue, input_2: HomValue) -> HomVa
     This helper performs the shared level-alignment subset check and returns the
     aligned metadata representative used by those caller policies.
     """
-    one_sub_of_two = _verify_rows_cols_are_subset(input_1, input_2)
-    two_sub_of_one = _verify_rows_cols_are_subset(input_2, input_1)
+    one_sub_of_two = _verify_rows_cols_are_subset(shaped_output, input_2)
+    two_sub_of_one = _verify_rows_cols_are_subset(input_2, shaped_output)
 
     if one_sub_of_two and two_sub_of_one:
-        return input_1
+        return shaped_output
 
     if not (one_sub_of_two or two_sub_of_one):
         raise ValueError(
             f'Cannot adjust levels of ciphertexts with different active rows and cols:'
-            f'{input_1.active_rows=} {input_2.active_rows=}'
-            f'{input_1.active_cols=} {input_2.active_cols=}. One must be a subset of the other.')
+            f'{shaped_output.active_rows=} {input_2.active_rows=}'
+            f'{shaped_output.active_cols=} {input_2.active_cols=}. One must be a subset of the other.')
 
-    unchanged_input = input_1 if one_sub_of_two else input_2
+    lower = shaped_output if one_sub_of_two else input_2
 
-    return unchanged_input.make_copy()
+    return shaped_output.make_copy(active_rows=lower.active_rows, active_cols=lower.active_cols,
+                                   pt_scale=lower.pt_scale)
 
 def init_levels_after_bootstrap(input, hom_params):
     """Initialize the active rows and cols for a fresh ciphertext."""

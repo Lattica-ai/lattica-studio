@@ -43,14 +43,49 @@ def to_neg_axis(axis: int, shape: TensorShape) -> int:
     rank = len(tuple(shape))
     return axis - rank
 
+def infer_combined_n_slots(*periods: int | None) -> int | None:
+    """The period (n_slots) of ciphertexts combined slot by slot (Add, Mul), in either order: equal periods give
+    theirs, and a period of 1 (a value in every slot, e.g. a sum kept in every slot) with another gives the
+    other. Other pairs raise ValueError.
+
+    In general, a product of periods p1 and p2 is a layout of period lcm(p1, p2) (periods are powers of two, so the
+    larger one): where the longer period has zero padding, the shorter one's repeats are multiplied by it. A sum is
+    one only when the longer period has no padding; otherwise the shorter period's repeats land in that padding
+    (5 values at periods 16 and 32: slots 16 to 20 of each 32 hold the first input's values alone), and the sum is
+    a layout of neither period. The backend takes only equal periods or a period of 1
+    (validate_n_slots_compatibility), so other pairs raise here, when the graph is built, rather than when the
+    backend preprocesses it; HomAdd also rejects a period-1 input on zero padding."""
+    known = sorted({period for period in periods if period is not None})
+    if not known:
+        return None
+    if len(known) > 2 or (len(known) == 2 and known[0] != 1):
+        raise ValueError(f"Cannot combine ciphertexts of periods (n_slots) {', '.join(map(str, known))}: the periods "
+                         f"must be equal, or one of them 1 (slot by slot they would repeat every {math.lcm(*known)} "
+                         f"slots, which the backend does not take)")
+    return known[-1]
+
+
+def has_zero_padding(value: HomValue, internal_n: int | None) -> bool:
+    """Whether the slots of `value` hold zero padding: a slot axis of fewer values than its period, or of whole
+    rings (period internal_n) but the last one not full. A slot axis longer than a shorter period holds repeats,
+    not padding."""
+    if value.n_axis is None or value.n_slots is None:
+        return False
+    length = value.tensor_shape[value.n_axis]
+    if length < value.n_slots:
+        return True
+    return internal_n is not None and value.n_slots == internal_n and length % internal_n != 0
+
+
 def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape | None = None) -> HomValue:
     shapes_to_broadcast = list(input.tensor_shape for input in inputs)
     if dims is not None:
         shapes_to_broadcast.append(dims)
     output_shape = torch.broadcast_shapes(*shapes_to_broadcast)
+    periods = [input.n_slots for input in inputs]
 
     if inputs[0].n_axis is None:
-        return inputs[0].make_copy(tensor_shape=output_shape)
+        return inputs[0].make_copy(tensor_shape=output_shape, n_slots=infer_combined_n_slots(*periods))
 
     # n_axis_neg is identical for the input and output shapes.
     n_axis_neg = to_neg_axis(inputs[0].n_axis, inputs[0].tensor_shape)
@@ -66,7 +101,7 @@ def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape 
                              f"but got {input.tensor_shape[input_n_axis_neg]} and "
                              f"{inputs[0].tensor_shape[n_axis_neg]}.")
 
-    return inputs[0].make_copy(tensor_shape=output_shape, n_axis=n_axis_neg)
+    return inputs[0].make_copy(tensor_shape=output_shape, n_axis=n_axis_neg, n_slots=infer_combined_n_slots(*periods))
 
 def infer_constant_packing_n_slots(input: HomValue, dims: TensorShape, internal_n: int | None) -> int | None:
     """The period of `input` combined with a constant of shape `dims` (ConstAdd, ConstMul, a MatMul on another

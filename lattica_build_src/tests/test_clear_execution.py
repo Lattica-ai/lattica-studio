@@ -8,6 +8,7 @@ from unittest import SkipTest
 import torch
 import pytest
 
+from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_op_tracer import Tracer
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
@@ -337,6 +338,52 @@ def test_sum_slots_output_period():
     value = HomValue(tensor_shape=(32,), n_axis=-1)
     assert HomSumSlots(nb_cols=512).infer_output_shape(value.make_copy(n_slots=4096)).n_slots == 512
     assert HomSumSlots(nb_cols=512).infer_output_shape(value, internal_n=4096).n_slots == 512
+
+
+class _CombinedWithSumOfSquares(HomOp):
+    """x combined with its squares summed nb_cols apart and kept on its slot axis (period nb_cols, a level below x),
+    then summed."""
+
+    def __init__(self, combine: HomOp, sum_first: bool, nb_cols: int = 1):
+        super().__init__()
+        self.square, self.combine, self.sum_first = HomMul(), combine, sum_first
+        self.sum_kept = HomSumSlots(nb_cols=nb_cols, reduce_output=False)
+        self.total = HomSumSlots()
+
+    def forward(self, x):
+        squares = self.sum_kept(self.square(x, x))
+        return self.total(self.combine(squares, x) if self.sum_first else self.combine(x, squares))
+
+
+@pytest.mark.parametrize('sum_first', [False, True], ids=['x_first', 'sum_first'])
+@pytest.mark.parametrize('combine, length', [(HomMul, 32), (HomAdd, 32), (HomMul, 28)],
+                         ids=['mul', 'add', 'mul-padded'])
+def test_binary_op_output_takes_the_longer_period(combine, length, sum_first):
+    """A period-1 value combined with a 32-slot one repeats every 32 slots, whichever operand comes first and
+    whichever is at the lower level: the SumSlots after it sums all 32 (a period of 1 would sum one slot). A product
+    keeps the zero padding of 28 values in the period."""
+    x = torch.rand(length, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    result, _ = _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first), x, 32)
+    squares = (x ** 2).sum()
+    expected = (x * squares).sum() if combine is HomMul else (x + squares).sum()
+    torch.testing.assert_close(result, expected.reshape(1))
+
+
+@pytest.mark.parametrize('sum_first', [False, True], ids=['x_first', 'sum_first'])
+def test_add_rejects_a_period_1_value_on_zero_padding(sum_first):
+    """28 values in a 32-slot period plus a value in every slot: the 4 padding slots would hold it."""
+    x = torch.rand(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    with pytest.raises(ValueError, match=r'Cannot add ciphertexts of periods \(n_slots\) (32 and 1|1 and 32) with 28 '
+                                         r'values on the slot axis'):
+        _slot_op_clear(_CombinedWithSumOfSquares(HomAdd(), sum_first), x, 32)
+
+
+@pytest.mark.parametrize('combine', [HomMul, HomAdd])
+def test_binary_op_rejects_periods_neither_equal_nor_1(combine):
+    """Periods 32 and 2 would combine to 32 (their lcm), but the backend takes equal periods or a period of 1."""
+    x = torch.rand(32, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    with pytest.raises(ValueError, match=r'Cannot combine ciphertexts of periods \(n_slots\) 2, 32: .* every 32 '):
+        _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first=False, nb_cols=2), x, 32)
 
 
 def test_clear_execution_does_not_trace():
