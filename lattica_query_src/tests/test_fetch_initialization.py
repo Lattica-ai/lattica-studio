@@ -16,7 +16,7 @@ def test_downloaded_data_is_expanded(monkeypatch):
         calls.append((data, include_keygen))
         return FULL
 
-    # Works also when the installed lattica_fhe_core is a release without expand_client_data.
+    # Replace expand_client_data with a fake that records its arguments.
     monkeypatch.setattr(keys_module.fhe_core, "expand_client_data", expand, raising=False)
     worker = SimpleNamespace(fetch_initialization=lambda: COMPACT)
 
