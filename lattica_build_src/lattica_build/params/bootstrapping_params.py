@@ -13,8 +13,8 @@ BOOT_CONFIGURATION = {
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
     # Bound on the ModRaise wrap count |I|. With the H=32 ephemeral secret, K=16 fails with
-    # probability 2^-138.7 for 2^15 slots (eprint 2022/024). Han-Ki's cosine
-    # needs degree 2K-2 = 30, the largest even degree in 5 levels.
+    # probability 2^-138.7 for 2^15 slots (eprint 2022/024). The cosine is fitted on the
+    # 2K - 1 clusters around the integers -(K-1) .. K-1.
     'k' : 16,
 
     # SLIM's headroom q0/|m| (its EvalMod sees the slots, and no StC sums its noise): 12 is the best at
@@ -340,11 +340,9 @@ class BootstrappingParams:
         if self.double_angle_rows is not None and profile.base_host_bits is not None:
             self.base_row_precision = (profile.base_host_bits + self.q_base_precision, self.q_base_precision)
         # The tree evaluates degree d in ceil(log2(d + 1)) levels: n levels fit degree 2^n - 1.
-        # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so its top degree is 2^n - 2.
-        self.cosine_deg = 2 ** self.n_cosine_levels - 2
-        # Han-Ki silently raises a lower degree to 2K-2, deeper than provisioned.
-        if 2 * self.k - 2 > self.cosine_deg:
-            raise ValueError(
-                f"k={self.k} needs a cosine of degree {2 * self.k - 2}; "
-                f"n_cosine_levels={self.n_cosine_levels} gives degree {self.cosine_deg}.")
+        # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so n levels fit degree 2^n - 2 in y,
+        # which is 2^(n-1) - 1 in z. Four degrees less in z, 2^n - 8 in y, take the same levels and two
+        # relinearizations less: the high part of the tree's top split, of degree 2^(n-3) in z, is then a constant
+        # times T_{2^(n-3)}(z) plus a lower part, with no product.
+        self.cosine_deg = 2 ** self.n_cosine_levels - 8
         self.arcsine_deg = 2 ** self.n_arcsine_levels - 1   # 0 without an arcsine
