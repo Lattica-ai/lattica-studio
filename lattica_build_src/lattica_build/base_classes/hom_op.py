@@ -105,6 +105,8 @@ class HomOp:
         return inputs[0]
 
     def infer_output_level_and_scale(self, *inputs, hom_params=None):
+        """The output's levels and scale. The tracer passes the output of infer_output_shape in place of the first
+        input (it carries that input's levels and scale), then the op's other inputs."""
         if not self.is_leaf_op():
             raise RuntimeError("infer_output_level_and_scale should only be called directly on leaf ops")
         return inputs[0]
