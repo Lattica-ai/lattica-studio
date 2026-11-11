@@ -4,8 +4,8 @@ The client aligns two faces to 64x64, cuts each into four 32x32 patches (row-maj
 eight patches. The server runs one small ResNet per patch position, with HerPN activations (a
 per-channel quadratic in place of ReLU + BatchNorm), on both faces' patches at once (a batch of two
 ciphertexts through every op), sums the four patch features of each face into its 256-d embedding
-and returns the cosine of the two embeddings. The client decrypts that one score; the faces are the
-same person above a threshold.
+and returns the cosine of the two embeddings, each normalized by a quadratic in its squared norm. The
+client decrypts that one score; the faces are the same person above a threshold.
 
 Weights: the benchmark's checkpoint, downloaded when the pipeline is built
 (https://huggingface.co/halmsu/cryptoface-v1, trained by https://github.com/human-analysis/CryptoFace).
@@ -13,12 +13,13 @@ Example pairs: the FHE benchmark's 1,024 CelebA pairs (https://fhe-benchmarking.
 aligned with InsightFace when it is installed, as the benchmark's client does, else center-cropped.
 
 Every level is a 30-bit prime: a conv or a constant multiply takes one, a HerPN's square one. A patch
-takes 23 levels (the stem, five blocks of 4, the pooling HerPN and the head) and a bootstrap gives 9,
-so each patch bootstraps twice and each face's embedding once. Each segment spends all its levels,
-so every bootstrap gets a ciphertext down to its last limb and no op carries levels it won't use: the
-fresh patches hold only the 5 levels of the stem and block 1, the first bootstrap takes block 1's
-output, and the second takes the output of block 4's first HerPN (which both of that block's
-branches read).
+takes 23 levels (the stem, five blocks of 4, the pooling HerPN and the head) and the cosine 4 (the
+products, the quadratic, and the dot product times both faces' inverse norms), so a face's path is 27
+levels: three times the 9 a bootstrap gives. Each patch bootstraps twice, at block 3's input and at
+the output of block 5's first HerPN (which both of that block's branches read), and the fresh
+patches hold the whole chain. Each segment spends all its levels: every bootstrap gets a one-limb
+ciphertext, the score comes out on the last limb alone, and the strided blocks 2 and 4, whose convs
+cost the most, come late in their segments, on 3 and 2 of the 6 limbs.
 """
 import io
 import math
@@ -41,7 +42,6 @@ from lattica_build.operators.arithmetic.h_mul import HomMul
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
-from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
 from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
@@ -54,10 +54,10 @@ SUBRING_SLOTS = 2 ** 14                      # a patch: 16 channels (RGB zero-pa
 # circuit lost all precision. From here it stays within 0.04 bits; the bootstraps reset it.
 PT_SCALE = round(2 ** 30.07)
 # nine 30-bit levels in five limbs (a two-level row keeps its limb until both levels are spent); the one-level
-# row third puts levels 6 to 8 after a bootstrap (the convs of block 3) a limb lower, and the last three rows
-# still hold the 5 levels of the fresh patches
-Q_LIST_PRECISION = ((60, 30),) * 2 + ((30,),) + ((60, 30),) * 2
-NUM_INIT_ROWS = 3                            # the fresh patches take the chain's last three rows: 5 levels
+# row first takes a limb off after 1, 3, 5 and 7 levels, where blocks 3 and 4 (1-indexed) read their inputs (the
+# other convs read after an even count: the same limbs in any row order)
+Q_LIST_PRECISION = ((30,),) + ((60, 30),) * 4
+NUM_INIT_ROWS = 5                            # the fresh patches take the whole chain: 9 levels
 N_SPECIAL_PRIMES = 9
 
 CHECKPOINT_URL = "https://huggingface.co/halmsu/cryptoface-v1/resolve/main/backbone-64x64.ckpt"
@@ -71,8 +71,9 @@ EMBEDDING_DIM = 256
 STEM_CHANNELS = 16                           # RGB (3) zero-padded up to 16 channels
 # (input channels, output channels, stride, input height and width) of the five residual blocks
 BLOCKS = ((16, 16, 1, 32), (16, 32, 2, 32), (32, 32, 1, 16), (32, 64, 2, 16), (64, 64, 1, 8))
-BOOTSTRAPPED_INPUTS = (1,)                   # bootstrap these blocks' inputs (0-based)
-BOOTSTRAPPED_HERPNS = (3,)                   # bootstrap the first HerPN's output of these blocks
+BOOTSTRAPPED_INPUTS = (2,)                   # bootstrap these blocks' inputs (0-based)
+BOOTSTRAPPED_HERPNS = (4,)                   # bootstrap the first HerPN's output of these blocks
+EMBEDDING_BOOTSTRAP = False                  # bootstrap the embeddings (when the patches end on the last limb)
 POOL_LAYOUT = (64, 8, 8)
 POOL_WINDOW = 4                              # AdaptiveAvgPool2d((2, 2)) of the 8x8 map: 4x4 windows
 
@@ -83,13 +84,10 @@ POOL_WINDOW = 4                              # AdaptiveAvgPool2d((2, 2)) of the 
 HERPN_RANGE_SIGMAS = ((20, 34), (28, 20), (17, 15), (16, 14), (10, 11))   # (herpn1, herpn2) of each block
 POOL_RANGE_SIGMAS = 13
 BN_EPS = 1e-5
-# The bootstrapped embedding is e / EMBEDDING_SCALE: e is batch-normalized (unit variance per
-# coordinate), so its coordinates stay well under EMBEDDING_SCALE / 2. 1/|e| is a polynomial in
-# |e|^2 / EMBEDDING_SCALE^2 over [INV_NORM_LO, INV_NORM_HI], i.e. |e|^2 from 64 to 576; the
-# benchmark's faces measure 108 to 505. A domain 2 wide maps onto [-1, 1] without a level.
-EMBEDDING_SCALE = 16.0
-INV_NORM_LO, INV_NORM_HI = 0.25, 2.25
-INV_NORM_DEGREE = 15
+# 1/|e| is a quadratic in y = |e|^2 over [INV_NORM_LO, INV_NORM_HI] (the benchmark's faces measure 108 to
+# 505), the one of least relative error: at most 8.6%, which leaves the 1,024 pairs' EER as with the exact
+# norm
+INV_NORM_LO, INV_NORM_HI = 64.0, 576.0
 
 
 # ---------- the plaintext model (eval mode, the original repo's module names) ----------
@@ -319,7 +317,7 @@ class _Backbone(HomOp):
 
     @staticmethod
     def _head(state, patch, pool: _FoldedHerPN):
-        """The 2x2 conv (dilation 4) over the window sums that gives this patch's term of e / EMBEDDING_SCALE.
+        """The 2x2 conv (dilation 4) over the window sums that gives this patch's term of mu e (_embedding_scale).
 
         e = bn((sum_p W_p (s_p f_p + t_p)) + b): W_p this patch's linear columns, s_p, t_p its own BatchNorm1d as
         an affine map, f_p its pooled features, bn the final (affine-free) BatchNorm. Each patch takes a
@@ -334,7 +332,7 @@ class _Backbone(HomOp):
         # flatten order: channel, then the 2x2 window grid; the window sums still lack the HerPN's gain and the
         # average's 1 / 16
         weight = matrix.reshape(EMBEDDING_DIM, POOL_LAYOUT[0], 2, 2) * pool.gain[None, :, None, None] / POOL_WINDOW ** 2
-        return weight / EMBEDDING_SCALE, bias / EMBEDDING_SCALE
+        return weight * _embedding_scale(), bias * _embedding_scale()
 
     def forward(self, x: HomValue) -> HomValue:
         x = self.stem(x)
@@ -346,38 +344,68 @@ class _Backbone(HomOp):
         return self.head(x)
 
 
+@cache
+def _inverse_norm() -> tuple[float, float, float]:
+    """a, b, c of p(y) = a y^2 + b y + c ~ 1 / sqrt(y) over [INV_NORM_LO, INV_NORM_HI], of least maximal relative
+    error |p(y) sqrt(y) - 1| (Lawson's reweighted least squares)."""
+    y = np.linspace(INV_NORM_LO, INV_NORM_HI, 4001)
+    basis = np.stack([y ** 2, y, np.ones_like(y)], axis=1) * np.sqrt(y)[:, None]
+    weights = np.full(len(y), 1 / len(y))
+    for _ in range(300):
+        root = np.sqrt(weights)
+        coefs = np.linalg.lstsq(basis * root[:, None], root, rcond=None)[0]
+        weights = weights * np.abs(basis @ coefs - 1)
+        weights /= weights.sum()
+    return tuple(float(coef) for coef in coefs)
+
+
+def _embedding_scale() -> float:
+    """mu, the factor the head puts on e: with mu^5 = a, the circuit's quadratic is monic (see _CosineScore)."""
+    return _inverse_norm()[0] ** 0.2
+
+
 class _CosineScore(HomOp):
-    """<e0, e1> / (|e0| |e1|) of the two scaled embeddings (a batch of two): products summed over the slots,
-    and 1/|e| as a Chebyshev polynomial in |e|^2, both faces' at once."""
+    """<e0, e1> p(|e0|^2) p(|e1|^2) of the two embeddings (a batch of two), from u = mu e, in four levels:
+    z = |u|^2 = mu^2 |e|^2 and s = <u0, u1> = mu^2 <e0, e1> (the products), (z + beta)^2 + gamma = p / mu (the
+    square: with mu^5 = a, beta = b / (2 mu^3) and gamma = c / mu - beta^2, its leading coefficient is 1), then
+    s times both faces' p / mu (two products), whose mu^2 and 1 / mu^2 cancel."""
 
     def __init__(self):
         super().__init__()
+        _, b, c = _inverse_norm()
+        mu = _embedding_scale()
+        beta = b / (2 * mu ** 3)
         self.product = HomMul()
-        # the sum of the embedding's 256-slot period, in every slot: the polynomial's constants need the slot axis
-        self.sum = HomSumSlots(reduce_output=False)
-        self.inverse_norm = HomPolyEval(lambda t: 1 / np.sqrt(t), degree=INV_NORM_DEGREE,
-                                        left=INV_NORM_LO, right=INV_NORM_HI)
+        # the sums alone: z of each face, (2, 1), and s, (1,)
+        self.sum = HomSumSlots()
+        self.shift = HomConstAdd(dims=(1,)).set_data(torch.tensor([beta], dtype=torch.float64))
+        self.square = HomMul()
+        self.offset = HomConstAdd(dims=(1,)).set_data(torch.tensor([c / mu - beta ** 2], dtype=torch.float64))
         self.scale = HomMul()
 
     def forward(self, embeddings: HomValue) -> HomValue:
-        inverse = self.inverse_norm(self.sum(self.product(embeddings, embeddings)))
+        shifted = self.shift(self.sum(self.product(embeddings, embeddings)))
+        inverse = self.offset(self.square(shifted, shifted))
         dot = self.sum(self.product(embeddings[0], embeddings[1]))
         return self.scale(self.scale(dot, inverse[0]), inverse[1])
 
 
 class _CryptoFaceGraph(HomOp):
-    """Eight patches (each position's on both faces) to the cosine score, in every slot."""
+    """Eight patches (each position's on both faces) to the cosine score, a (1,) result."""
 
     def __init__(self, state):
         super().__init__()
         # one network per patch position, run on both faces at once
         self.backbones = ModuleListHomOp(_Backbone(state, patch) for patch in range(N_PATCHES))
-        self.bootstrap = Bootstrap(target_output_scale=PT_SCALE)
+        self.bootstrap = Bootstrap(target_output_scale=PT_SCALE) if EMBEDDING_BOOTSTRAP else None
         self.score = _CosineScore()
 
     def forward(self, patches: HomValue) -> HomValue:
         terms = [backbone(patches[patch]) for patch, backbone in enumerate(self.backbones)]
-        return self.score(self.bootstrap((terms[0] + terms[1]) + (terms[2] + terms[3])))
+        embeddings = (terms[0] + terms[1]) + (terms[2] + terms[3])
+        if self.bootstrap is not None:
+            embeddings = self.bootstrap(embeddings)
+        return self.score(embeddings)
 
 
 # ---------- example pairs ----------
@@ -511,12 +539,18 @@ class Pipeline(PipelineWrapper):
         return torch.stack(packed, dim=1)
 
     @staticmethod
-    def reference_score(face0, face1) -> float:
-        """The plaintext model's cosine of the two faces' embeddings."""
+    def reference_score(face0, face1, exact: bool = False) -> float:
+        """The plaintext model's score of the two faces: their embeddings' cosine, each normalized by the
+        circuit's quadratic 1/|e|, or with exact, by |e|."""
         faces = torch.as_tensor(np.stack([face0, face1]), dtype=torch.float64).permute(0, 3, 1, 2) / 127.5 - 1
         with torch.no_grad():
             embeddings = load_torch_model()(faces)
-        return torch.nn.functional.cosine_similarity(embeddings[0], embeddings[1], dim=0).item()
+        if exact:
+            return torch.nn.functional.cosine_similarity(embeddings[0], embeddings[1], dim=0).item()
+        a, b, c = _inverse_norm()
+        y = (embeddings ** 2).sum(dim=1)
+        inverse = a * y ** 2 + b * y + c
+        return ((embeddings[0] * embeddings[1]).sum() * inverse[0] * inverse[1]).item()
 
     def _set_example_pt(self):
         self._face0, self._face1, self._same = self.load_pair(self.pair_index)
@@ -524,9 +558,10 @@ class Pipeline(PipelineWrapper):
 
     def verify_results(self, actual, expected):
         # actual: the decrypted score; expected: the runtime's clear run of this circuit
-        score = actual.reshape(-1)[0].item()
+        score = actual.item()
         reference = self.reference_score(self._face0, self._face1)
+        cosine = self.reference_score(self._face0, self._face1, exact=True)
         print(f"[cryptoface] same person: {self._same}   |   score (decrypted): {score:.5f}   |   "
-              f"circuit in the clear: {expected.reshape(-1)[0].item():.5f}   |   torch model: {reference:.5f}")
-        torch.testing.assert_close(actual.reshape(-1)[:1], expected.reshape(-1)[:1], rtol=0, atol=2 ** -10)
+              f"circuit in the clear: {expected.item():.5f}   |   torch model: {reference:.5f} (by |e|: {cosine:.5f})")
+        torch.testing.assert_close(actual, expected, rtol=0, atol=2 ** -10)
         assert abs(score - reference) < 2 ** -7, f"decrypted score {score} vs the torch model's {reference}"
