@@ -473,6 +473,23 @@ def test_resnet_composite_example_matches_pretrained_model():
     )
 
 
+def test_cryptoface_composite_example_matches_pretrained_model():
+    from lattica_build.examples.advanced import cryptoface
+
+    face0, face1, _ = cryptoface.Pipeline.load_pair(5)
+    example = cryptoface.Pipeline()
+    # The client packs both faces' raw pixels; the circuit folds the HerPNs, BatchNorms, pooling and
+    # linear layer into its convs, and approximates 1/|e| by a polynomial.
+    result = example.build_pipeline().forward_clear(
+        cryptoface.Pipeline.pack_pair(face0, face1),
+        hom_params=example.build_params(),
+    )
+    assert result.shape == (1,)
+    reference = cryptoface.Pipeline.reference_score(face0, face1)
+    assert abs(result.item() - reference) < 1e-4, (
+        f"clear CryptoFace scored {result.item()}, the pretrained model {reference}")
+
+
 def test_mux_layout_packs_each_channel_at_its_slot():
     """Sides that are not powers of 2: the width pads to 8."""
     from lattica_build.operators.ml.h_mux_conv import MuxLayout
