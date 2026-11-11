@@ -80,7 +80,9 @@ class _ReLU(HomOp):
         return self.abs(x) + self.slope * x   # the add writes into its first operand: the polynomial's output, at the lower level
 
 
-def make_relu(delta: float) -> HomOp:
+def make_relu(name: str, delta: float) -> HomOp:
+    """The ReLU at a position of the graph (name: "stem" or "L{layer}B{block}r{1|2}"): this model fits every
+    position with the same polynomial."""
     return _ReLU(delta)
 
 
@@ -97,33 +99,37 @@ def _conv_bn(conv, bn, layout, delta, *, weight=None):
 
 
 # A bootstrap sits right before each ReLU: the ReLU takes 6 of its 7 levels and the
-# next conv the last one, so every conv runs on the bottom of the chain.
+# next conv the last one, so every conv runs on the bottom of the chain. The graph takes its ReLUs from relu(name,
+# delta) and its deltas from delta_initial and deltas, so a model with its own fits reuses it.
 class _MuxStem(HomOp):
-    def __init__(self, model):
+    """bootstrap False: the input holds the levels of the stem's conv and ReLU."""
+
+    def __init__(self, model, relu, delta_initial, bootstrap):
         super().__init__()
         weight = torch.zeros(STEM_LAYOUT[0], STEM_CHANNELS, 3, 3, dtype=torch.float64)
         weight[:, :3] = model.conv1.weight
         self.convBN = _conv_bn(model.conv1, model.bn1, STEM_LAYOUT,
-                              DELTA_INITIAL, weight=weight)
-        self.bootstrap = Bootstrap()
-        self.relu = make_relu(DELTA_INITIAL)
+                              delta_initial, weight=weight)
+        self.bootstrap = Bootstrap() if bootstrap else None
+        self.relu = relu("stem", delta_initial)
 
     def forward(self, x: HomValue) -> HomValue:
         x = self.convBN(x)
-        x = self.bootstrap(x)
+        if self.bootstrap is not None:
+            x = self.bootstrap(x)
         return self.relu(x)
 
 
 class _MuxBlock(HomOp):
-    def __init__(self, model, layer, block):
+    def __init__(self, model, layer, block, relu, deltas):
         super().__init__()
         input_layout = LAYER_IN[layer] if block == 1 else LAYER_OUT[layer]
         output_layout = LAYER_OUT[layer]
-        first_relu_scale, second_relu_scale = DELTAS[layer - 1][block - 1]
+        first_relu_scale, second_relu_scale = deltas[layer - 1][block - 1]
         self.is_transition = model.downsample is not None
         self.convBN1 = _conv_bn(model.conv1, model.bn1, input_layout, first_relu_scale)
         self.bootstrap1 = Bootstrap()
-        self.relu1 = make_relu(first_relu_scale)
+        self.relu1 = relu(f"L{layer}B{block}r1", first_relu_scale)
         self.convBN2 = _conv_bn(model.conv2, model.bn2, output_layout, second_relu_scale)
         if self.is_transition:
             skip_conv, skip_bn = model.downsample
@@ -131,7 +137,7 @@ class _MuxBlock(HomOp):
         else:
             self.skip_delta = second_relu_scale
         self.bootstrap2 = Bootstrap()
-        self.relu2 = make_relu(second_relu_scale)
+        self.relu2 = relu(f"L{layer}B{block}r2", second_relu_scale)
 
     def forward(self, x: HomValue) -> HomValue:
         residual = self.convBN1(x)
@@ -150,11 +156,11 @@ class _MuxBlock(HomOp):
 
 
 class _MuxLayer(HomOp):
-    def __init__(self, model, layer):
+    def __init__(self, model, layer, relu, deltas):
         super().__init__()
-        self.block1 = _MuxBlock(model[0], layer, 1)
-        self.block2 = _MuxBlock(model[1], layer, 2)
-        self.block3 = _MuxBlock(model[2], layer, 3)
+        self.block1 = _MuxBlock(model[0], layer, 1, relu, deltas)
+        self.block2 = _MuxBlock(model[1], layer, 2, relu, deltas)
+        self.block3 = _MuxBlock(model[2], layer, 3, relu, deltas)
 
     def forward(self, x: HomValue) -> HomValue:
         x = self.block1(x)
@@ -183,12 +189,12 @@ class _MuxHead(HomOp):
 
 
 class _MuxResnetGraph(HomOp):
-    def __init__(self, model):
+    def __init__(self, model, relu=make_relu, delta_initial=DELTA_INITIAL, deltas=DELTAS, stem_bootstrap=True):
         super().__init__()
-        self.stem = _MuxStem(model)
-        self.layer1 = _MuxLayer(model.layer1, 1)
-        self.layer2 = _MuxLayer(model.layer2, 2)
-        self.layer3 = _MuxLayer(model.layer3, 3)
+        self.stem = _MuxStem(model, relu, delta_initial, stem_bootstrap)
+        self.layer1 = _MuxLayer(model.layer1, 1, relu, deltas)
+        self.layer2 = _MuxLayer(model.layer2, 2, relu, deltas)
+        self.layer3 = _MuxLayer(model.layer3, 3, relu, deltas)
         self.head = _MuxHead(model)
 
     def forward(self, x: HomValue) -> HomValue:
@@ -206,6 +212,10 @@ class Pipeline(PipelineWrapper):
         model.eval()
         return model
 
+    def build_graph(self):
+        """The homomorphic part of the pipeline: the network self._model on the packed, normalized image."""
+        return _MuxResnetGraph(self._model)
+
     def build_pipeline(self):
         self._model = self._load_model()
         scale, shift = _normalization()
@@ -215,7 +225,7 @@ class Pipeline(PipelineWrapper):
                 HomConstMul(dims=(SUBRING_SLOTS,)).set_data(scale),
                 HomConstAdd(dims=(SUBRING_SLOTS,)).set_data(shift),
             ],
-            hom=_MuxResnetGraph(self._model),
+            hom=self.build_graph(),
             # the FC's 1x1 output layout puts logit c at slot c
             client_post=[
                 HomSlice(dim=0, key=slice(0, N_CLASSES)),

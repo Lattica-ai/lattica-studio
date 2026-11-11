@@ -41,6 +41,9 @@ class HomParams:
     n_slots: int | None = None
     # Bootstrapping: the BOOT_PRECISIONS profile, which sets the bootstrap's precision and chain.
     boot_precision: str = "full"
+    # Fresh input ciphertexts also hold the bootstrap's StC primes, as SLIM's do: more levels before the first
+    # bootstrap, e.g. a ResNet stem without one.
+    input_holds_stc_rows: bool = False
 
     @property
     def internal_n(self) -> int:
@@ -151,6 +154,7 @@ class HomParams:
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
             "boot_precision": self.boot_precision,
+            "input_holds_stc_rows": self.input_holds_stc_rows,
             "consumption_order": self.consumption_order,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,

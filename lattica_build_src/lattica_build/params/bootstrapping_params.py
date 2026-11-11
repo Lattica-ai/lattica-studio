@@ -85,7 +85,9 @@ class BootPrecision:
     into the EvalMod rows followed by the StC rows), and the StC primes take exit_stc_scale bits. With
     double_angle_stc_bits, the first StC word holds a double-angle prime of that many bits before its StC prime.
     With base_host_bits, the base word holds a pipeline prime of that many bits before q0, so the pipeline's last
-    level runs on one limb. Other chains have one eval_mod_scale row per EvalMod level. lcr_min_special_bits: the
+    level runs on one limb. With double_angle_pipeline_bits, the pipeline's first word, which must then be one
+    prime, holds a double-angle prime of that many bits before its own prime; double_angle_rows indexes that word
+    after the StC rows. Other chains have one eval_mod_scale row per EvalMod level. lcr_min_special_bits: the
     level-conserving CtS keys need special primes P' of more than this many bits in all, and the backend gives them the
     fewest that reach it.
     Their key noise, about T N |m| q0 e / P' for T terms of plaintexts m at the CtS scale, must stay below the
@@ -99,6 +101,7 @@ class BootPrecision:
     exit_stc_scale: int
     double_angle_stc_bits: int | None = None
     base_host_bits: int | None = None
+    double_angle_pipeline_bits: int | None = None
 
 
 BOOT_PRECISIONS = {
@@ -119,9 +122,10 @@ BOOT_PRECISIONS = {
     # 128 bits with 4 special primes of 57 bits (3 digits), with one DFT level fewer than "full" on each side. Its
     # precision is the cosine's own rounding noise, which follows the cosine's primes, so the cosine takes 37-bit rows
     # while q0 stays at 35 bits. The double angles, whose noise is far below it, share words with other primes: double
-    # angles 1 and 3 take a 35-bit and a 26-bit prime of one word, and double angle 2 a 33-bit prime that shares the
-    # first StC word with the first StC prime. With EvalMod's exit at 2**38, every double angle keeps a scale of at
-    # least 2**32 after its rescale. The sparse slot counts' last split component is small, since the level-conserving
+    # angle 3 takes a 23-bit prime after the last cosine prime, double angle 2 a 33-bit prime before the first StC
+    # prime, and double angle 1 a 35-bit prime before the first pipeline prime. With EvalMod's exit at 2**40, every
+    # double angle keeps a scale of at least 2**31 after its rescale. The sparse slot counts' last split component
+    # is small, since the level-conserving
     # first CtS level's terms are its diagonals times the trace rotations. The StC primes are 26 bits, no narrower than
     # a pipeline scale of 2**26, so that a pipeline can run its first ops on the input's StC rows
     # (input_holds_stc_rows). The level-conserving keys' noise with two special primes is far below this bootstrap's
@@ -130,11 +134,11 @@ BOOT_PRECISIONS = {
     # pipeline prime before q0, below the kernels' 2**62 together: a pipeline whose last word is that prime alone runs
     # its last level on one limb.
     "low": BootPrecision(eval_mod_scale=35, stc_scale=26, per_n_slots={
-        12: ((5, 4, 3), 34, 1, 38),
-        13: ((5, 4, 4), 34, 1, 38),
-        14: ((4, 5, 5), 34, 1, 38),
-    }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 5 + ((61, 26),), double_angle_rows=(5, 6, 5),
-        exit_stc_scale=26, double_angle_stc_bits=33, base_host_bits=26),
+        12: ((5, 4, 3), 34, 1, 40),
+        13: ((5, 4, 4), 34, 1, 40),
+        14: ((4, 5, 5), 34, 1, 40),
+    }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 4 + ((60, 23),), double_angle_rows=(7, 5, 4),
+        exit_stc_scale=26, double_angle_stc_bits=33, base_host_bits=26, double_angle_pipeline_bits=35),
 }
 
 
@@ -246,6 +250,12 @@ class BootstrappingParams:
         drops the leading limb, and a level drop is a slice view rather than a gather. After ModRaise the
         bootstrap consumes its CtS rows, then its EvalMod rows, then (StC last) its StC rows; the pipeline's are
         consumed after that, and q0 stays last. SLIM's StC runs on the input, after the pipeline's rows."""
+        if self.double_angle_pipeline_bits is not None:
+            if len(pipeline_q_list_precision[0]) != 1:
+                raise ValueError(f"the bootstrap puts a double-angle prime in the pipeline's first word, which must be "
+                                 f"one prime, got {pipeline_q_list_precision[0]}")
+            (pipeline_bits,), *rest = pipeline_q_list_precision
+            pipeline_q_list_precision = ((self.double_angle_pipeline_bits + pipeline_bits, pipeline_bits), *rest)
         pipeline = ("pipeline", pipeline_q_list_precision)
         stc = ("boot_stc", self.stc_q_list_precision)
         consumed = [pipeline, stc] if self.slim_boot else [stc, pipeline]
@@ -310,6 +320,9 @@ class BootstrappingParams:
             self.eval_mod_q_list_precision = self.get_q_list_precision(self.eval_mod_scale, self.n_cosine_levels + self.n_double_angle + self.n_arcsine_levels)
             self.double_angle_rows = None
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
+        # the size of the double-angle prime at the start of the pipeline's first word, if there is one
+        self.double_angle_pipeline_bits = profile.double_angle_pipeline_bits if self.double_angle_rows is not None \
+            else None
         # the number of double-angle primes at the start of the first StC word
         self.double_angle_stc_primes = 0
         if self.double_angle_rows is not None and profile.double_angle_stc_bits is not None:
