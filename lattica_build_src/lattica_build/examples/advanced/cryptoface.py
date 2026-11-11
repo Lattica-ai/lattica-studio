@@ -58,7 +58,11 @@ PT_SCALE = round(2 ** 30.07)
 # other convs read after an even count: the same limbs in any row order)
 Q_LIST_PRECISION = ((30,),) + ((60, 30),) * 4
 NUM_INIT_ROWS = 5                            # the fresh patches take the whole chain: 9 levels
-N_SPECIAL_PRIMES = 9
+# Q (the chain and the bootstrap's primes) is 1052 bits; the key switches split it in three digits of at most
+# 6 x 61 = 366 bits (354/355/343), and log QP = 1418 stays under the ~1550 that 128-bit security allows at
+# N = 2^16 with a secret of Hamming weight 192. More special primes keep three digits (one of 46 bits at 9) and only
+# grow the keys and QP; fewer take a fourth digit, a larger key and slower bootstraps.
+N_SPECIAL_PRIMES = 6
 
 CHECKPOINT_URL = "https://huggingface.co/halmsu/cryptoface-v1/resolve/main/backbone-64x64.ckpt"
 PAIRS_URL = "https://huggingface.co/datasets/halmsu/celeba-1024-pairs/resolve/main/face_dataset.npy"
