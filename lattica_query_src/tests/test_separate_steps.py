@@ -13,6 +13,7 @@ from lattica_query.client.artifacts import QueryKey
 from lattica_query.client.encrypted_data import EncryptedDataAPI
 from lattica_query.client.keys import KeysAPI
 from lattica_query.client.query import QueryAPI
+from lattica_query.serialization.generated import hom_op_pb2
 from lattica_query.serialization.tensors import deserialize_tensor
 from lattica_query.storage.key_store import load_key_bundle
 
@@ -138,3 +139,22 @@ def test_generate_without_registration_then_ensure_registers(monkeypatch, tmp_pa
 
     keys.ensure(path)  # already registered
     assert len(backend.uploads) == 1
+
+
+def test_fetched_initialization_is_expanded(monkeypatch):
+    full = hom_op_pb2.ClientData(serialized_extended_context=b"context", serialized_model=b"model").SerializeToString()
+    calls = []
+
+    def expand(data, include_keygen):
+        calls.append((data, include_keygen))
+        return full
+
+    # Replace expand_client_data with a fake that records its arguments.
+    monkeypatch.setattr(keys_module.fhe_core, "expand_client_data", expand, raising=False)
+    worker = SimpleNamespace(fetch_initialization=lambda: b"compact")
+    keys = KeysAPI(QueryToken("credential", identity=TokenIdentity("token-id")), None, worker)
+
+    initialization = keys.fetch_initialization()
+
+    assert calls == [(b"compact", True)]
+    assert initialization == QueryInitialization(b"context", b"model")
