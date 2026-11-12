@@ -121,7 +121,7 @@ class KeysAPI:
             data = self._worker.fetch_initialization()
             log_size_info("initialization data", len(data))
             # The server sends the data without its lookup tables; rebuild them here.
-            return QueryInitialization.from_bytes(fhe_core.expand_client_data(data, True))
+            return QueryInitialization.from_bytes(fhe_core.expand_client_data(data, include_keygen=True))
 
     def _upload_evaluation_key(self, evaluation_key_path: Path) -> None:
         evaluation_key_size = evaluation_key_path.stat().st_size
