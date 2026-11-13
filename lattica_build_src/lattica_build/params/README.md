@@ -34,7 +34,7 @@ Main fields you will tune:
 | `err_std` | Encryption noise standard deviation. |
 | `sk_hw` | Secret-key hamming weight (also used when bootstrapping params are created). |
 | `num_init_rows` | Bootstrap-oriented starting-budget cap for the primary input: initialize fewer active rows up front when the input is expected to be bootstrapped later. The rows are counted from the bottom of the chain: a fresh ciphertext holds the last `num_init_rows` rows of `full_q_list_precision`, plus the bootstrap base (and the StC rows with `slim_boot`), so the stages before the bootstrap consume the last rows. `0` keeps only the bootstrap base: nothing before the bootstrap can rescale (e.g. `HomMul(with_modswitch=False)`), and its output scale must be at most twice the bootstrap's message scale. `None` keeps all the pipeline rows. |
-| `real_boot` | Bootstrap real slots: one EvalMod over the real part (complex slots take two). Default `True`. |
+| `real_boot` | Bootstrap real slots: one EvalMod over the real part (complex slots take two). Two or more real ciphertexts are bootstrapped in pairs, as the real and imaginary parts of one complex ciphertext. Default `True`. |
 | `slim_boot` | Bootstrap StC first, at the bottom of the chain, then ModRaise, CtS and EvalMod. Default `False`. |
 
 Fields populated during serialization:
