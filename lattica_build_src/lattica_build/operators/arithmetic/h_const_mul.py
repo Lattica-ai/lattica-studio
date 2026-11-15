@@ -5,7 +5,7 @@ from typing import Sequence
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue, TensorShape
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
-from lattica_build.params.shape_tracing import infer_broadcast_output_shape
+from lattica_build.params.shape_tracing import infer_broadcast_output_shape, infer_constant_packing_n_slots
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 class HomConstMul(HomOp):
@@ -36,9 +36,10 @@ class HomConstMul(HomOp):
         self.rows_budget = rows_budget
         self.pt_scale = pt_scale
 
-    def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
-        """Infer output shape from broadcasting `input` with constant dims."""
-        return infer_broadcast_output_shape(input, dims=self.dims)
+    def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
+        """Infer output shape from broadcasting `input` with constant dims, and its period as packed."""
+        output = infer_broadcast_output_shape(input, dims=self.dims)
+        return output.make_copy(n_slots=infer_constant_packing_n_slots(input, self.dims, internal_n))
 
     def infer_output_level_and_scale(
         self,

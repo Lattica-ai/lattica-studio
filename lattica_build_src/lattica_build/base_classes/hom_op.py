@@ -90,6 +90,11 @@ class HomOp:
             tracer.serialize_hom_val(value)
             for value in inputs
         ]
+        if self.is_leaf_op():
+            # A composite section records its traced result as "body_output"; a single
+            # leaf section records it as "output", like a child op does, so its metadata
+            # (shape, n_axis, levels, scale, n_slots) can be checked too.
+            serialized_op["output"] = tracer.serialize_hom_val(out_val)
 
         tracer.finalize()
         return serialized_op, out_val

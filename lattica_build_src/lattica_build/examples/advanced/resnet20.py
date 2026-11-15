@@ -169,7 +169,8 @@ class _MuxHead(HomOp):
         channels, height, width = LAYER_OUT[3]
         spatial_positions = height * width
         # the last ReLU leaves one level, for the FC
-        self.avgpool = HomSumSlots(k=spatial_positions)
+        # one sum per channel, over its spatial positions
+        self.avgpool = HomSumSlots(nb_cols=channels)
         self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0),
                              bias=True)
         # SumSlots supplies a sum; fold the averaging factor into the FC weights.
@@ -230,7 +231,7 @@ class Pipeline(PipelineWrapper):
             full_q_list_precision=Q_LIST_PRECISION,
             n=N,
             pt_scale=PT_SCALE,
-            sk_hw=192,
+            sk_hw=1024,
             num_special_primes=N_SPECIAL_PRIMES,
             n_slots=SUBRING_SLOTS,
         )
