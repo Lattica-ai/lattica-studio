@@ -14,8 +14,8 @@ class HomExpand(SlotOp):
     """Base slot-expansion operator that inserts a new axis holding the values of the slot axis.
 
     The expansion span is the input's slot period rather than a constructor
-    argument: the stages expand the n_slots slots of the period, and the
-    outputs of the slot axis's L <= n_slots values are kept.
+    argument: the stages expand the n_slots slots of the period, and one
+    output is kept per value of the slot axis (at most n_slots values).
 
     Args:
         expand_axis: Axis where the expanded dimension is inserted.
@@ -46,8 +46,9 @@ class HomExpand(SlotOp):
         """Infer shape by inserting axis `expand_axis` with one output per value of the slot axis. Each output holds
         one value in every slot of the ring (internal_n on the slot axis), so its period is 1.
 
-        Unlike RotateSum and RunningSum, Expand takes a zero-padded slot axis: L <= n_slots values in a period of
-        n_slots. Output i reads slot i only, so the padding feeds only outputs past the L values, which are dropped."""
+        Unlike RotateSum and RunningSum, Expand takes a zero-padded slot axis: length <= n_slots values in a period
+        of n_slots. Output i reads slot i only, so the padding feeds only the outputs past the first length, which are
+        dropped."""
         length = input.tensor_shape[input.n_axis]
         if length > input.n_slots:
             raise ValueError(f"Expand takes a slot axis of at most n_slots={input.n_slots} values, got {length}")
@@ -70,8 +71,8 @@ class HomExpand(SlotOp):
         Expand stages include masked multiplications, so they consume levels.
         """
         if self.stage_sizes is None:
-            # The tracer passes the inferred output, whose values axis holds the L values, not the n_slots slots the
-            # stages expand: infer_output_shape recorded n_slots
+            # The tracer passes the inferred output, whose values axis has one entry per value of the input's slot
+            # axis, not the n_slots slots the stages expand: infer_output_shape recorded n_slots
             num_levels = int(math.log2(self._n_slots))
         else:
             num_levels = len(self.stage_sizes)
@@ -88,7 +89,7 @@ class HomExpand(SlotOp):
         """Value i of the input's slot axis becomes an output holding it in every slot of the ring: the values go on
         a new axis inserted as `infer_output_shape` does, and the slot axis has internal_n slots."""
         value, internal_n = input_layout(self, input)
-        values = input.movedim(value.n_axis, -1)  # (..., L)
+        values = input.movedim(value.n_axis, -1)  # (..., values)
         expanded = values.unsqueeze(-1).expand(*values.shape, internal_n)  # (..., values, slots)
 
         # Order the axes as the traced output: the input's, with the values axis inserted at expand_axis
