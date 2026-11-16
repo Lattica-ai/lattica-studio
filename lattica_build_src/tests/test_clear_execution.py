@@ -485,6 +485,15 @@ def test_mux_conv_output_shape_keeps_a_batch(batch):
     assert output.n_slots == out_slots
 
 
+def test_mux_conv_rejects_slots_before_a_batch():
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1)
+    value = HomValue(tensor_shape=(MuxLayout(4, 4, 4).period, 2), n_axis=0)
+    with pytest.raises(ValueError, match=r"mux conv needs the slots on the last axis; got \(64, 2\) with slots on axis 0"):
+        conv.infer_output_shape(value, internal_n=4096)
+
+
 def test_mux_layout_packs_each_channel_at_its_slot():
     """Sides that are not powers of 2: the width pads to 8."""
     from lattica_build.operators.ml.h_mux_conv import MuxLayout
