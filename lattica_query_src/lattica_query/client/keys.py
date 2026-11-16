@@ -118,7 +118,10 @@ class KeysAPI:
 
     def _fetch_client_data(self) -> QueryInitialization:
         with OperationLog("retrieving initialization data", theme=QUERY_THEME):
-            return QueryInitialization.from_bytes(self._worker.fetch_initialization())
+            data = self._worker.fetch_initialization()
+            log_size_info("initialization data", len(data))
+            # Rebuild the lookup tables of the initialization data.
+            return QueryInitialization.from_bytes(fhe_core.expand_client_data(data, include_keygen=True))
 
     def _upload_evaluation_key(self, evaluation_key_path: Path) -> None:
         evaluation_key_size = evaluation_key_path.stat().st_size
