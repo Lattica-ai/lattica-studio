@@ -49,6 +49,7 @@ Their module names begin with `lattica_build.examples.basic`.
 | `matmul` | Matrix multiplication with deterministic bound data |
 | `axis_sum` | Reduction along one tensor axis |
 | `rotate_sum` | Rotation and summation over selected offsets |
+| `rotate_sum_elementwise` | One rotation per ciphertext element, followed by element-axis reduction |
 | `running_sum` | Staged running sums across packed slots |
 | `sum_slots` | Staged slot summation |
 | `expand` | Client-side repeat followed by slot expansion |
