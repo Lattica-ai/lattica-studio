@@ -94,26 +94,24 @@ class BootstrappingParams:
         A bootstrap with a shallower split skips the levels it does not use.
         The chain gets one CtS prime fewer, and lcr_first_cts is set, when every bootstrap can run its first CtS level
         level-conserving. That needs the ring dimension n, special primes of more than LCR_MIN_SPECIAL_BITS bits in
-        all (special_bits, which is 0 under BV), and a level that fits the kernel for every slot count
-        (lcr_first_cts_fits)."""
+        all (special_bits, which is 0 under BV), and more than one level, since a single level keeps its prime. It
+        also needs, for every slot count:
+        - a split with as many levels as the chain. A bootstrap with fewer levels uses only some of the primes of an
+          StC row, and the level's keys hold whole rows;
+        - a level that fits the kernel (LCR_MAX_TERMS). The first CtS factor combines the last s stages of the split,
+          so it has 2**s diagonals. In a sparse bootstrap the level uses each diagonal once per rotation of the SubSum
+          trace, and there are N / (2 n_slots) of those."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
         dft_levels = max(len(split) for split, _, _ in entries)
         cts_scale = max(bits for _, bits, _ in entries)
         params = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
-        if (n is None or special_bits <= LCR_MIN_SPECIAL_BITS
-                or not all(params.lcr_first_cts_fits(n_slots, n) for n_slots in slot_counts)):
+        splits = [params.dft_split(n_slots) for n_slots in slot_counts]
+        if (n is None or special_bits <= LCR_MIN_SPECIAL_BITS or dft_levels == 1 or not all(
+                len(split) == dft_levels and 2 ** split[-1] * (n // 2 // n_slots) <= LCR_MAX_TERMS
+                for n_slots, split in zip(slot_counts, splits))):
             return params
         return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=True)
-
-    def lcr_first_cts_fits(self, n_slots: int, n: int) -> bool:
-        """Returns whether an n_slots bootstrap in a ring of dimension n can run its first CtS level level-conserving.
-        Its DFT split must have another CtS level after that one, and the level's terms must fit the kernel
-        (LCR_MAX_TERMS). The first CtS factor combines the last s stages of the split, so it has 2**s diagonals. In a
-        sparse bootstrap the level uses each diagonal once per rotation of the SubSum trace, and there are
-        N / (2 n_slots) of those."""
-        split = self.dft_split(n_slots)
-        return len(split) > 1 and 2 ** split[-1] * (n // 2 // n_slots) <= LCR_MAX_TERMS
 
     @staticmethod
     def _n_slots_entry(n_slots: int):
@@ -159,8 +157,7 @@ class BootstrappingParams:
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: the first CtS level is level-conserving, so it consumes no prime and the chain has one CtS
-        prime fewer; for_slot_counts picks it. A one-level split keeps its prime: its single factor has every
-        diagonal."""
+        prime fewer; for_slot_counts picks it."""
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(
@@ -178,7 +175,7 @@ class BootstrappingParams:
         self.arcsine_correction = BOOT_CONFIGURATION['n_arcsine_levels'] > 0
 
         self.dft_levels = dft_levels
-        self.lcr_first_cts = lcr_first_cts and dft_levels > 1
+        self.lcr_first_cts = lcr_first_cts
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
         self.stc_q_list_precision = self.get_q_list_precision(self.stc_scale, self.dft_levels)
