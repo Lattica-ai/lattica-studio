@@ -46,9 +46,8 @@ class HomExpand(SlotOp):
         """Infer shape by inserting axis `expand_axis` with one output per value of the slot axis. Each output holds
         one value in every slot of the ring (internal_n on the slot axis), so its period is 1.
 
-        Unlike RotateSum and RunningSum, Expand takes a zero-padded slot axis: length <= n_slots values in a period
-        of n_slots. Output i reads slot i only, so the padding feeds only the outputs past the first length, which are
-        dropped."""
+        Expand takes a zero-padded slot axis: length <= n_slots values in a period of n_slots. Output i reads slot i
+        only, so the padding feeds only the outputs past the first length, which are dropped."""
         length = input.tensor_shape[input.n_axis]
         if length > input.n_slots:
             raise ValueError(f"Expand takes a slot axis of at most n_slots={input.n_slots} values, got {length}")
