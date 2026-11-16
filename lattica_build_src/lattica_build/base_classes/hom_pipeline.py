@@ -26,7 +26,7 @@ from safetensors.torch import load as safetensors_load, save as safetensors_save
 from lattica_build.operators.composite.module_list import ModuleListHomOp
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.params.bootstrapping_params import BootstrappingParams
-from lattica_build.params.params import HomParams, DecompositionType
+from lattica_build.params.params import HomParams, DecompositionType, resolve_n_slots
 
 
 class PipeSec(enum.StrEnum):
@@ -53,9 +53,9 @@ class HomomorphicPipeline:
     # Keys must match names from input_shape when input_shape is a dict.
     custom_scales: Dict[str, int]    = field(default_factory=dict)
     # Optional per-input n_slots for additional encrypted inputs. The primary input
-    # takes its n_slots from hom_params.n_slots.
+    # takes its n_slots from hom_params.n_slots; an input left out (or None) is on the full ring.
     # Keys must match names from input_shape when input_shape is a dict.
-    custom_n_slots: Dict[str, int]   = field(default_factory=dict)
+    custom_n_slots: Dict[str, Optional[int]] = field(default_factory=dict)
     n_axis: Optional[int]  = None
 
     # Set True to skip compile-time verification.
@@ -176,6 +176,11 @@ class HomomorphicPipeline:
     def add_client_preprocessing_data(self, binary_data: bytes) -> None:
         self.client_preprocessing_data = binary_data
 
+    def _resolved_custom_n_slots(self, hom_params: HomParams) -> Dict[str, int]:
+        """The n_slots of every additional encrypted input, as an int: the trace and the backend take it from here."""
+        return {name: resolve_n_slots(self.custom_n_slots.get(name), hom_params.internal_n)
+                for name in self.input_shape if name != self.primary_input_name}
+
     def _serialize_pipeline_sections(self, tensors, hom_params, shapes_only=False, on_leaf_op=None):
         """
         Serialize the pipeline into its execution sections.
@@ -195,6 +200,7 @@ class HomomorphicPipeline:
         enc_params = hom_params.ring_switch_params or hom_params
         active_rows, active_cols = (None, None) if shapes_only else init_active_rows_cols(hom_params)
         hom_input_names = list(inspect.signature(self.hom.forward).parameters)
+        n_slots = {self.primary_input_name: hom_params.n_slots, **self._resolved_custom_n_slots(hom_params)}
         # Without n_axis: it is resolved below, on the shape the homomorphic section receives.
         hom_inputs = [
             HomValue(
@@ -204,7 +210,7 @@ class HomomorphicPipeline:
                 active_cols=copy.deepcopy(active_cols),
                 pt_scale=self.custom_scales.get(name, hom_params.pt_scale),
                 custom_input_ref=None if name == self.primary_input_name else name,
-                n_slots=self.custom_n_slots.get(name, hom_params.n_slots),
+                n_slots=n_slots[name],
             ) for name in hom_input_names
         ]
 
@@ -334,7 +340,7 @@ class HomomorphicPipeline:
         attributes_dict = {
             "as_complex":                    self.as_complex,
             "custom_scales":                 self.custom_scales,
-            "custom_n_slots":                self.custom_n_slots,
+            "custom_n_slots":                self._resolved_custom_n_slots(hom_params),
             "primary_input_name":            self.primary_input_name,
             "input_shape":                   self.input_shape,
             "n_axis":                        self.n_axis,

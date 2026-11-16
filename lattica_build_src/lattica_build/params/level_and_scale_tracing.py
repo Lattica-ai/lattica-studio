@@ -224,16 +224,13 @@ def _verify_rows_cols_are_subset(input_1, input_2):
 def infer_adjust_levels_and_scale(shaped_output: HomValue, input_2: HomValue) -> HomValue:
     """Infer a compatible level/scale metadata state for binary ops.
 
-    shaped_output is the op's output from its shape inference, which the tracer
-    passes to the level inference in place of the first input: the shape, slot
-    axis and period of both inputs combined (broadcast), at the first input's
-    rows/cols and scale. input_2 is the op's second input.
+    shaped_output is the op's shape-inference output (both inputs' shape and
+    period, at the first input's rows/cols and scale), which the tracer passes
+    in place of the first input. input_2 is the op's second input.
 
     The two are compatible if one's active rows/cols are a subset of the
     other's. The function then returns shaped_output at the subset-compatible
-    (lower) one's rows/cols and scale: the output keeps the combined shape
-    whichever input is lower (the lower input's own shape would drop the
-    broadcast, e.g. a 256-slot vector times a period-1 sum would take period 1).
+    (lower) one's rows/cols and scale.
 
     If neither is a subset of the other, a `ValueError` is raised.
 
@@ -257,8 +254,9 @@ def infer_adjust_levels_and_scale(shaped_output: HomValue, input_2: HomValue) ->
     if not (one_sub_of_two or two_sub_of_one):
         raise ValueError(
             f'Cannot adjust levels of ciphertexts with different active rows and cols:'
-            f'{shaped_output.active_rows=} {input_2.active_rows=}'
-            f'{shaped_output.active_cols=} {input_2.active_cols=}. One must be a subset of the other.')
+            f'input_1.active_rows={shaped_output.active_rows!r} {input_2.active_rows=}'
+            f'input_1.active_cols={shaped_output.active_cols!r} {input_2.active_cols=}. '
+            f'One must be a subset of the other.')
 
     lower = shaped_output if one_sub_of_two else input_2
 

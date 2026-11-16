@@ -15,6 +15,7 @@ from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.operators.arithmetic.h_add import HomAdd
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.arithmetic.h_mul import HomMul
+from lattica_build.operators.arithmetic.h_sub import HomSub
 from lattica_build.operators.client_ops import Clamp, Softmax
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
@@ -34,6 +35,7 @@ from lattica_build.operators.slots.h_rotate_sum_elementwise import HomRotateSumE
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
 from lattica_build.operators.slots.h_sum_slots import HomSumSlots
 from lattica_build.params.params import HomParams
+from lattica_build.params.shape_tracing import has_zero_padding
 from lattica_build.serialization.clear_execution import run_clear_section
 
 
@@ -359,9 +361,8 @@ class _CombinedWithSumOfSquares(HomOp):
 @pytest.mark.parametrize('combine, length', [(HomMul, 32), (HomAdd, 32), (HomMul, 28)],
                          ids=['mul', 'add', 'mul-padded'])
 def test_binary_op_output_takes_the_longer_period(combine, length, sum_first):
-    """A period-1 value combined with a 32-slot one repeats every 32 slots, whichever operand comes first and
-    whichever is at the lower level: the SumSlots after it sums all 32 (a period of 1 would sum one slot). A product
-    keeps the zero padding of 28 values in the period."""
+    """A period-1 value combined with a 32-slot one has period 32, in either order and at either level: the SumSlots
+    after it sums all 32. A product keeps the zero padding of 28 values."""
     x = torch.rand(length, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
     result, _ = _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first), x, 32)
     squares = (x ** 2).sum()
@@ -369,20 +370,54 @@ def test_binary_op_output_takes_the_longer_period(combine, length, sum_first):
     torch.testing.assert_close(result, expected.reshape(1))
 
 
+class _TimesSquaresSummedOverRows(HomOp):
+    """x of shape (3, 32) times its squares summed over axis 0 (shape (32,), a level below x), then summed."""
+
+    def __init__(self, squares_first: bool):
+        super().__init__()
+        self.square, self.mul, self.total = HomMul(axis_sum=0), HomMul(), HomSumSlots()
+        self.squares_first = squares_first
+
+    def forward(self, x):
+        squares = self.square(x, x)
+        return self.total(self.mul(squares, x) if self.squares_first else self.mul(x, squares))
+
+
+@pytest.mark.parametrize('squares_first', [False, True], ids=['x_first', 'squares_first'])
+def test_binary_op_output_keeps_the_broadcast_shape(squares_first):
+    """The product stays (3, 32) though the lower input is (32,): the SumSlots after it reads that shape."""
+    x = torch.rand(3, 32, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    result, _ = _slot_op_clear(_TimesSquaresSummedOverRows(squares_first), x, 32)
+    torch.testing.assert_close(result, (x * (x ** 2).sum(0)).sum(-1, keepdim=True))
+
+
 @pytest.mark.parametrize('sum_first', [False, True], ids=['x_first', 'sum_first'])
-def test_add_rejects_a_period_1_value_on_zero_padding(sum_first):
-    """28 values in a 32-slot period plus a value in every slot: the 4 padding slots would hold it."""
-    x = torch.rand(28, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    with pytest.raises(ValueError, match=r'Cannot add ciphertexts of periods \(n_slots\) (32 and 1|1 and 32) with 28 '
-                                         r'values on the slot axis'):
-        _slot_op_clear(_CombinedWithSumOfSquares(HomAdd(), sum_first), x, 32)
+@pytest.mark.parametrize('combine, verb', [(HomAdd, 'add'), (HomSub, 'subtract')])
+@pytest.mark.parametrize('length, n_slots', [(28, 32), (300, 128)], ids=['sub_ring', 'last_ring'])
+def test_add_rejects_a_period_1_value_on_zero_padding(length, n_slots, combine, verb, sum_first):
+    """28 values in a 32-slot period, or 300 over rings of 128: a value in every slot would fill the padding."""
+    x = torch.rand(length, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    with pytest.raises(ValueError, match=rf'Cannot {verb} ciphertexts of periods \(n_slots\) '
+                                         rf'({n_slots} and 1|1 and {n_slots}) with {length} values on the slot axis'):
+        _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first), x, n_slots)
+
+
+@pytest.mark.parametrize('length, n_slots, padded', [
+    (28, 32, True), (32, 32, False),                            # fewer values than the period
+    (28, 8, False),                                             # repeats of a shorter period
+    (128, 128, False), (256, 128, False), (300, 128, True),     # whole rings, the last one full or not
+    (261, 32, True), (300, 32, False),                          # a shorter period: 5 or 44 values in the last ring
+])
+def test_has_zero_padding(length, n_slots, padded):
+    value = HomValue(tensor_shape=(length,), n_axis=0, n_slots=n_slots)
+    assert has_zero_padding(value, internal_n=128) is padded
 
 
 @pytest.mark.parametrize('combine', [HomMul, HomAdd])
 def test_binary_op_rejects_periods_neither_equal_nor_1(combine):
-    """Periods 32 and 2 would combine to 32 (their lcm), but the backend takes equal periods or a period of 1."""
     x = torch.rand(32, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    with pytest.raises(ValueError, match=r'Cannot combine ciphertexts of periods \(n_slots\) 2, 32: .* every 32 '):
+    with pytest.raises(ValueError, match=r'Cannot combine ciphertexts of periods \(n_slots\) 2, 32: the periods must '
+                                         r'be equal, or one of them 1'):
         _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first=False, nb_cols=2), x, 32)
 
 

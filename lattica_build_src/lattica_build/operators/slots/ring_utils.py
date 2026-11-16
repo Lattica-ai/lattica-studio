@@ -15,6 +15,7 @@ import torch
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
+from lattica_build.params.shape_tracing import has_zero_padding
 
 
 class SlotOp(HomOp):
@@ -26,11 +27,11 @@ class SlotOp(HomOp):
     internal_n: int | None = None
 
     def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
-        """The input's slot axis takes no zero padding: it holds n_slots values, or whole rings when n_slots is
-        internal_n. Then the operator's own inference, `infer_slot_output_shape`."""
+        """The input's slot axis takes no zero padding and no repeats: it holds n_slots values, or whole rings when
+        n_slots is internal_n. Then the operator's own inference, `infer_slot_output_shape`."""
         length = input.tensor_shape[input.n_axis]
-        whole_rings = input.n_slots == internal_n and length % internal_n == 0
-        if length != input.n_slots and not whole_rings:
+        repeats = input.n_slots < min(length, internal_n)
+        if has_zero_padding(input, internal_n) or repeats:
             raise ValueError(f"{type(self).__name__} takes no padded input: a slot axis of n_slots={input.n_slots} "
                              f"values, or of whole rings when n_slots is internal_n={internal_n}: got {length}")
         return self.infer_slot_output_shape(input, internal_n, **kwargs)

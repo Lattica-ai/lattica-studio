@@ -34,17 +34,14 @@ class HomAdd(HomOp):
     ) -> HomValue:
         """Infer elementwise broadcast shape for both inputs.
 
-        Inputs of different periods (one of them 1: a value in every slot) whose sum has zero padding raise: the
-        period-1 input would fill the padding, which must stay zero (a SumSlots after it would add it, and the clear
-        run, which pads the sum with zeros, would not). A product keeps it zero, so HomMul takes them. Any two
-        different periods would do the same (which the build rejects anyway): the shorter period's repeats land in
-        the longer one's padding, and the sum is a layout of neither period."""
+        A period-1 input added to a zero-padded one raises: it would fill the padding, which the slot operators
+        read. A product keeps the padding zero, so HomMul takes it."""
         output = infer_broadcast_output_shape(input_1, input_2)
         if input_1.n_slots != input_2.n_slots and has_zero_padding(output, internal_n):
             length = output.tensor_shape[output.n_axis]
-            raise ValueError(f"Cannot add ciphertexts of periods (n_slots) {input_1.n_slots} and {input_2.n_slots} "
-                             f"with {length} values on the slot axis: the sum's {output.n_slots}-slot period would "
-                             f"hold the shorter period's repeats where its zero padding goes")
+            raise ValueError(f"Cannot {'subtract' if self.is_sub else 'add'} ciphertexts of periods (n_slots) "
+                             f"{input_1.n_slots} and {input_2.n_slots} with {length} values on the slot axis: "
+                             f"the period-1 one would fill the other's zero padding")
         return output
 
     def infer_output_level_and_scale(

@@ -20,6 +20,17 @@ def _is_power_of_two(x: int) -> bool:
     return x > 0 and (x & (x - 1)) == 0
 
 
+def resolve_n_slots(n_slots: int | None, internal_n: int) -> int:
+    """n_slots checked, None as the full ring (internal_n)."""
+    if n_slots is None:
+        return internal_n
+    if not (isinstance(n_slots, int) and _is_power_of_two(n_slots)):
+        raise ValueError(f"n_slots must be None or a positive power of two; got {n_slots!r}.")
+    if n_slots > internal_n:
+        raise ValueError(f"n_slots={n_slots} is larger than the {internal_n} available slots.")
+    return n_slots
+
+
 @dataclass(kw_only=True)
 class HomParams:
     n: int
@@ -100,15 +111,7 @@ class HomParams:
         if not isinstance(self.pt_scale, int) or self.pt_scale < 1:
             raise ValueError(f"pt_scale must be an int >= 1; got {self.pt_scale!r}.")
 
-        if self.n_slots is None:
-            self.n_slots = self.internal_n
-        else:
-            if not (isinstance(self.n_slots, int) and _is_power_of_two(self.n_slots)):
-                raise ValueError(
-                    f"n_slots must be None or a positive power of two; got {self.n_slots!r}.")
-            if self.n_slots > self.internal_n:
-                raise ValueError(
-                    f"n_slots={self.n_slots} is larger than the {self.internal_n} available slots.")
+        self.n_slots = resolve_n_slots(self.n_slots, self.internal_n)
 
         if not (self.num_init_rows is None or (isinstance(self.num_init_rows, int)
                                                and 0 <= self.num_init_rows <= len(self.full_q_list_precision))):
