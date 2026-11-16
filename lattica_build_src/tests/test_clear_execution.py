@@ -473,6 +473,18 @@ def test_resnet_composite_example_matches_pretrained_model():
     )
 
 
+@pytest.mark.parametrize("batch", [(), (2,), (4, 2)])
+def test_mux_conv_output_shape_keeps_a_batch(batch):
+    """Axes before the slots are a batch of maps, one ciphertext each: they pass through."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1)
+    in_slots, out_slots = MuxLayout(4, 4, 4).period, MuxLayout(8, *conv.output_hw).period
+    output = conv.infer_output_shape(HomValue(tensor_shape=(*batch, in_slots), n_axis=-1), internal_n=4096)
+    assert tuple(output.tensor_shape) == (*batch, out_slots)
+    assert output.n_slots == out_slots
+
+
 def test_mux_layout_packs_each_channel_at_its_slot():
     """Sides that are not powers of 2: the width pads to 8."""
     from lattica_build.operators.ml.h_mux_conv import MuxLayout
