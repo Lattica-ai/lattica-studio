@@ -113,6 +113,15 @@ def test_expand_clear_preserves_batch_dimensions():
         torch.testing.assert_close(result[:, :, slot], x)
 
 
+@pytest.mark.parametrize('axis', [0, 1])
+def test_expand_clear_takes_a_padded_slot_axis(axis):
+    """3 values in a period of 4: the output of the padding is dropped, one output per value remains."""
+    x = torch.tensor([2., 3., 5.])
+    result, internal_n = _slot_op_clear(HomExpand(expand_axis=axis), x, 4)
+    expected = x[:, None].expand(3, internal_n)
+    torch.testing.assert_close(result, expected.T if axis == 1 else expected)
+
+
 def test_serialized_clear_execution_expands_to_ring_size():
     """Each extracted value fills a whole ciphertext: internal_n slots, like the decrypted output."""
     pipeline = HomomorphicPipeline(hom=HomExpand(expand_axis=1), input_shape=(8,))
