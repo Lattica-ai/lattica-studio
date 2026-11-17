@@ -50,7 +50,7 @@ class HomLinear(SequentialHomOp):
 
         super().__init__(*ops)
 
-    def set_data(self, *data: torch.Tensor, **kwargs) -> None:
+    def set_data(self, *data: torch.Tensor, **kwargs) -> "HomLinear":
         """Set weight and optional bias tensors for the composed linear op.
 
         Args:
@@ -63,3 +63,4 @@ class HomLinear(SequentialHomOp):
 
         if self.bias:
             self.h_bias.set_data(data[1])
+        return self

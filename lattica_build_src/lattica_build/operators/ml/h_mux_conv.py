@@ -71,6 +71,13 @@ class MuxLayout:
         vec[self.slot_map()] = x
         return vec
 
+    def pack_channels(self, values) -> torch.Tensor:
+        """A per-channel vector (C,) at every pixel of its channel, as slots."""
+        values = torch.as_tensor(values, dtype=torch.float64)
+        assert tuple(values.shape) == (self.channels,), (
+            f"pack_channels expects {(self.channels,)}, got {tuple(values.shape)}")
+        return self.pack(values[:, None, None].expand(self.channels, self.height, self.width))
+
     def unpack(self, vec) -> torch.Tensor:
         """Slot vectors [..., n] -> maps [..., C, H, W], as the client decodes them."""
         vec = torch.as_tensor(vec)
@@ -126,18 +133,17 @@ class HomMuxConv(HomConvBase):
         return infer_optional_modswitch(hom_params, input, with_modswitch=self.with_modswitch,
                                         rows_budget=None, op_scale_up=None)
 
-    def set_data(self, weight: torch.Tensor, bias: Optional[torch.Tensor] = None, **kwargs) -> None:
+    def set_data(self, weight: torch.Tensor, bias: Optional[torch.Tensor] = None, **kwargs) -> "HomMuxConv":
         assert tuple(weight.shape) == self.kernel_shape, (
             f"mux conv weight should be {self.kernel_shape}, got {tuple(weight.shape)}")
         if not self.bias:
             assert bias is None, "HomMuxConv defined with bias=False, but got a bias"
-            super().set_data(weight)
-            return
+            return super().set_data(weight)
         assert bias is not None, "HomMuxConv defined with bias=True, but the bias is missing"
         bias = torch.as_tensor(bias, dtype=torch.float64)
         assert bias.shape == (self.kernel_shape[0],), (
             f"mux conv bias should be 1D of length {self.kernel_shape[0]}, got {tuple(bias.shape)}")
-        super().set_data(weight, bias)
+        return super().set_data(weight, bias)
 
     def forward_clear(self, input):
         """The conv on slot vectors [..., n]: unpack the input map (the input repeats at its
@@ -165,7 +171,7 @@ class HomMuxConvBnFused(HomMuxConv):
         super().__init__(kernel_shape, image_hw, stride, padding, dilation, with_modswitch, bias=True)
 
     def set_data(self, weight, bias, mean, var, gamma, beta, eps: float = 1e-5,
-                 delta: float = 1.0, **kwargs) -> None:
+                 delta: float = 1.0, **kwargs) -> "HomMuxConvBnFused":
         """Fuse Conv+BN tensors into the conv's weight and bias; the arguments are
         HomConvBnFused.set_data's."""
-        super().set_data(*self._fold_batch_norm(weight, bias, mean, var, gamma, beta, eps, delta))
+        return super().set_data(*self._fold_batch_norm(weight, bias, mean, var, gamma, beta, eps, delta))
