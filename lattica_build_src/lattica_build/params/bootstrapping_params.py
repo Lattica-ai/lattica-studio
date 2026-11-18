@@ -269,7 +269,8 @@ class BootstrappingParams:
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int,
                  lcr_first_cts: bool = False, precision: str = "full") -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
-        (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
+        (complex slots take two, on the real and imaginary parts); two or more real ciphertexts
+        go through in pairs, as the two parts of one complex ciphertext. slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: the first CtS level is level-conserving, so it consumes no prime and the chain has one CtS
