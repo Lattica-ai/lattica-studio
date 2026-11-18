@@ -60,10 +60,11 @@ BOOT_PARAMS_PER_N_SLOTS = {
 # the SubSum trace, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
 LCR_MAX_TERMS = 192
 # The most bits of log QP any key may have for 128-bit security under the secret key (hamming weight 1024), by ring
-# dimension. 2**15: the lattice estimator crosses 128 bits at 866 (cheapest attack bdd; the sparse-secret hybrids are
-# about 2 bits costlier at this weight), less 2 bits of margin. 2**14 and 2**16 keep the hamming-weight-192 limits,
-# which are below the hamming-weight-1024 ones.
-MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 864, 2 ** 16: 1638}
+# dimension. 2**15: the lattice estimator crosses 128 bits at 866, less 2 bits of margin. 2**16: the cheapest attack
+# is the dual hybrid with a Meet-LWE guess (ePrint 2026/1060) that also tries the N rotations x^i s of the secret
+# (ePrint 2026/279, 2026/366); in the MATZOV cost model it crosses 128 bits at 1686, less 2 bits of margin. 2**14
+# keeps the hamming-weight-192 limit, which is below the hamming-weight-1024 one.
+MAX_LOG_QP_128 = {2 ** 14: 402, 2 ** 15: 864, 2 ** 16: 1683}
 # A key switch's noise grows with its largest digit over the special primes' product P: every digit stays this many
 # bits below the special primes it uses (a digit filled up to P costs the key switch several bits of precision).
 DIGIT_HEADROOM_BITS = 8
@@ -283,7 +284,8 @@ class BootstrappingParams:
     def __init__(self, real_boot: bool, slim_boot: bool, dft_levels: int, cts_scale: int,
                  lcr_first_cts: bool = False, precision: str = "full") -> None:
         """real_boot: the slots hold real values, so one EvalMod over the real part does
-        (complex slots take two, on the real and imaginary parts). slim_boot: StC first,
+        (complex slots take two, on the real and imaginary parts); two or more real ciphertexts
+        go through in pairs, as the two parts of one complex ciphertext. slim_boot: StC first,
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: the first CtS level is level-conserving, so it consumes no prime and the chain has one CtS

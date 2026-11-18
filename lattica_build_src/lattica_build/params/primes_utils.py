@@ -56,10 +56,11 @@ def get_primes_from_precisions_list(full_q_list_precision):
                         for (bits, below), (need, have) in shortages.items())
         raise RuntimeError(f"Insufficient primes: {msg}")
 
-    # Draw primes (unique globally because we pop from each pool)
+    # Each pool is ascending, so the prime closest to 2**bits is the first of a pool above 2**bits and the last of a
+    # pool below it. Popping keeps the primes unique.
     assigned = []
-    for p in precisions:
-        prime = pools[p].pop()  # take one and remove it
+    for bits, below in precisions:
+        prime = pools[(bits, below)].pop(-1 if below else 0)
         assigned.append(prime)
 
     # Pack back to same shape
