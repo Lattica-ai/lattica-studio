@@ -34,7 +34,7 @@ Main fields you will tune:
 | `err_std` | Encryption noise standard deviation. |
 | `sk_hw` | Secret-key hamming weight (also used when bootstrapping params are created). |
 | `num_init_rows` | Bootstrap-oriented starting-budget cap for the primary input: initialize fewer active rows up front when the input is expected to be bootstrapped later. The rows are counted from the bottom of the chain: a fresh ciphertext holds the last `num_init_rows` rows of `full_q_list_precision`, plus the bootstrap base (and the StC rows with `slim_boot`), so the stages before the bootstrap consume the last rows. `0` keeps only the bootstrap base: nothing before the bootstrap can rescale (e.g. `HomMul(with_modswitch=False)`), and its output scale must be at most twice the bootstrap's message scale. `None` keeps all the pipeline rows. |
-| `real_boot` | Bootstrap real slots: one EvalMod over the real part (complex slots take two). Default `True`. |
+| `real_boot` | Bootstrap real slots: one EvalMod over the real part (complex slots take two). Two or more real ciphertexts are bootstrapped in pairs, as the real and imaginary parts of one complex ciphertext. Default `True`. |
 | `slim_boot` | Bootstrap StC first, at the bottom of the chain, then ModRaise, CtS and EvalMod. Default `False`. |
 
 Fields populated during serialization:
@@ -158,9 +158,12 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
 
 - `HYBRID`:
   - requires `num_special_primes > 0`,
-  - derives `g_base_bits` from special-prime count: the toolkit splits the ciphertext primes of the whole chain
-    into digits of at most `g_base_bits` bits, filled along the order the pipeline consumes them, and each key
-    switch uses only the special primes its own largest digit needs.
+  - takes `special_prime_bits` (default 61), the special primes' size,
+  - derives `g_base_bits`, the special primes' product less `DIGIT_HEADROOM_BITS` (8), but at least the largest
+    prime of `full_q_list_precision` (with one special prime, a digit still holds one prime): the toolkit splits the
+    ciphertext primes of the whole chain into digits of at most `g_base_bits` bits, filled along the order the
+    pipeline consumes them, and each key switch uses only the special primes its own largest digit needs (a key
+    switch's noise grows with its largest digit over the special primes' product).
   - With a bootstrap the chain is in the order its rescales consume the primes (`BootstrappingParams.chain_sections`):
     CtS, EvalMod, StC, the pipeline's, then q0 (SLIM: the pipeline's before StC's).
   - With a bootstrap at a ring dimension with a known 128-bit bound, EvalMod's lower levels relinearize with a
@@ -203,7 +206,8 @@ For users, the key point is to size initial budget and scale assumptions to the 
 ## Slot-stage level behavior
 
 For staged slot ops (`HomRunningSum`, `HomExpand`, `HomSumSlots`):
-- `k` is the work size (for example: `HomExpand` expands one ciphertext to `k` outputs,
+- `k` is the work size (for example: `HomExpand` expands the `k = n_slots` slots of one
+  ciphertext's period, keeping one output per value of its slot axis, padding excluded,
   while `HomRunningSum` and `HomSumSlots` reduce/sum `k` elements),
 - the schedule is implemented as a binary-tree-style staged structure,
 - stage depth is `log2(k)` by default or `len(stage_sizes)` for custom schedule,
