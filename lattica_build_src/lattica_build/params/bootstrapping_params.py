@@ -7,12 +7,7 @@ BOOT_CONFIGURATION = {
     'n_cosine_levels' : 5,
     'n_double_angle' : 3,
     'n_arcsine_levels' : 0,
-    # Sparse-secret encapsulation: ModRaise switches q0 to an ephemeral secret
-    # of this hamming weight, raises the modulus, and switches back, so the
-    # wrap count |I| depends on it rather than on sk_hw. ModRaise always
-    # encapsulates, so it must be nonzero.
-    'sparse_secret_hw' : 32,
-    # Bound on the ModRaise wrap count |I|. With the H=32 ephemeral secret, K=16 fails with
+    # Bound on the ModRaise wrap count |I|. With the "full" profile's H=32 ephemeral secret, K=16 fails with
     # probability 2^-138.7 for 2^15 slots (eprint 2022/024). Han-Ki's cosine
     # needs degree 2K-2 = 30, the largest even degree in 5 levels.
     'k' : 16,
@@ -91,7 +86,9 @@ class BootPrecision:
     level-conserving CtS keys need special primes P' of more than this many bits in all, and the backend gives them the
     fewest that reach it.
     Their key noise, about T N |m| q0 e / P' for T terms of plaintexts m at the CtS scale, must stay below the
-    bootstrap's own error."""
+    bootstrap's own error. sparse_secret_hw: the hamming weight of ModRaise's ephemeral secret (sparse-secret
+    encapsulation: ModRaise switches q0 to that secret, raises the modulus, and switches back, so the wrap count |I|
+    depends on it rather than on sk_hw)."""
     eval_mod_scale: int
     stc_scale: int
     per_n_slots: dict[int, tuple[tuple[int, ...], int, int, int | None]]
@@ -99,6 +96,7 @@ class BootPrecision:
     eval_mod_rows: tuple[tuple[int, ...], ...]
     double_angle_rows: tuple[int, ...]
     exit_stc_scale: int
+    sparse_secret_hw: int
     double_angle_stc_bits: int | None = None
     base_host_bits: int | None = None
     double_angle_pipeline_bits: int | None = None
@@ -117,14 +115,19 @@ BOOT_PRECISIONS = {
     # limit) rather than 2**30, so the StC has room for the bits the higher EvalMod exit leaves it.
     "full": BootPrecision(eval_mod_scale=53, stc_scale=30, per_n_slots=BOOT_PARAMS_PER_N_SLOTS,
                           lcr_min_special_bits=170, eval_mod_rows=((53,),) * 5 + ((61,), (61, 23)),
-                          double_angle_rows=(6, 5, 6), exit_stc_scale=31),
+                          double_angle_rows=(6, 5, 6), exit_stc_scale=31, sparse_secret_hw=32),
     # About 10 bits, for computations that tolerate it, at 2**12 to 2**14 slots: a chain small enough for N = 2**15 at
     # 128 bits with 4 special primes of 57 bits (3 digits), with one DFT level fewer than "full" on each side. Its
     # precision is the cosine's own rounding noise, which follows the cosine's primes, so the cosine takes 37-bit rows
     # while q0 stays at 35 bits. The double angles, whose noise is far below it, share words with other primes: double
-    # angle 3 takes a 23-bit prime after the last cosine prime, double angle 2 a 33-bit prime before the first StC
+    # angle 3 takes a 23-bit prime after the last cosine prime, double angle 2 a 31-bit prime before the first StC
     # prime, and double angle 1 a 35-bit prime before the first pipeline prime. With EvalMod's exit at 2**40, every
-    # double angle keeps a scale of at least 2**31 after its rescale. The sparse slot counts' last split component
+    # double angle keeps a scale of at least 2**31 after its rescale. The CtS primes are 32 bits, two fewer than the
+    # smallest that keeps the bootstrap at its error floor: they and double angle 2's 31-bit prime give up a little
+    # precision so that resnet20_n15's main keys fit the 128-bit bound. The ephemeral secret s~ has hamming weight
+    # h = 30. With b and a centered mod q0, every coefficient of b + a s~ is then below (h + 1) q0 / 2 = (K - 1/2) q0 in
+    # magnitude, so the value EvalMod sees stays inside the cosine's domain even for log_delta 1's largest messages, and
+    # ModRaise cannot fail. The sparse slot counts' last split component
     # is small, since the level-conserving
     # first CtS level's terms are its diagonals times the trace rotations. The StC primes are 26 bits, no narrower than
     # a pipeline scale of 2**26, so that a pipeline can run its first ops on the input's StC rows
@@ -134,11 +137,12 @@ BOOT_PRECISIONS = {
     # pipeline prime before q0, below the kernels' 2**62 together: a pipeline whose last word is that prime alone runs
     # its last level on one limb.
     "low": BootPrecision(eval_mod_scale=35, stc_scale=26, per_n_slots={
-        12: ((5, 4, 3), 34, 1, 40),
-        13: ((5, 4, 4), 34, 1, 40),
-        14: ((4, 5, 5), 34, 1, 40),
+        12: ((5, 4, 3), 32, 1, 40),
+        13: ((5, 4, 4), 32, 1, 40),
+        14: ((4, 5, 5), 32, 1, 40),
     }, lcr_min_special_bits=100, eval_mod_rows=((37,),) * 4 + ((60, 23),), double_angle_rows=(7, 5, 4),
-        exit_stc_scale=26, double_angle_stc_bits=33, base_host_bits=26, double_angle_pipeline_bits=35),
+        exit_stc_scale=26, sparse_secret_hw=30, double_angle_stc_bits=31, base_host_bits=26,
+        double_angle_pipeline_bits=35),
 }
 
 
@@ -330,7 +334,7 @@ class BootstrappingParams:
                 + self.get_q_list_precision(self.stc_scale, self.dft_levels - 1)
             self.double_angle_stc_primes = 1
         self.k = BOOT_CONFIGURATION['k']
-        self.sparse_secret_hw = BOOT_CONFIGURATION['sparse_secret_hw']
+        self.sparse_secret_hw = profile.sparse_secret_hw
         self.q_list_precision = self.cts_q_list_precision +  self.eval_mod_q_list_precision + self.stc_q_list_precision
         # q0, the ModRaise base modulus, has the EvalMod prime size
         self.q_base_precision = self.eval_mod_scale
