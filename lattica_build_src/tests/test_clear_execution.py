@@ -503,8 +503,8 @@ def test_mux_conv_rejects_slots_before_a_batch():
         conv.infer_output_shape(value, internal_n=4096)
 
 
-def test_mux_conv_clear_keeps_the_pitch():
-    """With keep_pitch a strided conv's output stays on the input's pixel grid, its rows twice as far apart and
+def test_mux_conv_clear_keeps_the_gap():
+    """With keep_gap a strided conv keeps the gap its stride opens: the output's rows are twice as far apart,
     the rows between empty, at the input's period; a conv after it takes that layout."""
     from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
 
@@ -512,9 +512,9 @@ def test_mux_conv_clear_keeps_the_pitch():
     x = torch.rand(4, 4, 4, generator=generator, dtype=torch.float64)
     weight1 = torch.rand(8, 4, 3, 3, generator=generator, dtype=torch.float64) - 0.5
     weight2 = torch.rand(8, 8, 3, 3, generator=generator, dtype=torch.float64) - 0.5
-    strided = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1, keep_pitch=True).set_data(weight1)
-    after = HomMuxConv((8, 8, 3, 3), (2, 2), padding=1, row_step=2, keep_pitch=True).set_data(weight2)
-    layout, spread = MuxLayout(4, 4, 4), MuxLayout(8, 2, 2, row_step=2)
+    strided = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1, keep_gap=True).set_data(weight1)
+    after = HomMuxConv((8, 8, 3, 3), (2, 2), padding=1, row_gap=2, keep_gap=True).set_data(weight2)
+    layout, spread = MuxLayout(4, 4, 4), MuxLayout(8, 2, 2, row_gap=2)
     assert spread.period == layout.period == 64
     assert strided.infer_output_shape(HomValue(tensor_shape=(64,), n_axis=-1), internal_n=4096).n_slots == 64
 
@@ -525,11 +525,11 @@ def test_mux_conv_clear_keeps_the_pitch():
     torch.testing.assert_close(spread.unpack(after(y)), torch.nn.functional.conv2d(expected, weight2, padding=1)[0])
 
 
-def test_mux_conv_keep_pitch_needs_the_channels_to_grow_by_the_stride():
+def test_mux_conv_keep_gap_needs_the_channels_to_grow_by_the_stride():
     from lattica_build.operators.ml.h_mux_conv import HomMuxConv
 
     with pytest.raises(ValueError, match=r"C_out must be stride \* C_in = 8, got 4"):
-        HomMuxConv((4, 4, 3, 3), (4, 4), stride=2, padding=1, keep_pitch=True)
+        HomMuxConv((4, 4, 3, 3), (4, 4), stride=2, padding=1, keep_gap=True)
 
 
 def test_mux_layout_pack_channels():
