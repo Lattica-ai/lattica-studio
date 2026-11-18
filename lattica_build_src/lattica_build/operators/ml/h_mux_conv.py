@@ -25,21 +25,22 @@ class MuxLayout:
     """A (C, H, W) map in one ciphertext of n_slots slots.
 
     Each pixel holds its C channels side by side: channel c of pixel (i, j) sits at slot
-    (i * row_step * Wt + j) * C + c, with Wt the width rounded up to a power of 2. With
-    row_step > 1 the rows between the map's rows stay empty, which is where a strided conv
-    with keep_pitch leaves its output. n_slots defaults to the layout's period.
+    (i * row_gap * Wt + j) * C + c, with Wt the width rounded up to a power of 2. With
+    row_gap > 1 there is a gap between the map's rows, row_gap grid rows apart with the
+    rows between empty: what a strided conv with keep_gap leaves. n_slots defaults to the
+    layout's period.
     """
 
     channels: int
     height: int
     width: int
     n_slots: Optional[int] = None
-    row_step: int = 1
+    row_gap: int = 1
 
     def __post_init__(self) -> None:
         if self.n_slots is None:
             object.__setattr__(self, "n_slots", self.period)
-        if min(self.channels, self.height, self.width, self.n_slots, self.row_step) <= 0:
+        if min(self.channels, self.height, self.width, self.n_slots, self.row_gap) <= 0:
             raise ValueError(f"layout sizes must be positive, got {self}")
         if self.size > self.n_slots:
             raise ValueError(f"a {self.channels}x{self.height}x{self.width} map needs {self.size} "
@@ -48,7 +49,7 @@ class MuxLayout:
     @property
     def size(self) -> int:
         """Slots the map spans: C channels on a power-of-2 grid, its empty rows included."""
-        return next_pow2(self.height) * self.row_step * next_pow2(self.width) * self.channels
+        return next_pow2(self.height) * self.row_gap * next_pow2(self.width) * self.channels
 
     @property
     def period(self) -> int:
@@ -57,7 +58,7 @@ class MuxLayout:
 
     def slot(self, channel, row, column):
         """The slot of each (channel, row, column); takes ints or index arrays, numpy or torch."""
-        return (row * self.row_step * next_pow2(self.width) + column) * self.channels + channel
+        return (row * self.row_gap * next_pow2(self.width) + column) * self.channels + channel
 
     def slot_map(self) -> torch.Tensor:
         """[C, H, W] slot of each map entry."""
@@ -80,10 +81,10 @@ class MuxLayout:
             f"pack_channels expects {(self.channels,)}, got {tuple(values.shape)}")
         return self.pack(values[:, None, None].expand(self.channels, self.height, self.width))
 
-    def conv_output(self, channels: int, output_hw, stride: int, keep_pitch: bool) -> "MuxLayout":
+    def conv_output(self, channels: int, output_hw, stride: int, keep_gap: bool) -> "MuxLayout":
         """The layout of a conv's (channels, *output_hw) output, at its own period: compact, or with
-        keep_pitch on this map's pixel pitch, its rows `stride` times as far apart."""
-        return MuxLayout(channels, *output_hw, row_step=self.row_step * stride if keep_pitch else 1)
+        keep_gap with the gap the stride opens, its rows `stride` times as far apart as this map's."""
+        return MuxLayout(channels, *output_hw, row_gap=self.row_gap * stride if keep_gap else 1)
 
     def unpack(self, vec) -> torch.Tensor:
         """Slot vectors [..., n] -> maps [..., C, H, W], as the client decodes them."""
@@ -111,11 +112,12 @@ class HomMuxConv(HomConvBase):
     conv also re-interleaves its output to the C_out channels, in the same level.
     bias: a per-channel bias after the weight, added at every slot of
     its channel.
-    row_step: the input layout's (MuxLayout). keep_pitch: the output stays on the
-    input's pixel pitch, its rows stride times as far apart as the input's, in place
-    of the compact layout. A strided conv then needs far fewer rotations, which no
-    longer depend on the output row, and the map keeps its period: the convs after
-    it take its row_step and keep the pitch too. Needs C_out = stride * C_in.
+    row_gap: the input layout's (MuxLayout). keep_gap: a strided conv keeps the gap
+    its stride opens: the output's channels fill the skipped columns and its rows stay
+    stride times as far apart as the input's, in place of the compact layout. It then
+    needs far fewer rotations, which no longer depend on the output row, and the map
+    keeps its period: the convs after it take its row_gap and keep the gap too.
+    Needs C_out = stride * C_in.
     """
 
     OP_TYPE = HomOpType.MuxConv
@@ -126,25 +128,25 @@ class HomMuxConv(HomConvBase):
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
                  with_modswitch: bool = True,
                  bias: bool = False,
-                 row_step: int = 1,
-                 keep_pitch: bool = False) -> None:
+                 row_gap: int = 1,
+                 keep_gap: bool = False) -> None:
         super().__init__()
         self.kernel_shape = tuple(kernel_shape)
         self._set_geometry(self.kernel_shape[2:], stride, padding, dilation, image_hw)
         self.with_modswitch = with_modswitch
         self.bias = bias
-        self.row_step = row_step
-        self.keep_pitch = keep_pitch
+        self.row_gap = row_gap
+        self.keep_gap = keep_gap
         c_out, c_in = self.kernel_shape[:2]
-        if keep_pitch and c_out != self.stride[1] * c_in:
-            raise ValueError(f"keep_pitch puts the output's channels in the slots of the pixels a stride skips: "
+        if keep_gap and c_out != self.stride[1] * c_in:
+            raise ValueError(f"keep_gap puts the output's channels in the slots of the pixels a stride skips: "
                              f"C_out must be stride * C_in = {self.stride[1] * c_in}, got {c_out}")
 
     def _layouts(self):
         """The input and output maps' layouts, each at its own period."""
         c_out, c_in = self.kernel_shape[:2]
-        input_layout = MuxLayout(c_in, *self.image_hw, row_step=self.row_step)
-        return input_layout, input_layout.conv_output(c_out, self.output_hw, self.stride[0], self.keep_pitch)
+        input_layout = MuxLayout(c_in, *self.image_hw, row_gap=self.row_gap)
+        return input_layout, input_layout.conv_output(c_out, self.output_hw, self.stride[0], self.keep_gap)
 
     def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
         input_layout, output_layout = self._layouts()
@@ -189,10 +191,10 @@ class HomMuxConvBnFused(HomMuxConv):
                  padding: Union[int, Tuple[int, int]] = (0, 0),
                  dilation: Union[int, Tuple[int, int]] = (1, 1),
                  with_modswitch: bool = True,
-                 row_step: int = 1,
-                 keep_pitch: bool = False) -> None:
+                 row_gap: int = 1,
+                 keep_gap: bool = False) -> None:
         super().__init__(kernel_shape, image_hw, stride, padding, dilation, with_modswitch, bias=True,
-                         row_step=row_step, keep_pitch=keep_pitch)
+                         row_gap=row_gap, keep_gap=keep_gap)
 
     def set_data(self, weight, bias, mean, var, gamma, beta, eps: float = 1e-5,
                  delta: float = 1.0, **kwargs) -> "HomMuxConvBnFused":

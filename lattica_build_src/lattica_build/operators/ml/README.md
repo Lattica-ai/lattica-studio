@@ -30,12 +30,12 @@ This folder contains model-oriented operators used to build encrypted inference 
 - `HomMuxConv` takes the slots on the last axis, packed by its `MuxLayout`. Axes before them are a batch of maps,
   one ciphertext each, all convolved with the same weights; the output is `(*batch, output slots)`.
 - A strided `HomMuxConv` packs its output into the smaller map's period by default, which makes its rotations
-  depend on the output row. With `keep_pitch=True` (and `C_out = stride * C_in`) the output stays on the input's
-  pixel pitch: far fewer rotations, but the map keeps the input's period, its rows `stride` times as far apart.
-  The convs after it take that `row_step` and keep the pitch too. The larger period costs the slot-count-dependent
-  ops after it (bootstraps, the plaintexts' size), so it pays off where convs dominate. The conv leaves the slots
-  between the map's rows at zero; an op that sends zero elsewhere (a polynomial with a constant term) fills them,
-  which later convs ignore but a sum over all slots does not.
+  depend on the output row. With `keep_gap=True` (and `C_out = stride * C_in`) the output keeps the gap the stride
+  opens: its channels fill the skipped columns and its rows stay `stride` times as far apart. Far fewer rotations,
+  but the map keeps the input's period. The convs after it take that `row_gap` and keep the gap too. The larger
+  period costs the slot-count-dependent ops after it (bootstraps, the plaintexts' size), so it pays off where
+  convs dominate. The conv leaves the slots between the map's rows at zero; an op that sends zero elsewhere (a
+  polynomial with a constant term) fills them, which later convs ignore but a sum over all slots does not.
 
 ## Parameterization notes
 
