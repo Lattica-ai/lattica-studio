@@ -22,11 +22,10 @@ def to_neg_axis(axis: int, shape: TensorShape) -> int:
 
 
 def is_n_axis_broadcasted(pt_shape: TensorShape, tensor_shape: TensorShape, n_axis: int) -> bool:
+    """Whether a constant of shape tensor_shape is the same in every slot of a value of shape pt_shape, its slots
+    on n_axis: the constant lacks that axis or has size 1 on it."""
     n_axis = to_neg_axis(n_axis, pt_shape)
-    return (
-        -n_axis > len(tensor_shape)
-        or tensor_shape[n_axis] != pt_shape[n_axis]
-    )
+    return -n_axis > len(tensor_shape) or tensor_shape[n_axis] == 1
 # ===================================================== #
 
 @dataclass(kw_only=True)
