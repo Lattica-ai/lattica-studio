@@ -35,7 +35,7 @@ class HomAdd(HomOp):
         """Infer elementwise broadcast shape for both inputs.
 
         Raises when an input has a smaller n_slots than the output and the output is zero-padded: the input's repeats
-        would fill the padding, which the slot operators read."""
+        would fill the padding, which must stay zero."""
         output = infer_broadcast_output_shape(input_1, input_2)
         if any(fills_zero_padding(input, output, internal_n) for input in (input_1, input_2)):
             length = output.tensor_shape[output.n_axis]

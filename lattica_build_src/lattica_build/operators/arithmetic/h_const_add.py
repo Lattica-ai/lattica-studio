@@ -26,7 +26,7 @@ class HomConstAdd(HomOp):
         """Infer output shape from broadcasting `input` with constant dims, and its period as packed.
 
         Raises when the output has a larger n_slots than `input` and is zero-padded: the repeats of `input` would fill
-        the padding, which the slot operators read."""
+        the padding, which must stay zero."""
         output = infer_broadcast_output_shape(input, dims=self.dims)
         output = output.make_copy(n_slots=infer_constant_packing_n_slots(input, self.dims, internal_n))
         if fills_zero_padding(input, output, internal_n):
