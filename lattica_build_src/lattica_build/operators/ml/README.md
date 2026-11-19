@@ -12,10 +12,12 @@ This folder contains model-oriented operators used to build encrypted inference 
 | `HomLinear` | composite op (`HomMatMul` + optional bias add) |
 | `HomBatchNorm` | composite op (`const_mul` + `const_add`) |
 | `HomConvBnFused` | pre-fuses Conv+BatchNorm tensors, then runs one conv op |
+| `HomMuxConv` | convolution on the multiplexed packing (`OP_TYPE = HomOpType.MuxConv`) |
+| `HomMuxConvBnFused` | `HomMuxConv` with a BatchNorm folded into its weight and bias in `set_data` |
 
 ## Base vs composite in this folder
 
-- Base ops map directly to backend op types (`HomConv`, `HomMatMul`).
+- Base ops map directly to backend op types (`HomConv`, `HomMuxConv`, `HomMatMul`).
 - Composite ops are graphs built from base ops (`HomLinear`, `HomBatchNorm`).
 - `HomAvgPool` and `HomConvBnFused` both execute as a single `HomConv` backend op after parameter setup.
 
@@ -25,6 +27,8 @@ This folder contains model-oriented operators used to build encrypted inference 
 - `HomMatMul` may update `n_axis` when `mul_axis` intersects the packed axis.
 - `HomLinear` bias shape is derived from `dims` by removing `mul_axis`.
 - `HomBatchNorm` stores affine constants as `(-1, 1, 1)` for channel-first broadcasting.
+- `HomMuxConv` takes the slots on the last axis, packed by its `MuxLayout`. Axes before them are a batch of maps,
+  one ciphertext each, all convolved with the same weights; the output is `(*batch, output slots)`.
 
 ## Parameterization notes
 
