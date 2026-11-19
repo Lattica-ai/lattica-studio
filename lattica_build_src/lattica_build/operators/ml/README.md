@@ -31,8 +31,7 @@ This folder contains model-oriented operators used to build encrypted inference 
   one ciphertext each, all convolved with the same weights; the output is `(*batch, output slots)`.
 - `keep_gap=True` (square stride, `C_out = stride * C_in`): a strided `HomMuxConv` keeps the gap its stride opens
   instead of compacting the output. Far fewer rotations, but the map keeps the input's period, which slows the
-  slot-count-dependent ops after it (bootstraps); it pays off where convs dominate. A polynomial with a constant
-  term fills the zero gap slots: later convs ignore them, a sum over all slots does not.
+  `n_slots`-dependent ops after it.
 
 ## Parameterization notes
 
