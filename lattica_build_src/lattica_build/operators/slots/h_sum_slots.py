@@ -19,6 +19,7 @@ class HomSumSlots(SlotOp):
         nb_cols: Optional number of sums, the columns of the period seen as rows
             of nb_cols slots (defaults to 1, the sum of the period): slot j gets
             x[j] + x[j + nb_cols] + ..., the n_slots / nb_cols slots of its column.
+            A slot axis of more than nb_cols values holds a multiple of nb_cols.
         stage_sizes: Optional explicit stage schedule for the summation tree,
             whose product is the n_slots / nb_cols slots each sum adds.
         reduce_output: Whether the output's slot axis holds only the nb_cols
@@ -44,8 +45,14 @@ class HomSumSlots(SlotOp):
         """The sum folds the input's period to nb_cols. With reduce_output, the slot axis holds the nb_cols sums.
 
         Unlike the other slot operators, SumSlots takes a zero-padded slot axis: the padding adds nothing to the
-        sums, and afterwards holds their repeats at the output's period nb_cols."""
+        sums, and afterwards holds their repeats at the output's period nb_cols. A slot axis of more than nb_cols
+        values must hold a multiple of nb_cols, so that its values end on a whole period of the output: the slots
+        after them then hold whole repeats of the sums."""
         nb_cols = self.nb_cols if self.nb_cols is not None else 1
+        length = input.tensor_shape[input.n_axis]
+        if length > nb_cols and length % nb_cols != 0:
+            raise ValueError(f"{type(self).__name__} takes a slot axis of at most nb_cols={nb_cols} values or a "
+                             f"multiple of nb_cols: got {length}")
         if not self.reduce_output:
             return input.make_copy(n_slots=nb_cols)
         return _reduced(self, input, nb_cols, internal_n)

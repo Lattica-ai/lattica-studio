@@ -343,6 +343,15 @@ def test_sum_slots_output_period():
     assert HomSumSlots(nb_cols=512).infer_output_shape(value, internal_n=4096).n_slots == 512
 
 
+@pytest.mark.parametrize('reduce_output', [False, True])
+def test_sum_slots_rejects_a_slot_axis_not_a_multiple_of_nb_cols(reduce_output):
+    """28 values summed 8 apart would end in the middle of a period of the output."""
+    value = HomValue(tensor_shape=(28,), n_axis=0, n_slots=32)
+    with pytest.raises(ValueError, match=r'HomSumSlots takes a slot axis of at most nb_cols=8 values or a multiple '
+                                         r'of nb_cols: got 28'):
+        HomSumSlots(nb_cols=8, reduce_output=reduce_output).infer_output_shape(value, internal_n=128)
+
+
 class _CombinedWithSumOfSquares(HomOp):
     """x combined with its squares summed nb_cols apart and kept on its slot axis (period nb_cols, a level below x),
     then summed."""
@@ -404,12 +413,12 @@ def test_add_rejects_a_period_1_value_on_zero_padding(combine, verb, length, n_s
 
 
 def test_const_add_rejects_a_shorter_period_on_zero_padding():
-    """20 values summed 8 apart and kept (n_slots 8, repeated over the ring), plus a 20-value constant: the result has
+    """24 values summed 8 apart and kept (n_slots 8, repeated over the ring), plus a 24-value constant: the result has
     n_slots internal_n, and the repeats of the sums would fill its zero padding."""
-    x = torch.rand(20, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    const_add = HomConstAdd(dims=(20,))
-    const_add.set_data(torch.rand(20, dtype=torch.float64, generator=torch.Generator().manual_seed(1)))
-    with pytest.raises(ValueError, match=r'Cannot add a constant to a ciphertext of period \(n_slots\) 8 with 20 '
+    x = torch.rand(24, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    const_add = HomConstAdd(dims=(24,))
+    const_add.set_data(torch.rand(24, dtype=torch.float64, generator=torch.Generator().manual_seed(1)))
+    with pytest.raises(ValueError, match=r'Cannot add a constant to a ciphertext of period \(n_slots\) 8 with 24 '
                                          r'values on the slot axis'):
         _slot_op_clear(SequentialHomOp(HomSumSlots(nb_cols=8, reduce_output=False), const_add), x, 32)
 
