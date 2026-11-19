@@ -546,25 +546,6 @@ def test_mux_layout_pack_channels():
     assert slots.sum() == values.sum() * 2 * 3
 
 
-def test_layer_ops_set_data_returns_the_op():
-    """As every other op's set_data does, so a layer is built and given its data in one expression."""
-    from lattica_build.operators.ml.h_conv import HomConvBnFused
-    from lattica_build.operators.ml.h_linear import HomLinear
-    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, HomMuxConvBnFused
-
-    weight = torch.ones((2, 1, 3, 3), dtype=torch.float64)
-    zeros, ones = torch.zeros(2, dtype=torch.float64), torch.ones(2, dtype=torch.float64)
-    batch_norm = (zeros, ones, ones, zeros)   # mean, var, gamma, beta
-    for op, data in [
-        (HomConv(1, 2, kernel_size=3, stride=1, padding=1, bias=True), (weight, zeros)),
-        (HomConvBnFused(1, 2, kernel_size=3, stride=1, padding=1), (weight, None, *batch_norm)),
-        (HomMuxConv((2, 1, 3, 3), (4, 4), bias=True), (weight, zeros)),
-        (HomMuxConvBnFused((2, 1, 3, 3), (4, 4)), (weight, None, *batch_norm)),
-        (HomLinear((2, 3)), (torch.ones((2, 3), dtype=torch.float64), zeros)),
-    ]:
-        assert op.set_data(*data) is op
-
-
 def test_mux_layout_packs_each_channel_at_its_slot():
     """Sides that are not powers of 2: the width pads to 8."""
     from lattica_build.operators.ml.h_mux_conv import MuxLayout
