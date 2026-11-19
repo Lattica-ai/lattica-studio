@@ -43,14 +43,48 @@ def to_neg_axis(axis: int, shape: TensorShape) -> int:
     rank = len(tuple(shape))
     return axis - rank
 
+def infer_combined_n_slots(n_slots_1: int | None, n_slots_2: int | None) -> int | None:
+    """Compute the n_slots of the result of combining two ciphertexts of n_slots_1 and n_slots_2 slots:
+    - if one of them is None, return the other;
+    - if they are equal, return that value;
+    - if one of them is 1, return the other;
+    - otherwise, raise ValueError (this pair is not supported).
+    """
+    if n_slots_1 is None or n_slots_2 is None:
+        return n_slots_2 if n_slots_1 is None else n_slots_1
+    if n_slots_1 != n_slots_2 and 1 not in (n_slots_1, n_slots_2):
+        raise ValueError(f"Cannot combine ciphertexts of periods (n_slots) {min(n_slots_1, n_slots_2)}, "
+                         f"{max(n_slots_1, n_slots_2)}: the periods must be equal, or one of them 1")
+    return max(n_slots_1, n_slots_2)
+
+
+def has_zero_padding(value: HomValue, internal_n: int | None) -> bool:
+    """Whether the slot axis of `value` is zero-padded: its last ring holds fewer values than the period."""
+    if value.n_axis is None or value.n_slots is None:
+        return False
+    length = value.tensor_shape[value.n_axis]
+    if internal_n is not None:
+        length = length % internal_n or internal_n
+    return length < value.n_slots
+
+
+def fills_zero_padding(input: HomValue, output: HomValue, internal_n: int | None) -> bool:
+    """Check whether adding `input` fills the zero padding of `output`: `input` has a smaller n_slots than `output`,
+    so its repeats land in the slots that `output` keeps at zero."""
+    return has_zero_padding(output, internal_n) and input.n_slots is not None and input.n_slots < output.n_slots
+
+
 def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape | None = None) -> HomValue:
     shapes_to_broadcast = list(input.tensor_shape for input in inputs)
     if dims is not None:
         shapes_to_broadcast.append(dims)
     output_shape = torch.broadcast_shapes(*shapes_to_broadcast)
+    n_slots = inputs[0].n_slots
+    for input in inputs[1:]:
+        n_slots = infer_combined_n_slots(n_slots, input.n_slots)
 
     if inputs[0].n_axis is None:
-        return inputs[0].make_copy(tensor_shape=output_shape)
+        return inputs[0].make_copy(tensor_shape=output_shape, n_slots=n_slots)
 
     # n_axis_neg is identical for the input and output shapes.
     n_axis_neg = to_neg_axis(inputs[0].n_axis, inputs[0].tensor_shape)
@@ -66,7 +100,7 @@ def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape 
                              f"but got {input.tensor_shape[input_n_axis_neg]} and "
                              f"{inputs[0].tensor_shape[n_axis_neg]}.")
 
-    return inputs[0].make_copy(tensor_shape=output_shape, n_axis=n_axis_neg)
+    return inputs[0].make_copy(tensor_shape=output_shape, n_axis=n_axis_neg, n_slots=n_slots)
 
 def infer_constant_packing_n_slots(input: HomValue, dims: TensorShape, internal_n: int | None) -> int | None:
     """The period of `input` combined with a constant of shape `dims` (ConstAdd, ConstMul, a MatMul on another

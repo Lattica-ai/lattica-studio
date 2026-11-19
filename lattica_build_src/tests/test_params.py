@@ -1,6 +1,11 @@
-import numpy as np
+import json
 
+import numpy as np
+import pytest
+
+from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
+from lattica_build.operators.arithmetic.h_mul import HomMul
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
 from lattica_build.operators.polynomials.h_poly_eval import HomPolyEval
@@ -31,3 +36,37 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
     assert params.consumption_order[:2] == (3, 4)
     assert set(params.consumption_order) == {0, 1, 2, 3, 4}
     assert HomParams.from_dict(params.to_dict()).consumption_order == params.consumption_order
+
+
+class _KeptSumTimesCustom(HomOp):
+    """sum(x) kept in every slot (period 1), times the additional input z."""
+
+    def __init__(self):
+        super().__init__()
+        self.keep, self.multiply = HomSumSlots(reduce_output=False), HomMul()
+
+    def forward(self, x, z):
+        return self.multiply(self.keep(x), z)
+
+
+def _serialized_with_custom_input(custom_n_slots: dict) -> dict:
+    """The graph of a pipeline on x (32 slots of a 256-slot ring) and an additional input z."""
+    params = HomParams(n=2 ** 9, full_q_list_precision=((60, 30),) * 4, pt_scale=2 ** 30, num_special_primes=1,
+                       n_slots=32)
+    pipeline = HomomorphicPipeline(hom=_KeptSumTimesCustom(), input_shape={'x': (32,), 'z': (32,)},
+                                   custom_n_slots=custom_n_slots)
+    return json.loads(pipeline.serialize(params)[0])
+
+
+@pytest.mark.parametrize('custom_n_slots, expected', [({}, 256), ({'z': 32}, 32)], ids=['left_out', 'given'])
+def test_custom_input_n_slots_is_an_int_from_serialization_on(custom_n_slots, expected):
+    """Left out, z is on the full ring: in the serialized custom_n_slots and in the trace (the product's n_slots)."""
+    graph = _serialized_with_custom_input(custom_n_slots)
+    assert graph['custom_n_slots'] == {'z': expected}
+    assert graph['pipeline_sections']['hom']['body_output']['n_slots'] == expected
+
+
+@pytest.mark.parametrize('n_slots, message', [(3, 'power of two'), (512, 'larger than the 256 available slots')])
+def test_custom_input_n_slots_is_checked_when_serializing(n_slots, message):
+    with pytest.raises(ValueError, match=message):
+        _serialized_with_custom_input({'z': n_slots})
