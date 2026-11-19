@@ -112,12 +112,10 @@ class HomMuxConv(HomConvBase):
     conv also re-interleaves its output to the C_out channels, in the same level.
     bias: a per-channel bias after the weight, added at every slot of
     its channel.
-    row_gap: the input layout's (MuxLayout). keep_gap: a strided conv keeps the gap
-    its stride opens: the output's channels fill the skipped columns and its rows stay
-    stride times as far apart as the input's, in place of the compact layout. It then
-    needs far fewer rotations, which no longer depend on the output row, and the map
-    keeps its period: the convs after it take its row_gap and keep the gap too.
-    Needs a square stride and C_out = stride * C_in.
+    row_gap: the input layout's (MuxLayout). keep_gap: a strided conv's output keeps the
+    gap its stride opens, its channels in the skipped columns, which takes far fewer
+    rotations; the convs after it take its row_gap. Needs a square stride and
+    C_out = stride * C_in.
     """
 
     OP_TYPE = HomOpType.MuxConv
