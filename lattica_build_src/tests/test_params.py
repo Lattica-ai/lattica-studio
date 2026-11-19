@@ -39,12 +39,13 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
     (2 ** 16, {2 ** 14, 2 ** 13, 2 ** 12}, 3 * 61, True),     # sparse: 64 terms each
     (2 ** 16, {2 ** 14, 2 ** 11}, 3 * 61, False),             # 2**11: 32 diagonals x 16 trace rotations
     (2 ** 16, {2 ** 15}, 2 * 61, False),                      # two special primes: the keys' noise is too large
-    (2 ** 13, {2 ** 12, 2 ** 11}, 3 * 61, False),             # both fit the kernel, but 2**11 has one level fewer
+    (2 ** 13, {2 ** 12, 2 ** 11}, 3 * 61, False),             # few enough terms, but 2**11 has one DFT level fewer
 ], ids=["full", "sparse", "too-sparse", "two-special-primes", "mixed-depths"])
 def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(n, slot_counts, special_bits, lcr):
     """for_slot_counts drops one CtS prime only if the special primes are wide enough for the level-conserving first
-    CtS level's keys, every slot count's split has the chain's number of levels, and every slot count's level (its
-    diagonals times the SubSum trace's rotations) fits the kernel. to_dict carries the choice."""
+    CtS level's keys, every slot count's split has the chain's number of DFT levels, and every slot count's first CtS
+    level has at most LCR_MAX_TERMS terms (its diagonals times the SubSum trace's rotations). to_dict carries the
+    choice."""
     plain = BootstrappingParams.for_slot_counts(True, False, slot_counts)
     boot = BootstrappingParams.for_slot_counts(True, False, slot_counts, n=n, special_bits=special_bits)
     assert boot.lcr_first_cts == lcr and not plain.lcr_first_cts

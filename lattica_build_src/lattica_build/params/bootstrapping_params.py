@@ -56,14 +56,10 @@ BOOT_PARAMS_PER_N_SLOTS = {
 }
 
 
-# The most terms (key products) a level-conserving first CtS level takes. The level runs as one kernel that keeps each
-# term's source indices in 48 KB of shared memory, 256 bytes per term. In a sparse bootstrap the level also computes
-# the SubSum trace, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
+# The most terms the level-conserving first CtS level sums. A term is one diagonal of the first CtS factor, taken once
+# per rotation of the SubSum trace in a sparse bootstrap.
 LCR_MAX_TERMS = 192
-# The level's keys need special primes P' of more than this many bits in all, and the backend gives them the fewest
-# special primes that reach it. The bound comes from the level's key noise, about T N |m| q0 e / P' for T terms of
-# plaintexts m at the CtS scale (up to 2**60). At N = 2**16, q0 = 2**53 and 192 terms it is about 2**-42 with three
-# 61-bit primes, well below the ModDown's rounding, but about 2**19 with two.
+# The level-conserving first CtS level's keys need special primes of more than this many bits in all.
 LCR_MIN_SPECIAL_BITS = 170
 
 
@@ -92,25 +88,34 @@ class BootstrappingParams:
         """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_N_SLOTS entry): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use.
-        The chain gets one CtS prime fewer, and lcr_first_cts is set, when every bootstrap can run its first CtS level
-        level-conserving. That needs the ring dimension n, special primes of more than LCR_MIN_SPECIAL_BITS bits in
-        all (special_bits, which is 0 under BV), and more than one level, since a single level keeps its prime. It
-        also needs, for every slot count:
-        - a split with as many levels as the chain. A bootstrap with fewer levels uses only some of the primes of an
-          StC row, and the level's keys hold whole rows;
-        - a level that fits the kernel (LCR_MAX_TERMS). The first CtS factor combines the last s stages of the split,
-          so it has 2**s diagonals. In a sparse bootstrap the level uses each diagonal once per rotation of the SubSum
-          trace, and there are N / (2 n_slots) of those."""
+
+        A DFT level is one of the matrix factors that CtS and StC are each split into. A regular one consumes one
+        prime.
+
+        When every bootstrap can run its first CtS DFT level level-conserving, which consumes no prime, the chain gets
+        one CtS prime fewer and lcr_first_cts is set. The pipeline has one chain, so one bootstrap that cannot is
+        enough to keep the prime. The conditions are:
+        - the ring dimension n is given, and the special primes have more than LCR_MIN_SPECIAL_BITS bits in all
+          (special_bits, which is 0 under BV);
+        - the chain has at least two DFT levels, so that one CtS prime remains;
+        - every slot count's split has all of the chain's DFT levels. A chain row can hold two StC primes, and a
+          bootstrap with fewer DFT levels can use only one of them. The level-conserving level's keys are generated on
+          whole rows, so they do not match a ciphertext that has part of a row;
+        - every slot count's first CtS level has at most LCR_MAX_TERMS terms. The first CtS factor combines the last s
+          stages of the split, so it has 2**s diagonals. A sparse bootstrap takes each diagonal once per rotation of
+          the SubSum trace, and there are N / (2 n_slots) of those."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
         dft_levels = max(len(split) for split, _, _ in entries)
         cts_scale = max(bits for _, bits, _ in entries)
         params = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
-        splits = [params.dft_split(n_slots) for n_slots in slot_counts]
-        if (n is None or special_bits <= LCR_MIN_SPECIAL_BITS or dft_levels == 1 or not all(
-                len(split) == dft_levels and 2 ** split[-1] * (n // 2 // n_slots) <= LCR_MAX_TERMS
-                for n_slots, split in zip(slot_counts, splits))):
+        if n is None or special_bits <= LCR_MIN_SPECIAL_BITS or dft_levels == 1:
             return params
+        for n_slots in slot_counts:
+            split = params.dft_split(n_slots)
+            trace_rotations = n // (2 * n_slots)
+            if len(split) < dft_levels or 2 ** split[-1] * trace_rotations > LCR_MAX_TERMS:
+                return params
         return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=True)
 
     @staticmethod
