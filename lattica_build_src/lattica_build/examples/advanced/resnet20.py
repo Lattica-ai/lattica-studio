@@ -60,7 +60,8 @@ def stem_layout() -> MuxLayout:
 def _normalization() -> tuple[torch.Tensor, torch.Tensor]:
     """Per-slot scale and shift that turn the client's raw 0-255 pixels into (x / 255 - mean) / std."""
     mean, std = torch.tensor(CIFAR10_MEAN, dtype=torch.float64), torch.tensor(CIFAR10_STD, dtype=torch.float64)
-    scale, shift = torch.zeros(2, STEM_CHANNELS, dtype=torch.float64)   # zero on the padded channels
+    scale = torch.zeros(STEM_CHANNELS, dtype=torch.float64)   # zero on the padded channels
+    shift = torch.zeros(STEM_CHANNELS, dtype=torch.float64)
     scale[:3], shift[:3] = 1 / (255 * std), -mean / std
     return stem_layout().pack_channels(scale), stem_layout().pack_channels(shift)
 
