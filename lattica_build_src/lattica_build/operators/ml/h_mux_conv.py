@@ -117,7 +117,7 @@ class HomMuxConv(HomConvBase):
     stride times as far apart as the input's, in place of the compact layout. It then
     needs far fewer rotations, which no longer depend on the output row, and the map
     keeps its period: the convs after it take its row_gap and keep the gap too.
-    Needs C_out = stride * C_in.
+    Needs a square stride and C_out = stride * C_in.
     """
 
     OP_TYPE = HomOpType.MuxConv
@@ -138,6 +138,8 @@ class HomMuxConv(HomConvBase):
         self.row_gap = row_gap
         self.keep_gap = keep_gap
         c_out, c_in = self.kernel_shape[:2]
+        if keep_gap and self.stride[0] != self.stride[1]:
+            raise ValueError(f"keep_gap needs a square stride, got {self.stride}")
         if keep_gap and c_out != self.stride[1] * c_in:
             raise ValueError(f"keep_gap puts the output's channels in the slots of the pixels a stride skips: "
                              f"C_out must be stride * C_in = {self.stride[1] * c_in}, got {c_out}")

@@ -531,6 +531,8 @@ def test_mux_conv_keep_gap_needs_the_channels_to_grow_by_the_stride():
 
     with pytest.raises(ValueError, match=r"C_out must be stride \* C_in = 8, got 4"):
         HomMuxConv((4, 4, 3, 3), (4, 4), stride=2, padding=1, keep_gap=True)
+    with pytest.raises(ValueError, match=r"keep_gap needs a square stride, got \(2, 1\)"):
+        HomMuxConv((8, 4, 3, 3), (4, 4), stride=(2, 1), padding=1, keep_gap=True)
 
 
 def test_mux_layout_pack_channels():
