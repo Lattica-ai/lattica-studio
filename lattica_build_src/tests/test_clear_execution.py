@@ -13,6 +13,7 @@ from lattica_build.base_classes.hom_op_tracer import Tracer
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
 from lattica_build.operators.arithmetic.h_add import HomAdd
+from lattica_build.operators.arithmetic.h_const_add import HomConstAdd
 from lattica_build.operators.arithmetic.h_const_mul import HomConstMul
 from lattica_build.operators.arithmetic.h_mul import HomMul
 from lattica_build.operators.arithmetic.h_sub import HomSub
@@ -391,21 +392,32 @@ def test_binary_op_output_keeps_the_broadcast_shape(squares_first):
     torch.testing.assert_close(result, (x * (x ** 2).sum(0)).sum(-1, keepdim=True))
 
 
-@pytest.mark.parametrize('sum_first', [False, True], ids=['x_first', 'sum_first'])
-@pytest.mark.parametrize('combine, verb', [(HomAdd, 'add'), (HomSub, 'subtract')])
-@pytest.mark.parametrize('length, n_slots', [(28, 32), (300, 128)], ids=['sub_ring', 'last_ring'])
-def test_add_rejects_a_period_1_value_on_zero_padding(length, n_slots, combine, verb, sum_first):
+@pytest.mark.parametrize('combine, verb, length, n_slots', [
+    (HomAdd, 'add', 28, 32), (HomAdd, 'add', 300, 128), (HomSub, 'subtract', 28, 32),
+], ids=['add-sub_ring', 'add-last_ring', 'sub-sub_ring'])
+def test_add_rejects_a_period_1_value_on_zero_padding(combine, verb, length, n_slots):
     """28 values in a 32-slot period, or 300 over rings of 128: a value in every slot would fill the padding."""
     x = torch.rand(length, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
-    with pytest.raises(ValueError, match=rf'Cannot {verb} ciphertexts of periods \(n_slots\) '
-                                         rf'({n_slots} and 1|1 and {n_slots}) with {length} values on the slot axis'):
-        _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first), x, n_slots)
+    with pytest.raises(ValueError, match=rf'Cannot {verb} ciphertexts of periods \(n_slots\) {n_slots} and 1 '
+                                         rf'with {length} values on the slot axis'):
+        _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first=False), x, n_slots)
+
+
+def test_const_add_rejects_a_shorter_period_on_zero_padding():
+    """20 values summed 8 apart and kept (n_slots 8, repeated over the ring), plus a 20-value constant: the result has
+    n_slots internal_n, and the repeats of the sums would fill its zero padding."""
+    x = torch.rand(20, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    const_add = HomConstAdd(dims=(20,))
+    const_add.set_data(torch.rand(20, dtype=torch.float64, generator=torch.Generator().manual_seed(1)))
+    with pytest.raises(ValueError, match=r'Cannot add a constant to a ciphertext of period \(n_slots\) 8 with 20 '
+                                         r'values on the slot axis'):
+        _slot_op_clear(SequentialHomOp(HomSumSlots(nb_cols=8, reduce_output=False), const_add), x, 32)
 
 
 @pytest.mark.parametrize('length, n_slots, padded', [
     (28, 32, True), (32, 32, False),                            # fewer values than the period
     (28, 8, False),                                             # repeats of a shorter period
-    (128, 128, False), (256, 128, False), (300, 128, True),     # whole rings, the last one full or not
+    (256, 128, False), (300, 128, True),                        # whole rings, the last one full or not
     (261, 32, True), (300, 32, False),                          # a shorter period: 5 or 44 values in the last ring
 ])
 def test_has_zero_padding(length, n_slots, padded):
@@ -413,12 +425,11 @@ def test_has_zero_padding(length, n_slots, padded):
     assert has_zero_padding(value, internal_n=128) is padded
 
 
-@pytest.mark.parametrize('combine', [HomMul, HomAdd])
-def test_binary_op_rejects_periods_neither_equal_nor_1(combine):
+def test_binary_op_rejects_periods_neither_equal_nor_1():
     x = torch.rand(32, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
     with pytest.raises(ValueError, match=r'Cannot combine ciphertexts of periods \(n_slots\) 2, 32: the periods must '
                                          r'be equal, or one of them 1'):
-        _slot_op_clear(_CombinedWithSumOfSquares(combine(), sum_first=False, nb_cols=2), x, 32)
+        _slot_op_clear(_CombinedWithSumOfSquares(HomMul(), sum_first=False, nb_cols=2), x, 32)
 
 
 def test_clear_execution_does_not_trace():

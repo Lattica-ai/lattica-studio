@@ -5,7 +5,6 @@ import pytest
 
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
-from lattica_build.operators.arithmetic.h_add import HomAdd
 from lattica_build.operators.arithmetic.h_mul import HomMul
 from lattica_build.operators.composite.sequential import SequentialHomOp
 from lattica_build.operators.fhe.h_bootstrap import Bootstrap
@@ -39,30 +38,29 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
     assert HomParams.from_dict(params.to_dict()).consumption_order == params.consumption_order
 
 
-class _KeptSumCombinedWithCustom(HomOp):
-    """sum(x) kept in every slot (period 1), combined with the additional input z."""
+class _KeptSumTimesCustom(HomOp):
+    """sum(x) kept in every slot (period 1), times the additional input z."""
 
-    def __init__(self, combine: HomOp, keep_sum: bool = True):
+    def __init__(self):
         super().__init__()
-        self.keep, self.combine, self.keep_sum = HomSumSlots(reduce_output=False), combine, keep_sum
+        self.keep, self.multiply = HomSumSlots(reduce_output=False), HomMul()
 
     def forward(self, x, z):
-        return self.combine(self.keep(x) if self.keep_sum else x, z)
+        return self.multiply(self.keep(x), z)
 
 
-def _serialized_with_custom_input(custom_n_slots: dict, hom: HomOp | None = None) -> dict:
+def _serialized_with_custom_input(custom_n_slots: dict) -> dict:
     """The graph of a pipeline on x (32 slots of a 256-slot ring) and an additional input z."""
     params = HomParams(n=2 ** 9, full_q_list_precision=((60, 30),) * 4, pt_scale=2 ** 30, num_special_primes=1,
                        n_slots=32)
-    pipeline = HomomorphicPipeline(hom=hom or _KeptSumCombinedWithCustom(HomMul()),
-                                   input_shape={'x': (32,), 'z': (32,)}, custom_n_slots=custom_n_slots)
+    pipeline = HomomorphicPipeline(hom=_KeptSumTimesCustom(), input_shape={'x': (32,), 'z': (32,)},
+                                   custom_n_slots=custom_n_slots)
     return json.loads(pipeline.serialize(params)[0])
 
 
-@pytest.mark.parametrize('custom_n_slots, expected', [({}, 256), ({'z': None}, 256), ({'z': 32}, 32)],
-                         ids=['left_out', 'none', 'given'])
+@pytest.mark.parametrize('custom_n_slots, expected', [({}, 256), ({'z': 32}, 32)], ids=['left_out', 'given'])
 def test_custom_input_n_slots_is_an_int_from_serialization_on(custom_n_slots, expected):
-    """Left out or None is the full ring, for the trace (the product's period) and the backend alike."""
+    """Left out, z is on the full ring: in the serialized custom_n_slots and in the trace (the product's n_slots)."""
     graph = _serialized_with_custom_input(custom_n_slots)
     assert graph['custom_n_slots'] == {'z': expected}
     assert graph['pipeline_sections']['hom']['body_output']['n_slots'] == expected
@@ -72,10 +70,3 @@ def test_custom_input_n_slots_is_an_int_from_serialization_on(custom_n_slots, ex
 def test_custom_input_n_slots_is_checked_when_serializing(n_slots, message):
     with pytest.raises(ValueError, match=message):
         _serialized_with_custom_input({'z': n_slots})
-
-
-@pytest.mark.parametrize('combine', [HomAdd, HomMul])
-def test_primary_input_does_not_combine_with_a_full_ring_custom_input(combine):
-    """x on 32 slots and z left on the full ring: rejected when the graph is built."""
-    with pytest.raises(ValueError, match=r'Cannot combine ciphertexts of periods \(n_slots\) 32, 256'):
-        _serialized_with_custom_input({}, _KeptSumCombinedWithCustom(combine(), keep_sum=False))

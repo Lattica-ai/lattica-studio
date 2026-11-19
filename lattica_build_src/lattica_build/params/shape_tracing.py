@@ -44,9 +44,12 @@ def to_neg_axis(axis: int, shape: TensorShape) -> int:
     return axis - rank
 
 def infer_combined_n_slots(n_slots_1: int | None, n_slots_2: int | None) -> int | None:
-    """The period (n_slots) of two ciphertexts combined slot by slot (Add, Mul): equal periods give theirs, a period
-    of 1 (a value in every slot) with another gives the other, and other pairs raise (the backend takes neither).
-    A period of None (not traced) gives the other."""
+    """Compute the n_slots of the result of combining two ciphertexts of n_slots_1 and n_slots_2 slots:
+    - if one of them is None, return the other;
+    - if they are equal, return that value;
+    - if one of them is 1, return the other;
+    - otherwise, raise ValueError (this pair is not supported).
+    """
     if n_slots_1 is None or n_slots_2 is None:
         return n_slots_2 if n_slots_1 is None else n_slots_1
     if n_slots_1 != n_slots_2 and 1 not in (n_slots_1, n_slots_2):
@@ -63,6 +66,12 @@ def has_zero_padding(value: HomValue, internal_n: int | None) -> bool:
     if internal_n is not None:
         length = length % internal_n or internal_n
     return length < value.n_slots
+
+
+def fills_zero_padding(input: HomValue, output: HomValue, internal_n: int | None) -> bool:
+    """Check whether adding `input` fills the zero padding of `output`: `input` has a smaller n_slots than `output`,
+    so its repeats land in the slots that `output` keeps at zero."""
+    return has_zero_padding(output, internal_n) and input.n_slots is not None and input.n_slots < output.n_slots
 
 
 def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape | None = None) -> HomValue:

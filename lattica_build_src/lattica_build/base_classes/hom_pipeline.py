@@ -177,7 +177,8 @@ class HomomorphicPipeline:
         self.client_preprocessing_data = binary_data
 
     def _resolved_custom_n_slots(self, hom_params: HomParams) -> Dict[str, int]:
-        """The n_slots of every additional encrypted input, as an int: the trace and the backend take it from here."""
+        """Resolve the n_slots of every additional encrypted input to an int: its value in custom_n_slots, or the full
+        ring when it is left out or None. The trace and the serialized custom_n_slots both take it from here."""
         return {name: resolve_n_slots(self.custom_n_slots.get(name), hom_params.internal_n)
                 for name in self.input_shape if name != self.primary_input_name}
 

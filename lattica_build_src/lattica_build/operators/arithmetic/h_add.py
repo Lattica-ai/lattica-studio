@@ -3,7 +3,7 @@
 from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.params.level_and_scale_tracing import infer_adjust_levels_and_scale
-from lattica_build.params.shape_tracing import has_zero_padding, infer_broadcast_output_shape
+from lattica_build.params.shape_tracing import fills_zero_padding, infer_broadcast_output_shape
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 class HomAdd(HomOp):
@@ -34,10 +34,10 @@ class HomAdd(HomOp):
     ) -> HomValue:
         """Infer elementwise broadcast shape for both inputs.
 
-        A period-1 input added to a zero-padded one raises: it would fill the padding, which the slot operators
-        read. A product keeps the padding zero, so HomMul takes it."""
+        Raises when an input has a smaller n_slots than the output and the output is zero-padded: the input's repeats
+        would fill the padding, which the slot operators read."""
         output = infer_broadcast_output_shape(input_1, input_2)
-        if input_1.n_slots != input_2.n_slots and has_zero_padding(output, internal_n):
+        if any(fills_zero_padding(input, output, internal_n) for input in (input_1, input_2)):
             length = output.tensor_shape[output.n_axis]
             raise ValueError(f"Cannot {'subtract' if self.is_sub else 'add'} ciphertexts of periods (n_slots) "
                              f"{input_1.n_slots} and {input_2.n_slots} with {length} values on the slot axis: "
