@@ -27,8 +27,8 @@ from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
 from lattica_build.operators.slots.h_conj import HomConj
-from lattica_build.operators.slots.h_real_imag import HomCombineRealImag, HomSplitRealImag
 from lattica_build.operators.slots.h_expand import HomExpand
+from lattica_build.operators.slots.h_real_imag import HomCombineRealImag, HomSplitRealImag
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_rotate_sum_elementwise import HomRotateSumElementwise
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
@@ -543,8 +543,6 @@ def test_mux_layout_packs_each_channel_at_its_slot():
     for c, i, j in itertools.product(range(4), range(3), range(5)):
         assert vec[(i * 8 + j) * 4 + c] == x[c, i, j]
     assert int((vec != 0).sum()) == x.numel()
-
-
 
 
 def test_real_imag_clear_packs_two_values_and_takes_them_apart():
