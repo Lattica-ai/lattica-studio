@@ -43,7 +43,6 @@ class HomCombineRealImag(HomOp):
         return input.make_copy(tensor_shape=tuple(shape))
 
     def forward_clear(self, input):
-        # the trace checked that it is not the slot axis
         axis = _paired_axis(input.shape)
         if axis is None:
             raise ValueError(f"HomCombineRealImag takes an axis with more than one entry; got {tuple(input.shape)}")
@@ -57,8 +56,6 @@ class HomCombineRealImag(HomOp):
 class HomSplitRealImag(HomOp):
     """A complex value as twice its real and imaginary parts, stacked on a new first axis:
     z -> [2 Re(z), 2 Im(z)], which are z + conj(z) and -i * (z - conj(z)).
-
-    One key switch and no level. Halving would take a level, so the factor 2 is left to a constant next to it.
     """
 
     OP_TYPE = HomOpType.SplitRealImag
