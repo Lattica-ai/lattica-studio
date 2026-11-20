@@ -26,12 +26,13 @@ class HomRunningSum(SlotOp):
         rows_budget: Optional allowed modulus rows for modswitch inference.
 
     The sums run within each period, so the output keeps the input's shape and
-    n_slots. The input's slot axis must have no zero padding, which the sums
-    would add: it holds n_slots values, or whole rings when n_slots is
-    internal_n.
+    n_slots. The input's slot axis holds at most n_slots values, zero-padded to
+    n_slots, or whole rings when n_slots is internal_n. The zero padding stays
+    zero in the output.
     """
 
     OP_TYPE = HomOpType.RunningSum
+    takes_padding = True
 
     def __init__(
         self,

@@ -38,8 +38,9 @@ run outside a traced pipeline (called on its own on tensors) raises
 
 The slot operators take no zero padding: the slot axis holds `n_slots`
 values, or whole rings when `n_slots` is `internal_n`, or tracing raises
-`ValueError`. `HomSumSlots` and `HomExpand` are the exceptions: the padding
-adds nothing to the sums, and feeds no output that `HomExpand` keeps.
+`ValueError`. `HomSumSlots`, `HomExpand` and `HomRunningSum` are the
+exceptions: the padding adds nothing to the sums of `HomSumSlots`, feeds no
+output that `HomExpand` keeps, and stays zero through `HomRunningSum`.
 
 Per operator:
 
@@ -58,7 +59,9 @@ Per operator:
   blocks are the rings of the slot axis, or the entries of
   `blocks_axis_external`. `k` must be a power of 2 dividing `n_slots`. The ring
   repeats the period, so every repeat gets the same sums and the output keeps
-  the input's shape and `n_slots`.
+  the input's shape and `n_slots`. The slot axis holds at most `n_slots`
+  values, or whole rings when `n_slots` is `internal_n`, or tracing raises
+  `ValueError`; its zero padding stays zero in the output.
 - `HomSumSlots` adds, in each period of `n_slots` slots, the `n_slots / nb_cols`
   slots `nb_cols` apart: slot `j` gets `x[j] + x[j + nb_cols] + ...`, and the
   output's period is `nb_cols`. `nb_cols` (by default 1, the sum of the period)
