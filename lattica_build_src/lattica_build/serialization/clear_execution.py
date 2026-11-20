@@ -37,6 +37,7 @@ from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
 from lattica_build.operators.slots.h_expand import HomExpand
 from lattica_build.operators.slots.h_conj import HomConj
+from lattica_build.operators.slots.h_real_imag import HomCombineRealImag, HomSplitRealImag
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_rotate_sum_elementwise import HomRotateSumElementwise
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
@@ -48,6 +49,7 @@ _BUILD_LEAVES = {cls.OP_TYPE: cls for cls in (
     Bootstrap, HomModSwitch, HomRingSwitch, HomConv, HomMatMul, HomPolyEvalBase,
     HomReshape, HomSlice, HomSqueeze, HomUnsqueeze, HomExpand, HomRotateSum,
     HomRunningSum, HomSumSlots, HomConj, HomMuxConv, HomRotateSumElementwise,
+    HomCombineRealImag, HomSplitRealImag,
 )}
 
 
