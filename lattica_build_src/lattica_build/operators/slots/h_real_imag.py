@@ -8,22 +8,50 @@ from lattica_build.params.shape_tracing import infer_insert_axis_output_shape, i
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 
+def _paired_axis(shape) -> int | None:
+    """The first axis with more than one entry."""
+    return next((axis for axis, size in enumerate(shape) if size > 1), None)
+
+
 class HomCombineRealImag(HomOp):
-    """Two real values, stacked on the first axis, as the real and imaginary parts of one: [x, y] -> x + i * y.
+    """The first axis with more than one entry, which must not be the slot axis, in two halves, as the real and
+    imaginary parts of one: its first ceil(m/2) entries + i * the other floor(m/2), an odd m leaving the last entry of
+    the first half real. The axis keeps ceil(m/2) entries.
+
+    Args:
+        squeeze: drop the axis when it keeps one entry: [x, y] -> x + i * y, the inverse of `HomSplitRealImag`.
 
     Exact, with no key switch and no level.
     """
 
     OP_TYPE = HomOpType.CombineRealImag
 
+    def __init__(self, squeeze: bool = True) -> None:
+        super().__init__()
+        self.squeeze = squeeze
+
     def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
-        if input.tensor_shape[0] != 2 or input.n_axis == 0:
-            raise ValueError(f"HomCombineRealImag expects [real, imaginary] on the first axis, before the slots; "
+        axis = _paired_axis(input.tensor_shape)
+        if axis is None or axis == input.n_axis:
+            raise ValueError(f"HomCombineRealImag takes an axis with more than one entry ahead of the slot values; "
                              f"got {tuple(input.tensor_shape)} with slots on axis {input.n_axis}")
-        return infer_remove_axis_output_shape(input, 0)
+        n_first = (input.tensor_shape[axis] + 1) // 2
+        if self.squeeze and n_first == 1:
+            return infer_remove_axis_output_shape(input, axis)
+        shape = list(input.tensor_shape)
+        shape[axis] = n_first
+        return input.make_copy(tensor_shape=tuple(shape))
 
     def forward_clear(self, input):
-        return input[0] + 1j * input[1]
+        # the trace checked that it is not the slot axis
+        axis = _paired_axis(input.shape)
+        if axis is None:
+            raise ValueError(f"HomCombineRealImag takes an axis with more than one entry; got {tuple(input.shape)}")
+        n_entries = input.shape[axis]
+        n_first = (n_entries + 1) // 2
+        z = input.narrow(axis, 0, n_first) + 0j
+        z.narrow(axis, 0, n_entries - n_first).add_(1j * input.narrow(axis, n_first, n_entries - n_first))
+        return z.squeeze(axis) if self.squeeze and n_first == 1 else z
 
 
 class HomSplitRealImag(HomOp):

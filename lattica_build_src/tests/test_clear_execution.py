@@ -562,6 +562,15 @@ def test_real_imag_clear_packs_two_values_and_takes_them_apart():
     z = HomCombineRealImag()(torch.stack((x, y)))
     assert torch.equal(z, torch.complex(x, y))
     assert torch.equal(HomSplitRealImag()(z), 2 * torch.stack((x, y)))
+    assert torch.equal(HomCombineRealImag(squeeze=False)(torch.stack((x, y))), z[None])
+    # the first axis with more than one entry: a leading 1 stays
+    assert torch.equal(HomCombineRealImag()(torch.stack((x, y))[None]), z[None])
+    with pytest.raises(ValueError, match="ahead of the slot values"):
+        HomCombineRealImag().infer_output_shape(HomValue(tensor_shape=(1, 8), n_axis=1))
+    # a slot axis of one value: an axis after it pairs
+    assert HomCombineRealImag().infer_output_shape(HomValue(tensor_shape=(1, 4), n_axis=0)).tensor_shape == (1, 2)
+    # an odd first axis: its halves pair up, the last entry of the first half stays real
+    assert torch.equal(HomCombineRealImag()(torch.stack((x, y, -x))), torch.stack((torch.complex(x, -x), y + 0j)))
 
 
 @pytest.mark.parametrize('stride', [1, 2])
