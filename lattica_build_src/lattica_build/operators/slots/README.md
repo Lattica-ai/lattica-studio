@@ -36,11 +36,10 @@ traces it with `hom_params`) gives each slot operator its input's traced value
 run outside a traced pipeline (called on its own on tensors) raises
 `RuntimeError`: without a trace, its slot axis and ring size are unknown.
 
-The slot operators take a zero-padded slot axis: the padding adds nothing to
-the sums of `HomSumSlots`, feeds no output that `HomExpand` keeps, and stays
-zero through `HomRunningSum`. `HomRotateSum` and `HomRotateSumElementwise` are
-the exceptions: their slot axis holds `n_slots` values, or whole rings when
-`n_slots` is `internal_n`, or tracing raises `ValueError`.
+The slot operators `HomSumSlots`, `HomExpand`, `HomRunningSum`, take a
+zero-padded slot axis. `HomRotateSum` and `HomRotateSumElementwise` are the
+exceptions: they don't allow padding, their slot axis holds `n_slots` values,
+or whole rings when `n_slots` is `internal_n`.
 
 Per operator:
 

@@ -24,18 +24,13 @@ class SlotOp(HomOp):
     # as it sets `data`. Clear execution needs them: without a trace, the slot axis and the ring are unknown.
     input_value: HomValue | None = None
     internal_n: int | None = None
-    # Whether the input's slot axis may hold fewer than n_slots values, zero-padded to n_slots
-    takes_padding: bool = False
 
     def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
-        """The input's slot axis holds n_slots values (at most n_slots with `takes_padding`), or whole rings when
-        n_slots is internal_n. Then the operator's own inference, `infer_slot_output_shape`."""
+        """The input's slot axis takes no zero padding: it holds n_slots values, or whole rings when n_slots is
+        internal_n. Then the operator's own inference, `infer_slot_output_shape`."""
         length = input.tensor_shape[input.n_axis]
         whole_rings = input.n_slots == internal_n and length % internal_n == 0
-        if self.takes_padding and length > input.n_slots and not whole_rings:
-            raise ValueError(f"{type(self).__name__} takes a slot axis of at most n_slots={input.n_slots} values, "
-                             f"or of whole rings when n_slots is internal_n={internal_n}: got {length}")
-        if not self.takes_padding and length != input.n_slots and not whole_rings:
+        if length != input.n_slots and not whole_rings:
             raise ValueError(f"{type(self).__name__} takes no padded input: a slot axis of n_slots={input.n_slots} "
                              f"values, or of whole rings when n_slots is internal_n={internal_n}: got {length}")
         return self.infer_slot_output_shape(input, internal_n, **kwargs)
