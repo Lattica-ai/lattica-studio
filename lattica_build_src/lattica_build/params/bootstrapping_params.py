@@ -83,7 +83,7 @@ class BootstrappingParams:
         return BOOT_CONFIGURATION['eval_mod_scale']
     
     @classmethod
-    def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int | None = None,
+    def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int,
                         special_bits: int = 0) -> "BootstrappingParams":
         """The chain for bootstraps of these slot counts (each needs a BOOT_PARAMS_PER_N_SLOTS entry): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
@@ -95,21 +95,18 @@ class BootstrappingParams:
         When every bootstrap can run its first CtS DFT level level-conserving, which consumes no prime, the chain gets
         one CtS prime fewer and lcr_first_cts is set. The pipeline has one chain, so one bootstrap that cannot is
         enough to keep the prime. The conditions are:
-        - the ring dimension n is given, and the special primes have more than LCR_MIN_SPECIAL_BITS bits in all
-          (special_bits, which is 0 under BV);
+        - the special primes have more than LCR_MIN_SPECIAL_BITS bits in all (special_bits, which is 0 under BV);
         - the chain has at least two DFT levels, so that one CtS prime remains;
-        - every slot count's split has all of the chain's DFT levels. A chain row can hold two StC primes, and a
-          bootstrap with fewer DFT levels can use only one of them. The level-conserving level's keys are generated on
-          whole rows, so they do not match a ciphertext that has part of a row;
-        - every slot count's first CtS level has at most LCR_MAX_TERMS terms. The first CtS factor combines the last s
-          stages of the split, so it has 2**s diagonals. A sparse bootstrap takes each diagonal once per rotation of
-          the SubSum trace, and there are N / (2 n_slots) of those."""
+        - every slot count's split has all of the chain's DFT levels: a bootstrap with fewer uses only part of a chain
+          row, and the level-conserving level's keys are generated on whole rows;
+        - every slot count's first CtS level has at most LCR_MAX_TERMS terms: 2**s diagonals for a first CtS factor of
+          s stages, times the n / (2 n_slots) rotations of the SubSum trace, where n is the ring dimension."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots) for n_slots in slot_counts]
         dft_levels = max(len(split) for split, _, _ in entries)
         cts_scale = max(bits for _, bits, _ in entries)
         params = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale)
-        if n is None or special_bits <= LCR_MIN_SPECIAL_BITS or dft_levels == 1:
+        if special_bits <= LCR_MIN_SPECIAL_BITS or dft_levels == 1:
             return params
         for n_slots in slot_counts:
             split = params.dft_split(n_slots)
