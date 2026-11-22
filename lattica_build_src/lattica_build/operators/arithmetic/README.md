@@ -15,6 +15,8 @@ This folder contains primitive arithmetic operators over `HomValue` tensors.
 ## Shape and scale notes
 
 - Add/mul/const ops use tensor broadcasting rules from shape tracing.
+- `HomAdd` and `HomMul` of two ciphertexts take equal slot periods (`n_slots`), or a period of 1 (a value in every
+  slot) with any other, which the output takes; other pairs raise `ValueError`. Adding a period-1 input to a zero-padded value also raises: it would fill the padding.
 - `HomMul` optionally reduces one axis after multiplication (`axis_sum`).
 - `HomAxisSum` is for tensor-axis reduction only.
 - For slot-axis reduction, use `HomSumSlots` (see [`slots/README.md`](../slots/README.md)).

@@ -65,7 +65,8 @@ Per operator:
   must be a power of 2 dividing `n_slots`. With `reduce_output` (the default)
   the output's slot axis holds the `nb_cols` sums; without it, it keeps the
   input's length and reads the sums repeated at `nb_cols`, which a slot axis
-  over several rings needs.
+  over several rings needs. A slot axis of more than `nb_cols` values must
+  hold a multiple of `nb_cols`, so its values end on a whole period.
 - `HomRotateSum` rotates every ring and sums or stacks the requested views.
   Sum mode always includes the original input once; stack mode includes it
   only when `add_identity_rotation` is set.
