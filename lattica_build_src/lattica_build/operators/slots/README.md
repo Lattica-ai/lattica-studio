@@ -7,6 +7,8 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 | Operator | Operational intent                                                                                                                                             |
 | --- |----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `HomConj` | Conjugates every slot with one key switch. Adding the input back (`x + HomConj()(x)`) gives `2 * Re(x)`, e.g. to get a real result from complex-packed inputs. |
+| `HomCombineRealImag` | Packs the two halves of an axis into one, as the real and imaginary parts: `[x, y] -> x + i * y`. The axis is the first with more than one entry, and must not be the slot axis. Of `m` entries it keeps `ceil(m/2)`, or goes when that is 1; with an odd `m` the last one of the first half stays real. Linear ops with real constants (a convolution, a rotation sum) then run on both halves for the price of one. |
+| `HomSplitRealImag` | Takes a complex value apart: `z -> [2 * Re(z), 2 * Im(z)]` on a new first axis. |
 | `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces one ciphertext output per value of the pattern (padding excluded), each carrying the same value across all slots. |
 | `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration.                            |
 | `HomRotateSumElementwise` | Rotates each ciphertext on `elements_axis` by its corresponding offset along the traced slot axis and sums the elements axis. No implicit identity is added. |
@@ -93,6 +95,8 @@ binary-style schedules, this is typically completed in `log2(k)` stages.
 - `HomSumSlots` is rotation/addition-only in this model and does not consume
   levels.
 - `HomConj` is a single key switch and does not consume levels.
+- `HomCombineRealImag` is exact and free: no key switch, no level. `HomSplitRealImag` does not
+  consume levels; its outputs are twice the parts, at the input's scale.
 - `HomRotateSumElementwise` does not consume levels or change scale. Its
   rotations list has one entry per input element; an explicit identity may
   appear first, including the identity-only case. The slot axis must hold
