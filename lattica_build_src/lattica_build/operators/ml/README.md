@@ -29,6 +29,9 @@ This folder contains model-oriented operators used to build encrypted inference 
 - `HomBatchNorm` stores affine constants as `(-1, 1, 1)` for channel-first broadcasting.
 - `HomMuxConv` takes the slots on the last axis, packed by its `MuxLayout`. Axes before them are a batch of maps,
   one ciphertext each, all convolved with the same weights; the output is `(*batch, output slots)`.
+- `keep_gap=True` (square stride, `C_out = stride * C_in`): a strided `HomMuxConv` keeps the gap its stride opens
+  instead of compacting the output. Far fewer rotations, but the map keeps the input's period, which slows the
+  `n_slots`-dependent ops after it.
 
 ## Parameterization notes
 
