@@ -14,21 +14,15 @@ def _paired_axis(shape) -> int | None:
 
 
 class HomCombineRealImag(HomOp):
-    """The first axis with more than one entry, which must not be the slot axis, in two halves, as the real and
-    imaginary parts of one: its first ceil(m/2) entries + i * the other floor(m/2), an odd m leaving the last entry of
-    the first half real. The axis keeps ceil(m/2) entries.
-
-    Args:
-        squeeze: drop the axis when it keeps one entry: [x, y] -> x + i * y, the inverse of `HomSplitRealImag`.
+    """Halves the first axis with more than one entry, which must not be the slot axis: its first ceil(m/2) entries
+    take the other floor(m/2) as imaginary parts, and with an odd m the last entry of the first half stays real. The
+    axis keeps ceil(m/2) entries, or goes when that is 1: [x, y] -> x + i * y, the inverse of `HomSplitRealImag` up
+    to a factor of 2.
 
     Exact, with no key switch and no level.
     """
 
     OP_TYPE = HomOpType.CombineRealImag
-
-    def __init__(self, squeeze: bool = True) -> None:
-        super().__init__()
-        self.squeeze = squeeze
 
     def infer_output_shape(self, input: HomValue, **kwargs) -> HomValue:
         axis = _paired_axis(input.tensor_shape)
@@ -36,7 +30,7 @@ class HomCombineRealImag(HomOp):
             raise ValueError(f"HomCombineRealImag takes an axis with more than one entry ahead of the slot values; "
                              f"got {tuple(input.tensor_shape)} with slots on axis {input.n_axis}")
         n_first = (input.tensor_shape[axis] + 1) // 2
-        if self.squeeze and n_first == 1:
+        if n_first == 1:
             return infer_remove_axis_output_shape(input, axis)
         shape = list(input.tensor_shape)
         shape[axis] = n_first
@@ -50,7 +44,7 @@ class HomCombineRealImag(HomOp):
         n_first = (n_entries + 1) // 2
         z = input.narrow(axis, 0, n_first) + 0j
         z.narrow(axis, 0, n_entries - n_first).add_(1j * input.narrow(axis, n_first, n_entries - n_first))
-        return z.squeeze(axis) if self.squeeze and n_first == 1 else z
+        return z.squeeze(axis) if n_first == 1 else z
 
 
 class HomSplitRealImag(HomOp):
