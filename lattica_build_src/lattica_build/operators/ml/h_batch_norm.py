@@ -33,7 +33,7 @@ class HomBatchNorm(SequentialHomOp):
         gamma: Union[torch.Tensor, None],
         beta: Union[torch.Tensor, None],
         eps: float = 1e-5,
-    ) -> None:
+    ) -> "HomBatchNorm":
         """Set BatchNorm statistics and derive affine constants.
 
         `gamma`/`beta` default to ones/zeros when omitted. Parameters are stored
@@ -59,3 +59,4 @@ class HomBatchNorm(SequentialHomOp):
         bias = beta - mean * scale
         self.h_scale.set_data(scale.view(-1, 1, 1))
         self.h_bias.set_data(bias.view(-1, 1, 1))
+        return self

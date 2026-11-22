@@ -482,6 +482,69 @@ def test_resnet_composite_example_matches_pretrained_model():
     )
 
 
+@pytest.mark.parametrize("batch", [(), (2,), (4, 2)])
+def test_mux_conv_output_shape_keeps_a_batch(batch):
+    """Axes before the slots are a batch of maps, one ciphertext each: they pass through."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1)
+    in_slots, out_slots = MuxLayout(4, 4, 4).period, MuxLayout(8, *conv.output_hw).period
+    output = conv.infer_output_shape(HomValue(tensor_shape=(*batch, in_slots), n_axis=-1), internal_n=4096)
+    assert tuple(output.tensor_shape) == (*batch, out_slots)
+    assert output.n_slots == out_slots
+
+
+def test_mux_conv_rejects_slots_before_a_batch():
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1)
+    value = HomValue(tensor_shape=(MuxLayout(4, 4, 4).period, 2), n_axis=0)
+    with pytest.raises(ValueError, match=r"mux conv needs the slots on the last axis; got \(64, 2\) with slots on axis 0"):
+        conv.infer_output_shape(value, internal_n=4096)
+
+
+def test_mux_conv_clear_keeps_the_gap():
+    """With keep_gap a strided conv keeps the gap its stride opens: the output's rows are twice as far apart,
+    the rows between empty, at the input's period; a conv after it takes that layout."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    generator = torch.Generator().manual_seed(0)
+    x = torch.rand(4, 4, 4, generator=generator, dtype=torch.float64)
+    weight1 = torch.rand(8, 4, 3, 3, generator=generator, dtype=torch.float64) - 0.5
+    weight2 = torch.rand(8, 8, 3, 3, generator=generator, dtype=torch.float64) - 0.5
+    strided = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1, keep_gap=True).set_data(weight1)
+    after = HomMuxConv((8, 8, 3, 3), (2, 2), padding=1, row_gap=2, keep_gap=True).set_data(weight2)
+    layout, spread = MuxLayout(4, 4, 4), MuxLayout(8, 2, 2, row_gap=2)
+    assert spread.period == layout.period == 64
+    assert strided.infer_output_shape(HomValue(tensor_shape=(64,), n_axis=-1), internal_n=4096).n_slots == 64
+
+    y = strided(layout.pack(x))
+    expected = torch.nn.functional.conv2d(x[None], weight1, stride=2, padding=1)
+    torch.testing.assert_close(spread.unpack(y), expected[0])
+    assert torch.count_nonzero(y) == expected.numel()
+    torch.testing.assert_close(spread.unpack(after(y)), torch.nn.functional.conv2d(expected, weight2, padding=1)[0])
+
+
+def test_mux_conv_keep_gap_needs_the_channels_to_grow_by_the_stride():
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv
+
+    with pytest.raises(ValueError, match=r"C_out must be stride \* C_in = 8, got 4"):
+        HomMuxConv((4, 4, 3, 3), (4, 4), stride=2, padding=1, keep_gap=True)
+    with pytest.raises(ValueError, match=r"keep_gap needs a square stride, got \(2, 1\)"):
+        HomMuxConv((8, 4, 3, 3), (4, 4), stride=(2, 1), padding=1, keep_gap=True)
+
+
+def test_mux_layout_pack_channels():
+    """A per-channel vector lands at every pixel of its channel; the slots outside the map stay zero."""
+    from lattica_build.operators.ml.h_mux_conv import MuxLayout
+
+    layout = MuxLayout(3, 2, 3, 64)
+    values = torch.tensor([2., 3., 5.], dtype=torch.float64)
+    slots = layout.pack_channels(values)
+    torch.testing.assert_close(layout.unpack(slots), values[:, None, None].expand(3, 2, 3))
+    assert slots.sum() == values.sum() * 2 * 3
+
+
 def test_mux_layout_packs_each_channel_at_its_slot():
     """Sides that are not powers of 2: the width pads to 8."""
     from lattica_build.operators.ml.h_mux_conv import MuxLayout
