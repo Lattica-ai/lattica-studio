@@ -28,6 +28,7 @@ from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
 from lattica_build.operators.slots.h_conj import HomConj
 from lattica_build.operators.slots.h_expand import HomExpand
+from lattica_build.operators.slots.h_real_imag import HomCombineRealImag, HomSplitRealImag
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_rotate_sum_elementwise import HomRotateSumElementwise
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
@@ -562,3 +563,33 @@ def test_mux_layout_packs_each_channel_at_its_slot():
         assert vec[(i * 8 + j) * 4 + c] == x[c, i, j]
     assert int((vec != 0).sum()) == x.numel()
 
+
+def test_real_imag_clear_packs_two_values_and_takes_them_apart():
+    x, y = torch.arange(8, dtype=torch.float64), torch.arange(8, dtype=torch.float64) / -4
+    z = HomCombineRealImag()(torch.stack((x, y)))
+    assert torch.equal(z, torch.complex(x, y))
+    assert torch.equal(HomSplitRealImag()(z), 2 * torch.stack((x, y)))
+    # the first axis with more than one entry: a leading 1 stays
+    assert torch.equal(HomCombineRealImag()(torch.stack((x, y))[None]), z[None])
+    with pytest.raises(ValueError, match="ahead of the slot values"):
+        HomCombineRealImag().infer_output_shape(HomValue(tensor_shape=(1, 8), n_axis=1))
+    # a slot axis of one value: an axis after it pairs
+    assert HomCombineRealImag().infer_output_shape(HomValue(tensor_shape=(1, 4), n_axis=0)).tensor_shape == (1, 2)
+    # an odd first axis: its halves pair up, the last entry of the first half stays real
+    assert torch.equal(HomCombineRealImag()(torch.stack((x, y, -x))), torch.stack((torch.complex(x, -x), y + 0j)))
+
+
+@pytest.mark.parametrize('stride', [1, 2])
+def test_mux_conv_clear_convolves_both_halves_of_complex_slots(stride):
+    """The weights are real, so two maps packed as the real and imaginary parts each get torch's conv2d."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    generator = torch.Generator().manual_seed(0)
+    maps = torch.rand(2, 4, 4, 4, generator=generator, dtype=torch.float64)
+    weight = torch.rand(8, 4, 3, 3, generator=generator, dtype=torch.float64) - 0.5
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=stride, padding=1).set_data(weight)
+    layout, out_layout = MuxLayout(4, 4, 4), MuxLayout(8, 4 // stride, 4 // stride)
+    packed = HomCombineRealImag()(torch.stack([layout.pack(image) for image in maps]))
+    halves = HomSplitRealImag()(conv(packed))
+    expected = torch.nn.functional.conv2d(maps, weight, stride=stride, padding=1)
+    torch.testing.assert_close(out_layout.unpack(halves), 2 * expected)
