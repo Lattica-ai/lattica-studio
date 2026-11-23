@@ -171,21 +171,21 @@ class HomConv(HomConvBase):
             op_scale_up=None,
         )
 
-    def set_data(self, *data: torch.Tensor, **kwargs) -> None:
+    def set_data(self, *data: torch.Tensor, **kwargs) -> "HomConv":
         """Set convolution weight (and optional bias) tensors with validation."""
         if self.bias:
             assert len(data) == 2, "Conv define with bias=True, but data is missing"
             weight, bias = data
             assert bias.ndim == 1, "bias should be 1D"
             assert weight.shape[0] == len(bias), "bias should be of size C_out"
-            super().set_data(weight, bias)
+            return super().set_data(weight, bias)
         else:
             weight = data[0]
             assert weight.shape == self.kernel_shape, (
                 "Conv weight should be of shape [Cout, Cin // groups, H, W], "
                 f"got {tuple(weight.shape)}, expected {self.kernel_shape}"
             )
-            super().set_data(weight)
+            return super().set_data(weight)
 
     def _resolve_image_hw(self, input):
         if input.ndim != 2:
@@ -284,7 +284,7 @@ class HomConvBnFused(HomConv):
         eps: float = 1e-5,
         delta: float = 1.0,
         **kwargs,
-    ) -> None:
+    ) -> "HomConvBnFused":
         """Fuse Conv+BN tensors and store equivalent convolution parameters.
 
         Args:
@@ -297,4 +297,4 @@ class HomConvBnFused(HomConv):
             eps: BatchNorm epsilon for numerical stability.
             delta: Extra multiplicative factor applied after fusion.
         """
-        super().set_data(*self._fold_batch_norm(weight, bias, mean, var, gamma, beta, eps, delta))
+        return super().set_data(*self._fold_batch_norm(weight, bias, mean, var, gamma, beta, eps, delta))

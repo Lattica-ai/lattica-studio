@@ -59,12 +59,11 @@ def stem_layout() -> MuxLayout:
 
 def _normalization() -> tuple[torch.Tensor, torch.Tensor]:
     """Per-slot scale and shift that turn the client's raw 0-255 pixels into (x / 255 - mean) / std."""
-    scale = torch.zeros(STEM_LAYOUT, dtype=torch.float64)
-    shift = torch.zeros(STEM_LAYOUT, dtype=torch.float64)
-    for channel, (mean, std) in enumerate(zip(CIFAR10_MEAN, CIFAR10_STD)):
-        scale[channel] = 1 / (255 * std)
-        shift[channel] = -mean / std
-    return stem_layout().pack(scale), stem_layout().pack(shift)
+    mean, std = torch.tensor(CIFAR10_MEAN, dtype=torch.float64), torch.tensor(CIFAR10_STD, dtype=torch.float64)
+    scale = torch.zeros(STEM_CHANNELS, dtype=torch.float64)   # zero on the padded channels
+    shift = torch.zeros(STEM_CHANNELS, dtype=torch.float64)
+    scale[:3], shift[:3] = 1 / (255 * std), -mean / std
+    return stem_layout().pack_channels(scale), stem_layout().pack_channels(shift)
 
 
 class _ReLU(HomOp):
@@ -88,12 +87,10 @@ def _conv_bn(conv, bn, layout, delta, *, weight=None):
     """A mux convolution with its batch norm and the next ReLU's 1/delta folded in."""
     _, height, width = layout
     weight = conv.weight if weight is None else weight
-    op = HomMuxConvBnFused(
+    return HomMuxConvBnFused(
         kernel_shape=tuple(weight.shape), image_hw=(height, width),
         stride=conv.stride, padding=conv.padding, dilation=conv.dilation,
-    )
-    op.set_data(weight, None, bn.running_mean, bn.running_var, bn.weight, bn.bias, bn.eps, delta)
-    return op
+    ).set_data(weight, None, bn.running_mean, bn.running_var, bn.weight, bn.bias, bn.eps, delta)
 
 
 # A bootstrap sits right before each ReLU: the ReLU takes 6 of its 7 levels and the
@@ -171,11 +168,10 @@ class _MuxHead(HomOp):
         # the last ReLU leaves one level, for the FC
         # one sum per channel, over its spatial positions
         self.avgpool = HomSumSlots(nb_cols=channels)
-        self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0),
-                             bias=True)
         # SumSlots supplies a sum; fold the averaging factor into the FC weights.
         fc_weights = model.fc.weight.reshape(10, channels, 1, 1)
-        self.fc.set_data(weight=fc_weights / spatial_positions, bias=model.fc.bias)
+        self.fc = HomMuxConv(kernel_shape=(10, channels, 1, 1), image_hw=(1, 1), padding=(0, 0), bias=True).set_data(
+            weight=fc_weights / spatial_positions, bias=model.fc.bias)
 
     def forward(self, x: HomValue) -> HomValue:
         x = self.avgpool(x)
@@ -231,7 +227,7 @@ class Pipeline(PipelineWrapper):
             full_q_list_precision=Q_LIST_PRECISION,
             n=N,
             pt_scale=PT_SCALE,
-            sk_hw=192,
+            sk_hw=1024,
             num_special_primes=N_SPECIAL_PRIMES,
             n_slots=SUBRING_SLOTS,
         )
