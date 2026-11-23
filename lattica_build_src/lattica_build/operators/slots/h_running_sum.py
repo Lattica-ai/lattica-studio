@@ -55,8 +55,7 @@ class HomRunningSum(SlotOp):
         return self.cumsum_axis is None or to_pos_axis(self.cumsum_axis, input.tensor_shape) == input.n_axis
 
     def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
-        """The output has the input's shape. The input's slot axis holds at most n_slots values, zero-padded to
-        n_slots, or whole rings when n_slots is internal_n."""
+        """The output has the input's shape."""
         length = input.tensor_shape[input.n_axis]
         whole_rings = input.n_slots == internal_n and length % internal_n == 0
         if length > input.n_slots and not whole_rings:
