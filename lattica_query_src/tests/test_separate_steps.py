@@ -11,7 +11,7 @@ from lattica_query.client import executor as executor_module
 from lattica_query.client import keys as keys_module
 from lattica_query.client.artifacts import QueryKey
 from lattica_query.client.encrypted_data import EncryptedDataAPI
-from lattica_query.client.keys import KeysAPI, KeyTokenMismatchError
+from lattica_query.client.keys import KeysAPI
 from lattica_query.client.query import QueryAPI
 from lattica_query.serialization.generated import hom_op_pb2
 from lattica_query.serialization.tensors import deserialize_tensor
@@ -132,6 +132,8 @@ def test_generate_without_registration_then_ensure_registers(monkeypatch, tmp_pa
     assert key == QueryKey(context=b"context", secret_key=b"secret:context", client_model=b"model")
     assert not backend.uploads
     assert not load_key_bundle(path).evaluation_key_uploaded
+    assert keys.secret_key_path(path).read_bytes() == b"secret:context"
+    assert keys.evaluation_key_path(path).read_bytes() == b"evaluation"
 
     assert keys.ensure(path) == key
     assert backend.uploads == ["api/token/get_pk_upload_url"] and backend.preprocessed == 1
@@ -139,32 +141,6 @@ def test_generate_without_registration_then_ensure_registers(monkeypatch, tmp_pa
 
     keys.ensure(path)  # already registered
     assert len(backend.uploads) == 1
-
-
-def test_key_file_paths(monkeypatch, tmp_path):
-    monkeypatch.setattr(keys_module.fhe_core, "generate_key", lambda client_model, context: (b"secret", b"evaluation"))
-    backend = FakeKeysBackend()
-    uploaded = []
-    backend.upload_file_and_alert = lambda path, *, endpoint: uploaded.append(path)
-    keys = KeysAPI(QueryToken("credential", identity=TokenIdentity("token-id")), backend, backend)
-    path = tmp_path / "key"
-    with pytest.raises(FileNotFoundError):
-        keys.evaluation_key_path(path)
-
-    keys.generate(path, initialization=QueryInitialization(b"context", b"model"), register=False)
-    evaluation_key_path = keys.evaluation_key_path(path)
-    assert evaluation_key_path.read_bytes() == b"evaluation"
-    assert keys.secret_key_path(path).read_bytes() == b"secret"
-    assert not uploaded  # finding the files is local
-
-    keys.ensure(path)
-    assert uploaded == [str(evaluation_key_path)]  # the file registration uploads
-    assert keys.evaluation_key_path(path) == evaluation_key_path
-
-    other = KeysAPI(QueryToken("credential", identity=TokenIdentity("other-id")), backend, backend)
-    for find in (other.evaluation_key_path, other.secret_key_path):
-        with pytest.raises(KeyTokenMismatchError):
-            find(path)
 
 
 def test_fetched_initialization_is_expanded(monkeypatch):

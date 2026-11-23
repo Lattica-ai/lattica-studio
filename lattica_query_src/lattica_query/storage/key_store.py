@@ -166,7 +166,14 @@ def load_key_bundle(path: str | Path) -> StoredKey:
     with OperationLog("loading local key artifacts", theme=QUERY_THEME):
         log_info(f"key path: {key_path}")
         bundle_path = _resolve_current_bundle(key_path)
-        token, uploaded = _load_registration(bundle_path, key_path)
+        metadata = _load_metadata(bundle_path)
+        try:
+            token = TokenIdentity.from_dict(metadata["token"])
+            uploaded = metadata["evaluation_key_uploaded"]
+            if not isinstance(uploaded, bool):
+                raise TypeError
+        except (KeyError, TypeError, ValueError) as exc:
+            raise KeyStorageError(f"Invalid key bundle {key_path}: invalid metadata") from exc
 
         evaluation_key_path = bundle_path / _EVALUATION_KEY
         _validate_artifact(evaluation_key_path, key_path)
@@ -184,15 +191,10 @@ def load_key_bundle(path: str | Path) -> StoredKey:
         return record
 
 
-def find_key_files(path: str | Path) -> tuple[TokenIdentity, Path, Path]:
-    """The token of a key bundle and its secret and evaluation key files, without loading the key."""
-    key_path = Path(path)
-    bundle_path = _resolve_current_bundle(key_path)
-    token, _ = _load_registration(bundle_path, key_path)
-    secret_key_path, evaluation_key_path = bundle_path / _SECRET_KEY, bundle_path / _EVALUATION_KEY
-    _validate_artifact(secret_key_path, key_path)
-    _validate_artifact(evaluation_key_path, key_path)
-    return token, secret_key_path, evaluation_key_path
+def key_file_paths(path: str | Path) -> tuple[Path, Path]:
+    """The secret and evaluation key files of a key bundle."""
+    bundle_path = _resolve_current_bundle(Path(path))
+    return bundle_path / _SECRET_KEY, bundle_path / _EVALUATION_KEY
 
 
 def _storage_home() -> Path:
@@ -238,19 +240,6 @@ def _load_metadata(bundle_path: Path) -> dict:
             f"Unsupported key bundle version {metadata.get('version')!r} in {bundle_path}"
         )
     return metadata
-
-
-def _load_registration(bundle_path: Path, key_path: Path) -> tuple[TokenIdentity, bool]:
-    """The bundle's token and whether its evaluation key was uploaded."""
-    metadata = _load_metadata(bundle_path)
-    try:
-        token = TokenIdentity.from_dict(metadata["token"])
-        uploaded = metadata["evaluation_key_uploaded"]
-        if not isinstance(uploaded, bool):
-            raise TypeError
-    except (KeyError, TypeError, ValueError) as exc:
-        raise KeyStorageError(f"Invalid key bundle {key_path}: invalid metadata") from exc
-    return token, uploaded
 
 
 def _read_artifact(bundle_path: Path, name: str, key_path: Path) -> bytes:

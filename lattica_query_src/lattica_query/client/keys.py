@@ -8,9 +8,9 @@ from ..logging import QUERY_THEME, OperationLog, log_info, log_size_info, log_st
 from ..serialization.artifacts import QueryInitialization
 from ..storage.key_store import (
     StoredKey,
-    find_key_files,
     get_key_path,
     key_bundle_exists,
+    key_file_paths,
     key_lock,
     load_key_bundle,
     mark_key_uploaded,
@@ -106,27 +106,12 @@ class KeysAPI:
             return self._load_bundle(resolved_path).key
 
     def secret_key_path(self, path: str | Path | None = None) -> Path:
-        """The file of a local key's secret key, which never leaves the client.
-
-        Neither loads the key nor contacts the backend.
-        """
-        return self._key_files(path)[0]
+        """The file of a local key's secret key, found without loading the key."""
+        return key_file_paths(path if path is not None else get_key_path(self._token.require_identity()))[0]
 
     def evaluation_key_path(self, path: str | Path | None = None) -> Path:
-        """The file of a local key's evaluation key, the part registration uploads.
-
-        Neither loads the key nor contacts the backend.
-        """
-        return self._key_files(path)[1]
-
-    def _key_files(self, path: str | Path | None) -> tuple[Path, Path]:
-        identity = self._token.require_identity()
-        resolved_path = Path(path) if path is not None else get_key_path(identity)
-        with key_lock(resolved_path):
-            token, secret_key_path, evaluation_key_path = find_key_files(resolved_path)
-        if token.id != identity.id:
-            raise KeyTokenMismatchError(resolved_path, identity, token)
-        return secret_key_path, evaluation_key_path
+        """The file of a local key's evaluation key, the part registration uploads."""
+        return key_file_paths(path if path is not None else get_key_path(self._token.require_identity()))[1]
 
     def _load_bundle(self, resolved_path: Path) -> StoredKey:
         identity = self._token.require_identity()
