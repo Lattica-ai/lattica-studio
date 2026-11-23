@@ -35,7 +35,7 @@ class Pipeline(PipelineWrapper):
             # The input repeats with period N_SLOTS across the sub-ring and the ring
             # HomRingSwitch switches up to, rather than filling n/2 slots.
             n_slots=N_SLOTS,
-            sk_hw=192,
+            sk_hw=1024,
             pt_scale=INPUT_SCALE,
             num_special_primes=6,
         )
