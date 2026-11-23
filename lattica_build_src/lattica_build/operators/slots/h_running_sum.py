@@ -26,9 +26,9 @@ class HomRunningSum(SlotOp):
         rows_budget: Optional allowed modulus rows for modswitch inference.
 
     The sums run within each period, so the output keeps the input's shape and
-    n_slots. The input's slot axis must have no zero padding, which the sums
-    would add: it holds n_slots values, or whole rings when n_slots is
-    internal_n.
+    n_slots. The input's slot axis holds at most n_slots values, zero-padded to
+    n_slots, or whole rings when n_slots is internal_n. The zero padding stays
+    zero in the output.
     """
 
     OP_TYPE = HomOpType.RunningSum
@@ -54,8 +54,13 @@ class HomRunningSum(SlotOp):
         """Whether the running sum is along the slot axis of `input` (the default) rather than another axis."""
         return self.cumsum_axis is None or to_pos_axis(self.cumsum_axis, input.tensor_shape) == input.n_axis
 
-    def infer_slot_output_shape(self, input: HomValue, internal_n=None) -> HomValue:
+    def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
         """The output has the input's shape."""
+        length = input.tensor_shape[input.n_axis]
+        whole_rings = input.n_slots == internal_n and length % internal_n == 0
+        if length > input.n_slots and not whole_rings:
+            raise ValueError(f"{type(self).__name__} takes a slot axis of at most n_slots={input.n_slots} values, "
+                             f"or of whole rings when n_slots is internal_n={internal_n}: got {length}")
         return input
 
     def infer_output_level_and_scale(
