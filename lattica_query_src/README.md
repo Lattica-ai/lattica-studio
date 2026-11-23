@@ -56,6 +56,10 @@ key = client.keys.generate(path, initialization=initialization, register=False)
 client.keys.ensure(path)  # uploads and registers the evaluation key
 ```
 
+`client.keys.evaluation_key_path(path)` is the file that `ensure()` uploads, the
+only part of a key that leaves the client, and `client.keys.secret_key_path(path)`
+is the secret key's file. Both are found without loading the key.
+
 `QueryClient` owns one HTTP session. Use it as a context manager or call
 `close()`; repeated calls to `close()` are safe. Do not execute concurrent
 queries through one client instance because its session and latest timing state
