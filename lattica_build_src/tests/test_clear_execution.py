@@ -149,6 +149,13 @@ def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
     torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), db @ x)
 
 
+def test_running_sum_clear_takes_a_padded_slot_axis():
+    """3 values in a period of 4: the running sum of the 3 values."""
+    x = torch.tensor([2., 3., 5.])
+    result, _ = _slot_op_clear(HomRunningSum(), x, 4)
+    torch.testing.assert_close(result, x.cumsum(-1))
+
+
 def test_running_sum_clear_uses_only_the_logical_axis():
     x = torch.tensor([[1., 2., 3., 4.], [5., 6., 7., 8.]])
     result, _ = _slot_op_clear(HomRunningSum(cumsum_axis=0), x, 4)
