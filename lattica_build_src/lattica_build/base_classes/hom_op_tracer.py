@@ -169,6 +169,7 @@ class Tracer:
             "active_cols": hom_val.active_cols if hom_val.active_cols is not None else None,
             "pt_scale": f"{hom_val.pt_scale:.10f}",
             "n_slots": hom_val.n_slots,
+            "n_batch": hom_val.n_batch,
         }
 
     @staticmethod
