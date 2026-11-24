@@ -37,6 +37,15 @@ def resolve_n_axis(tensor_shape: TensorShape, n_axis: int | None, internal_n: in
             )
     return resolved_n_axis
 
+def infer_n_batch(internal_n: int, n_slots: int, batch_size: int) -> int:
+    """The plaintexts of a batch that share one ciphertext, interleaved in its slots.
+
+    A ciphertext of internal_n slots takes internal_n // n_slots plaintexts of n_slots slots each. A batch
+    smaller than that takes its size rounded up to a power of 2, in one ciphertext. A plaintext that fills a
+    ciphertext, or spans several, shares none.
+    """
+    return min(1 << (batch_size - 1).bit_length(), internal_n // n_slots)
+
 def to_neg_axis(axis: int, shape: TensorShape) -> int:
     if axis < 0:
         return axis
