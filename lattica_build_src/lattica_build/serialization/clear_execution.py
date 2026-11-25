@@ -91,7 +91,7 @@ def run_clear_section(graph: dict[str, Any], inputs: Sequence[torch.Tensor],
         if input_values and isinstance(op, SlotOp):
             traced = input_values[0]
             op.input_value = HomValue(tensor_shape=tuple(traced['tensor_shape']), n_axis=traced.get('n_axis'),
-                                      n_slots=traced.get('n_slots'))
+                                      n_slots=traced.get('n_slots'), n_batch=traced['n_batch'])
             op.internal_n = graph.get('internal_n')
         # Let the operator know the ring size.
         with clear_options(internal_n=graph.get('internal_n')):

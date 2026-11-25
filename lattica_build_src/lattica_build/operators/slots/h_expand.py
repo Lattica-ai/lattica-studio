@@ -44,7 +44,8 @@ class HomExpand(SlotOp):
 
     def infer_output_shape(self, input: HomValue, internal_n: int, **kwargs) -> HomValue:
         """Infer shape by inserting axis `expand_axis` with one output per value of the slot axis. Each output holds
-        one value in every slot of the ring (internal_n on the slot axis), so its period is 1.
+        one value in every slot its plaintext has in the ring (internal_n / n_batch on the slot axis), so its period
+        is 1.
 
         Expand takes a zero-padded slot axis: length <= n_slots values in a period of n_slots. Output i reads slot i
         only, so the padding feeds only the outputs past the first length, which are dropped."""
@@ -56,7 +57,7 @@ class HomExpand(SlotOp):
         position = insert_position(self.expand_axis, len(input.tensor_shape))
         output = infer_insert_axis_output_shape(input, position, length)
         output_shape = list(output.tensor_shape)
-        output_shape[output.n_axis] = internal_n
+        output_shape[output.n_axis] = internal_n // input.n_batch
         return output.make_copy(tensor_shape=output_shape, n_slots=1)
 
     def infer_output_level_and_scale(
@@ -85,11 +86,12 @@ class HomExpand(SlotOp):
         )
 
     def forward_clear(self, input):
-        """Value i of the input's slot axis becomes an output holding it in every slot of the ring: the values go on
-        a new axis inserted as `infer_output_shape` does, and the slot axis has internal_n slots."""
+        """Value i of the input's slot axis becomes an output holding it in every slot its plaintext has in the ring:
+        the values go on a new axis inserted as `infer_output_shape` does, and the slot axis has
+        internal_n / n_batch slots."""
         value, internal_n = input_layout(self, input)
         values = input.movedim(value.n_axis, -1)  # (..., values)
-        expanded = values.unsqueeze(-1).expand(*values.shape, internal_n)  # (..., values, slots)
+        expanded = values.unsqueeze(-1).expand(*values.shape, internal_n // value.n_batch)  # (..., values, slots)
 
         # Order the axes as the traced output: the input's, with the values axis inserted at expand_axis
         axes = [axis for axis in range(input.dim()) if axis != value.n_axis] + ['values', value.n_axis]

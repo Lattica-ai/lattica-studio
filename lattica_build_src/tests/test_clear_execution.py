@@ -135,6 +135,15 @@ def test_serialized_clear_execution_expands_to_ring_size():
     torch.testing.assert_close(result, x[None, :].repeat(params.internal_n, 1))
 
 
+def test_clear_expand_of_a_batch_fills_its_plaintexts_slots():
+    """Four plaintexts of 8 slots share a ring of 128 slots: each value fills the 128 / 4 slots of its plaintext."""
+    pipeline = HomomorphicPipeline(hom=HomExpand(expand_axis=1), input_shape=(8,))
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=8, batch_size=4)
+    x = torch.arange(32.).reshape(4, 8)
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), x[:, None, :].repeat(1, 32, 1))
+
+
 def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
     """Expand feeds a MatMul whose data is one block of internal_n records."""
     from lattica_build.operators.ml.h_mat_mul import HomMatMul
