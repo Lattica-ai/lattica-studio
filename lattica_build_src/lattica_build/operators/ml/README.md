@@ -28,7 +28,7 @@ This folder contains model-oriented operators used to build encrypted inference 
 - `HomMatMul` may update `n_axis` when `mul_axis` intersects the packed axis.
 - `HomMatMul` with `rotations` takes a square matrix on the slot axis by its diagonals, one row of the data per
   rotation, and keeps the input's shape. A permutation of the slots costs only its nonzero diagonals this way.
-- `HomCtMatMul(d)` multiplies two d x d matrices, each one `HomValue` of shape `(d * d,)` holding the matrix
+- `HomCtMatMul(d)` multiplies two real d x d matrices, each one `HomValue` of shape `(d * d,)` holding the matrix
   row by row in a slot period of `d * d`. The product has the same layout and takes three levels.
 - `HomLinear` bias shape is derived from `dims` by removing `mul_axis`.
 - `HomBatchNorm` stores affine constants as `(-1, 1, 1)` for channel-first broadcasting.
