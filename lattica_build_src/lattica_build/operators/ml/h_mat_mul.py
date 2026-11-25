@@ -138,10 +138,13 @@ class HomMatMul(HomOp):
                 output_size = after_mul.tensor_shape[chosen_axis]
                 n_slots = (min(internal_n, next_pow2(output_size))
                            if impl_kind == 'diags' else internal_n)
+        # Outputs that need more slots than a ciphertext gives each plaintext of a batch fill it with fewer plaintexts
+        n_batch = input.n_batch if internal_n is None else min(input.n_batch, internal_n // n_slots)
         return after_mul.make_copy(
             tensor_shape=after_mul.tensor_shape[:mul_axis] + after_mul.tensor_shape[mul_axis + 1:],
             n_axis=chosen_axis - (1 if mul_axis < chosen_axis else 0),
             n_slots=n_slots,
+            n_batch=n_batch,
         )
 
     def infer_output_level_and_scale(
