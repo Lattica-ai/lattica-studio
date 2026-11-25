@@ -170,6 +170,7 @@ class Tracer:
             "pt_scale": f"{hom_val.pt_scale:.10f}",
             "n_slots": hom_val.n_slots,
             "n_batch": hom_val.n_batch,
+            "batch_size": hom_val.batch_size,
         }
 
     @staticmethod

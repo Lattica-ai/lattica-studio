@@ -42,9 +42,10 @@ class HomValue:
     custom_input_ref: str | None = None
     # Holds the number of slots the data is packed into
     n_slots: int | None = None
-    # The plaintexts of a batch that share each ciphertext (HomParams.batch_size). A ciphertext then repeats with
-    # period n_slots * n_batch.
+    # A batch of batch_size plaintexts (HomParams.batch_size), n_batch of them in each ciphertext. A ciphertext then
+    # repeats with period n_slots * n_batch. batch_size is None for a single plaintext.
     n_batch: int = 1
+    batch_size: int | None = None
 
     def make_copy(self, **kwargs) -> 'HomValue':
         """Create a copy of this HomValue with optional modifications."""
@@ -58,6 +59,7 @@ class HomValue:
             'custom_input_ref': self.custom_input_ref,
             'n_slots': self.n_slots,
             'n_batch': self.n_batch,
+            'batch_size': self.batch_size,
         }
         new_attrs.update(kwargs)
         return HomValue(**new_attrs)

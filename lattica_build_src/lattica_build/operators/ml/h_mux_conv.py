@@ -12,6 +12,7 @@ import torch
 from lattica_build.base_classes.hom_value import HomValue, to_neg_axis
 from lattica_build.operators.ml.h_conv import HomConvBase
 from lattica_build.params.level_and_scale_tracing import infer_optional_modswitch
+from lattica_build.params.shape_tracing import infer_n_batch
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 
 
@@ -94,15 +95,19 @@ class MuxLayout:
 
 def _infer_mux_output(input: HomValue, in_slots: int, out_slots: int, internal_n) -> HomValue:
     """The output ciphertext, packed at the output layout's slot count; axes before the slots are a batch of
-    maps and pass through."""
-    if max(in_slots, out_slots) > internal_n:
+    maps and pass through. The maps of a batch of plaintexts are packed as full as their ciphertexts take, so a
+    conv whose output maps are smaller merges ciphertexts."""
+    if max(in_slots, out_slots) * input.n_batch > internal_n:
         raise NotImplementedError(
             "mux layouts must fit one ciphertext; "
-            f"this one needs {max(in_slots, out_slots)} of {internal_n} slots")
+            f"this one needs {max(in_slots, out_slots)} of {internal_n // input.n_batch} slots")
     if input.n_axis is not None and to_neg_axis(input.n_axis, input.tensor_shape) != -1:
         raise ValueError(f"mux conv needs the slots on the last axis; got {tuple(input.tensor_shape)} "
                          f"with slots on axis {input.n_axis}")
-    return input.make_copy(tensor_shape=(*input.tensor_shape[:-1], out_slots), n_slots=out_slots)
+    n_batch = input.n_batch
+    if input.batch_size is not None:
+        n_batch = infer_n_batch(internal_n, out_slots, input.batch_size)
+    return input.make_copy(tensor_shape=(*input.tensor_shape[:-1], out_slots), n_slots=out_slots, n_batch=n_batch)
 
 
 class HomMuxConv(HomConvBase):
