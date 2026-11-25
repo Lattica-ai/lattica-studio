@@ -58,8 +58,8 @@ class HomCtMatMul(HomOp):
         row, col = slot // d, slot % d
 
         # A_c and B_c, each the sum of two slot permutations of its input
-        self.sigma = self._two_permutations(d * row + (row + col) % d, 1, d * row + (row + col + half) % d, 1j)
-        self.tau = self._two_permutations(d * ((row + col) % d) + col, 1, d * ((row + col + half) % d) + col, -1j)
+        self.sigma = self._two_permutations(d * row + (row + col) % d, d * row + (row + col + half) % d, 1j)
+        self.tau = self._two_permutations(d * ((row + col) % d) + col, d * ((row + col + half) % d) + col, -1j)
 
         low = 1 << (half.bit_length() - 1) // 2
         high = half // low
@@ -93,14 +93,14 @@ class HomCtMatMul(HomOp):
         self.real = HomSlice(dim=0, key=0)
 
     @staticmethod
-    def _two_permutations(source, weight, other_source, other_weight) -> HomMatMul:
-        """output[slot] = weight * input[source[slot]] + other_weight * input[other_source[slot]], as a matrix given
-        by its diagonals."""
+    def _two_permutations(source, other_source, other_weight) -> HomMatMul:
+        """output[slot] = input[source[slot]] + other_weight * input[other_source[slot]], as a matrix given by its
+        diagonals."""
         n = len(source)
         slot = torch.arange(n)
         rotations = torch.cat([(source - slot) % n, (other_source - slot) % n]).unique()
         diagonals = torch.zeros(len(rotations), n, dtype=torch.complex128)
-        diagonals[torch.searchsorted(rotations, (source - slot) % n), source] += weight
+        diagonals[torch.searchsorted(rotations, (source - slot) % n), source] += 1
         diagonals[torch.searchsorted(rotations, (other_source - slot) % n), other_source] += other_weight
         return HomMatMul(dims=(len(rotations), n), rotations=rotations.tolist()).set_data(diagonals)
 
