@@ -209,6 +209,7 @@ class HomomorphicPipeline:
         ]
         if hom_params.batch_size is not None:
             # The query's plaintexts are packed as full as its ciphertexts take. Custom inputs are single plaintexts.
+            hom_inputs[0].batch_size = hom_params.batch_size
             hom_inputs[0].n_batch = infer_n_batch(
                 enc_params.internal_n, hom_inputs[0].n_slots, hom_params.batch_size)
 

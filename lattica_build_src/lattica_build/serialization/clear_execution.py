@@ -133,7 +133,17 @@ def run_clear_graph(graph: Mapping[str, Any], primary: torch.Tensor, custom: Map
 
     ``resolve_data(section, path)`` returns the data of the leaf at ``path`` (child indices, as in
     ``run_clear_section``) in the pipeline section ``section``.
+
+    A pipeline built for a batch takes its plaintexts on the first axis of ``primary`` and runs on each of them.
     """
+    if graph[PipeSec.HOM]['input_values'][0]['batch_size'] is not None:
+        return torch.stack([_run_clear_plaintext(graph, plaintext, custom, resolve_data, as_complex)
+                            for plaintext in primary])
+    return _run_clear_plaintext(graph, primary, custom, resolve_data, as_complex)
+
+
+def _run_clear_plaintext(graph, primary, custom, resolve_data, as_complex) -> torch.Tensor:
+    """run_clear_graph on one plaintext."""
     result = primary
     with torch.no_grad():
         for section in (PipeSec.CLIENT_PRE, PipeSec.HOM, PipeSec.CLIENT_POST):
