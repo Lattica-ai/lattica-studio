@@ -10,13 +10,19 @@ from lattica_build.params.bootstrapping_params import BootstrappingParams
 from lattica_build.params.params import HomParams
 
 
-def test_chain_serves_the_slot_counts_the_pipeline_bootstraps():
-    """The input fills the ring's 2^15 slots; HomSumSlots(nb_cols=32) folds them to 32, which the bootstrap sees:
-    the chain is built for 32."""
-    pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(nb_cols=32), Bootstrap()), input_shape=(2 ** 15,))
-    params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, num_special_primes=7)
+@pytest.mark.parametrize("ops, input_slots, batch, bootstrapped_slots", [
+    # The input fills the ring's 2^15 slots; HomSumSlots(nb_cols=32) folds them to 32, which the bootstrap sees.
+    ((HomSumSlots(nb_cols=32), Bootstrap()), 2 ** 15, {}, 32),
+    # Four plaintexts of 2^12 slots share a ciphertext, which the bootstrap sees at its period of 2^14 slots.
+    ((Bootstrap(),), 2 ** 12, dict(n_slots=2 ** 12, batch_size=4), 2 ** 14),
+], ids=["sum-slots", "batch"])
+def test_chain_serves_the_slot_counts_the_pipeline_bootstraps(ops, input_slots, batch, bootstrapped_slots):
+    """The chain is built for the slot count of the ciphertexts the pipeline bootstraps."""
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(*ops), input_shape=(input_slots,))
+    params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, num_special_primes=7, **batch)
     pipeline.serialize(params)
-    expected = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {32}, n=params.n)
+    expected = BootstrappingParams.for_slot_counts(
+        params.real_boot, params.slim_boot, {bootstrapped_slots}, n=params.n)
     loaded = HomParams.from_dict(params.to_dict())
     assert (loaded.boot_params.dft_levels, loaded.boot_params.cts_scale) == (expected.dft_levels, expected.cts_scale)
 

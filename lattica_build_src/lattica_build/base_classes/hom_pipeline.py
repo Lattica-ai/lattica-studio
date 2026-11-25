@@ -16,7 +16,7 @@ from dataclasses import field
 from typing import Optional, Dict, Tuple, Sequence, Union, BinaryIO
 
 from lattica_build.params.level_and_scale_tracing import ModulusChain, init_active_rows_cols
-from lattica_build.params.shape_tracing import resolve_n_axis
+from lattica_build.params.shape_tracing import infer_n_batch, resolve_n_axis
 from lattica_build.serialization.hom_op_pb2 import HomOpType
 from dataclasses import dataclass
 import enum
@@ -207,6 +207,10 @@ class HomomorphicPipeline:
                 n_slots=self.custom_n_slots.get(name, hom_params.n_slots),
             ) for name in hom_input_names
         ]
+        if hom_params.batch_size is not None:
+            # The query's plaintexts are packed as full as its ciphertexts take. Custom inputs are single plaintexts.
+            hom_inputs[0].n_batch = infer_n_batch(
+                enc_params.internal_n, hom_inputs[0].n_slots, hom_params.batch_size)
 
         ser_sections = {}
 
@@ -278,14 +282,14 @@ class HomomorphicPipeline:
         return {'accuracy': float(accuracy)}
 
     def _bootstrap_slot_counts(self, hom_params) -> set:
-        """The slot counts the pipeline bootstraps: the input n_slots of every Bootstrap op and of a RingSwitch (which
-        bootstraps the switched ciphertext at its own n_slots), from a trace of shapes only (it needs no modulus
-        chain)."""
+        """The slot counts the pipeline bootstraps: the input's period (its n_slots, times the plaintexts of a batch
+        that share a ciphertext) of every Bootstrap op and of a RingSwitch (which bootstraps the switched ciphertext
+        at its own period), from a trace of shapes only (it needs no modulus chain)."""
         slot_counts = set()
 
         def record(op, inputs):
             if op.OP_TYPE in (HomOpType.Bootstrap, HomOpType.RingSwitch):
-                slot_counts.add(inputs[0].n_slots)
+                slot_counts.add(inputs[0].n_slots * inputs[0].n_batch)
 
         self._serialize_pipeline_sections({}, hom_params, shapes_only=True, on_leaf_op=record)
         return slot_counts
