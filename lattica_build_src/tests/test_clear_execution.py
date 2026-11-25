@@ -149,6 +149,34 @@ def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
     torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), db @ x)
 
 
+def test_matmul_by_diagonals_clear_matches_the_dense_matrix():
+    """Row i of the data is the diagonal at rotations[i]: entry p is the matrix entry (p - rotations[i], p)."""
+    from lattica_build.operators.ml.h_mat_mul import HomMatMul
+
+    n, rotations = 8, (0, 3, 6)
+    diagonals = torch.randn(len(rotations), n, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    dense = torch.zeros(n, n, dtype=torch.float64)
+    for rotation, diagonal in zip(rotations, diagonals):
+        dense[(torch.arange(n) - rotation) % n, torch.arange(n)] = diagonal
+    matmul = HomMatMul(dims=(len(rotations), n), rotations=rotations).set_data(diagonals)
+    x = torch.randn(2, n, dtype=torch.float64, generator=torch.Generator().manual_seed(1))
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4, pt_scale=2**30, num_special_primes=1, n_slots=n)
+    pipeline = HomomorphicPipeline(hom=matmul, input_shape=tuple(x.shape))
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), x @ dense.T)
+
+
+def test_ct_mat_mul_clear_is_the_matrix_product():
+    from lattica_build.operators.ml.h_ct_mat_mul import HomCtMatMul
+
+    d = 4
+    a, b = torch.randn(2, d * d, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4, pt_scale=2**30, num_special_primes=1,
+                       n_slots=d * d)
+    pipeline = HomomorphicPipeline(hom=HomCtMatMul(d), input_shape={"a": (d * d,), "b": (d * d,)})
+    result = pipeline.forward_clear(a=a, b=b, hom_params=params)
+    torch.testing.assert_close(result, (a.reshape(d, d) @ b.reshape(d, d)).reshape(-1))
+
+
 def test_running_sum_clear_takes_a_padded_slot_axis():
     """3 values in a period of 4: the running sum of the 3 values."""
     x = torch.tensor([2., 3., 5.])

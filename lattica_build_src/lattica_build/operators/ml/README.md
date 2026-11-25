@@ -11,6 +11,7 @@ This folder contains model-oriented operators used to build encrypted inference 
 | `HomAvgPool` | average pooling implemented as fixed depthwise convolution |
 | `HomLinear` | composite op (`HomMatMul` + optional bias add) |
 | `HomBatchNorm` | composite op (`const_mul` + `const_add`) |
+| `HomCtMatMul` | composite op: product of two encrypted square matrices |
 | `HomConvBnFused` | pre-fuses Conv+BatchNorm tensors, then runs one conv op |
 | `HomMuxConv` | convolution on the multiplexed packing (`OP_TYPE = HomOpType.MuxConv`) |
 | `HomMuxConvBnFused` | `HomMuxConv` with a BatchNorm folded into its weight and bias in `set_data` |
@@ -18,13 +19,17 @@ This folder contains model-oriented operators used to build encrypted inference 
 ## Base vs composite in this folder
 
 - Base ops map directly to backend op types (`HomConv`, `HomMuxConv`, `HomMatMul`).
-- Composite ops are graphs built from base ops (`HomLinear`, `HomBatchNorm`).
+- Composite ops are graphs built from base ops (`HomLinear`, `HomBatchNorm`, `HomCtMatMul`).
 - `HomAvgPool` and `HomConvBnFused` both execute as a single `HomConv` backend op after parameter setup.
 
 ## Shape and scale notes
 
 - `HomMatMul` broadcasts input shape against configured `dims`, then removes `mul_axis`.
 - `HomMatMul` may update `n_axis` when `mul_axis` intersects the packed axis.
+- `HomMatMul` with `rotations` takes a square matrix on the slot axis by its diagonals, one row of the data per
+  rotation, and keeps the input's shape. A permutation of the slots costs only its nonzero diagonals this way.
+- `HomCtMatMul(d)` multiplies two d x d matrices, each one `HomValue` of shape `(d * d,)` holding the matrix
+  row by row in a slot period of `d * d`. The product has the same layout and takes three levels.
 - `HomLinear` bias shape is derived from `dims` by removing `mul_axis`.
 - `HomBatchNorm` stores affine constants as `(-1, 1, 1)` for channel-first broadcasting.
 - `HomMuxConv` takes the slots on the last axis, packed by its `MuxLayout`. Axes before them are a batch of maps,
