@@ -189,9 +189,7 @@ class BootstrappingParams:
         self.q_base_precision = self.get_q_base_precision()
         self.modulus = sum(row[0] for row in self.q_list_precision) + self.q_base_precision
         # The tree evaluates degree d in ceil(log2(d + 1)) levels: n levels fit degree 2^n - 1.
-        # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so n levels fit degree 2^n - 2 in y,
-        # which is 2^(n-1) - 1 in z. Four degrees less in z, 2^n - 8 in y, take the same levels and two
-        # relinearizations less: the high part of the tree's top split, of degree 2^(n-3) in z, is then a constant
-        # times T_{2^(n-3)}(z) plus a lower part, with no product.
+        # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so its top degree is 2^n - 2.
+        # Degree 2^n - 8 (24 at 5 levels) takes the same levels with fewer ciphertext products.
         self.cosine_deg = 2 ** self.n_cosine_levels - 8
         self.arcsine_deg = 2 ** self.n_arcsine_levels - 1   # 0 without an arcsine
