@@ -30,6 +30,12 @@ class HomMatMul(HomOp):
         max_rotation_keys: Optional cap on the rotation keys the backend
             implementation may use. A tighter budget buys the keys back with
             more rotation stages.
+        pack_at_apply: Keep the plaintext matrix on the GPU as its integer
+            coefficients, one 64-bit word each, and convert it to the
+            ciphertext's primes at each application. The converted plaintext
+            takes one word per coefficient and prime, so this saves memory in
+            proportion to the number of primes, for an NTT of the plaintext per
+            application. For large weights such as a language model's.
     """
 
     OP_TYPE = HomOpType.MatMul
@@ -43,6 +49,7 @@ class HomMatMul(HomOp):
         rows_budget: Sequence[int] | None = None,
         pt_scale: int = None,
         max_rotation_keys: int | None = None,
+        pack_at_apply: bool = False,
     ) -> None:
         super().__init__()
         self.dims = dims
@@ -52,6 +59,7 @@ class HomMatMul(HomOp):
         self.rows_budget = rows_budget
         self.pt_scale = pt_scale
         self.max_rotation_keys = max_rotation_keys
+        self.pack_at_apply = pack_at_apply
 
     @staticmethod
     def _choose_matmul_new_n_axis(

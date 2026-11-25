@@ -71,6 +71,7 @@ These modules live under `lattica_build.examples.advanced`.
 | `branching` | Branch/rejoin topology with a comparison |
 | `sharpen` | Grouped convolution for image sharpening |
 | `mnist_fc` | Reshape, two FC layers, square, and client softmax |
+| `projection` | A language model's 4096-wide projection, with the weight kept as coefficients (`pack_at_apply`) |
 | `bootstrap` | Two bootstrapping operations |
 | `bitonic_sort` | Composite compare/exchange stages with bootstrapping |
 | `resnet20` | A full ResNet-20 pipeline using downloaded weights |
