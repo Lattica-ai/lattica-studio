@@ -1,5 +1,7 @@
 """See `operators/ml/README.md` for usage details."""
 
+import functools
+
 import torch
 
 from lattica_build.base_classes.hom_op import HomOp
@@ -29,6 +31,10 @@ class HomCtMatMul(HomOp):
     The product takes three levels: one for sigma and tau, one for the column masks of phi^k, one for the
     multiplication.
 
+    The d shifts of each kind are made in two stages, the shift k = low * g + b as the rotation for b followed by the
+    rotation for low * g, with d = low * high and low <= high. Two stages keep the rotation keys few: each kind needs
+    those of low - 1 and of high - 1 rotations, about 2 sqrt(d) in all.
+
     Args:
         d: Number of rows and of columns, a power of two.
     """
@@ -42,17 +48,27 @@ class HomCtMatMul(HomOp):
         self.sigma = self._permutation(d * row + (row + col) % d)
         self.tau = self._permutation(d * ((row + col) % d) + col)
 
-        # phi^k for k < d: entries k of the stack are the rotations by k, entries d + k the rotations by k - d. The
-        # rotation by -d, at k = 0, has an all-zero mask: it only keeps the two halves of the stack the same size.
-        self.shift_cols = HomRotateSum(rotations=[*range(1, d), *((k - d) % n for k in range(d))],
-                                       perform_sum=False, add_identity_rotation=True)
-        keep = torch.stack([(col < d - k).double() for k in range(d)])
-        self.mask_cols = HomConstMul(dims=(2 * d, n)).set_data(torch.cat([keep, 1 - keep]))
-        self.pair = HomReshape((2, d, n))
-        self.add_pair = HomAxisSum(dim=0)
+        low = 1 << (d.bit_length() - 1) // 2
+        high = d // low
+        # the input and its rotations, stacked on a new first axis, the input first
+        stack = functools.partial(HomRotateSum, perform_sum=False, add_identity_rotation=True)
 
-        self.shift_rows = HomRotateSum(rotations=[d * k for k in range(1, d)], perform_sum=False,
-                                       add_identity_rotation=True)
+        # phi^k for k = low * g + b. `wrap` stacks the input and its rotation by -d, so the two stages rotate both by
+        # k: entry (g, b, 0) of the stack is the rotation by k and entry (g, b, 1) the rotation by k - d. Each is
+        # masked to its columns and the pair is added. At k = 0 the rotation by -d has an all-zero mask.
+        self.wrap = stack([n - d])
+        self.shift_cols_low = stack(range(1, low))
+        self.shift_cols_high = stack(low * g for g in range(1, high))
+        keep = torch.stack([(col < d - k).double() for k in range(d)]).reshape(high, low, n)
+        self.mask_cols = HomConstMul(dims=(high, low, 2, n)).set_data(torch.stack([keep, 1 - keep], dim=2))
+        self.add_pair = HomAxisSum(dim=2)
+
+        # psi^k for k = low * g + b: the rotation by d * k
+        self.shift_rows_low = stack(d * b for b in range(1, low))
+        self.shift_rows_high = stack(d * low * g for g in range(1, high))
+
+        # entry (g, b) of a stack of shifts becomes entry k = low * g + b
+        self.flatten = HomReshape((d, n))
         self.mul = HomMul(axis_sum=0)
 
     @staticmethod
@@ -67,6 +83,7 @@ class HomCtMatMul(HomOp):
         return HomMatMul(dims=(len(rotations), n), rotations=rotations.tolist()).set_data(diagonals)
 
     def forward(self, a: HomValue, b: HomValue) -> HomValue:
-        a_shifted = self.add_pair(self.pair(self.mask_cols(self.shift_cols(self.sigma(a)))))
-        b_shifted = self.shift_rows(self.tau(b))
+        a_shifted = self.shift_cols_high(self.shift_cols_low(self.wrap(self.sigma(a))))
+        a_shifted = self.flatten(self.add_pair(self.mask_cols(a_shifted)))
+        b_shifted = self.flatten(self.shift_rows_high(self.shift_rows_low(self.tau(b))))
         return self.mul(a_shifted, b_shifted)
