@@ -161,7 +161,7 @@ class HomomorphicPipeline:
             # A BuildArtifact holds the path of the zip build() wrote
             graph_bytes, tensors_bytes = self.load(getattr(artifact, "path", artifact))
         graph = json.loads(graph_bytes)['pipeline_sections']
-        tensors = safetensors_load(tensors_bytes)
+        tensors = self.load_tensors(tensors_bytes)
 
         def resolve_data(section, path):
             node = graph[section]
@@ -371,6 +371,17 @@ class HomomorphicPipeline:
             graph_bytes = zf.read(_GRAPH_FILENAME)
             tensor_bytes = zf.read(_TENSORS_FILENAME)
         return graph_bytes, tensor_bytes
+
+    @staticmethod
+    def load_tensors(tensors_bytes: bytes) -> Dict[str, torch.Tensor]:
+        """The tensors `serialize` wrote, with the complex ones restored from their real views [..., 2], which the
+        header's metadata lists."""
+        tensors = safetensors_load(tensors_bytes)
+        header_len = int.from_bytes(tensors_bytes[:8], "little")
+        metadata = json.loads(tensors_bytes[8:8 + header_len]).get("__metadata__") or {}
+        for name in json.loads(metadata.get("complex_tensors", "[]")):
+            tensors[name] = torch.view_as_complex(tensors[name].contiguous())
+        return tensors
 
     def get_leaf_ops(
             self,

@@ -30,6 +30,13 @@ class HomMatMul(HomOp):
         max_rotation_keys: Optional cap on the rotation keys the backend
             implementation may use. A tighter budget buys the keys back with
             more rotation stages.
+        rotations: When given, the matrix is square on the slot axis, of the
+            size of the input's period n, and it is stored by its diagonals:
+            `dims` is `(len(rotations), n)` and row `i` of the data is the
+            diagonal at `rotations[i]`. Entry `p` of that row multiplies input
+            slot `p`, and the product goes to output slot `p - rotations[i]`
+            modulo n, so the matrix entry at `(p - rotations[i], p)` is
+            `data[i, p]`. The output has the input's shape.
     """
 
     OP_TYPE = HomOpType.MatMul
@@ -43,6 +50,7 @@ class HomMatMul(HomOp):
         rows_budget: Sequence[int] | None = None,
         pt_scale: int = None,
         max_rotation_keys: int | None = None,
+        rotations: Sequence[int] | None = None,
     ) -> None:
         super().__init__()
         self.dims = dims
@@ -52,6 +60,7 @@ class HomMatMul(HomOp):
         self.rows_budget = rows_budget
         self.pt_scale = pt_scale
         self.max_rotation_keys = max_rotation_keys
+        self.rotations = None if rotations is None else tuple(rotations)
 
     @staticmethod
     def _choose_matmul_new_n_axis(
@@ -119,6 +128,15 @@ class HomMatMul(HomOp):
 
     def infer_output_shape(self, input: HomValue, internal_n=None, **kwargs) -> HomValue:
         """Infer output shape after broadcast and `mul_axis` elimination."""
+        if self.rotations is not None:
+            slot_axis = to_pos_axis(self.mul_axis, input.tensor_shape)
+            if (slot_axis != input.n_axis or input.tensor_shape[slot_axis] != input.n_slots
+                    or tuple(self.dims) != (len(self.rotations), input.n_slots)):
+                raise ValueError(
+                    f"A matrix given by its diagonals acts on the slot axis, which holds one period of "
+                    f"n_slots={input.n_slots} values: got mul_axis={self.mul_axis}, an input of shape "
+                    f"{input.tensor_shape} with n_axis={input.n_axis}, and dims={self.dims}")
+            return input
         after_mul = infer_broadcast_output_shape(input, dims=self.dims)
 
         if input.n_axis is None:
@@ -161,5 +179,10 @@ class HomMatMul(HomOp):
 
     def forward_clear(self, input):
         data = self._require_clear_data()
+        if self.rotations is not None:
+            slots = input.movedim(self.mul_axis, -1)
+            output = sum(torch.roll(slots * diagonal, -rotation, dims=-1)
+                         for rotation, diagonal in zip(self.rotations, data))
+            return output.movedim(-1, self.mul_axis)
         product = input * data
         return product.sum(dim=self.mul_axis)
