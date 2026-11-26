@@ -37,6 +37,9 @@ class HomParams:
     real_boot: bool = True
     slim_boot: bool = False
     n_slots: int | None = None
+    # A query holds this many plaintexts, each of the pipeline's input shape and of n_slots slots; the pipeline
+    # computes on all of them at once. None: a query is one plaintext.
+    batch_size: int | None = None
 
     @property
     def internal_n(self) -> int:
@@ -110,6 +113,9 @@ class HomParams:
                 raise ValueError(
                     f"n_slots={self.n_slots} is larger than the {self.internal_n} available slots.")
 
+        if not (self.batch_size is None or (isinstance(self.batch_size, int) and self.batch_size >= 1)):
+            raise ValueError(f"batch_size must be None or an int >= 1; got {self.batch_size!r}.")
+
         if not (self.num_init_rows is None or (isinstance(self.num_init_rows, int)
                                                and 0 <= self.num_init_rows <= len(self.full_q_list_precision))):
             raise ValueError(f"num_init_rows must be None or an int from 0 to the {len(self.full_q_list_precision)} "
@@ -137,6 +143,7 @@ class HomParams:
             "real_boot": self.real_boot,
             "slim_boot": self.slim_boot,
             "n_slots": self.n_slots,
+            "batch_size": self.batch_size,
             "consumption_order": self.consumption_order,
             # the chain BootstrappingParams.for_slot_counts chose, so from_dict rebuilds it
             "boot_dft_levels": self.boot_params.dft_levels if self.boot_params is not None else None,
