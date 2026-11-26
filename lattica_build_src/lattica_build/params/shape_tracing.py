@@ -58,8 +58,17 @@ def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape 
         shapes_to_broadcast.append(dims)
     output_shape = torch.broadcast_shapes(*shapes_to_broadcast)
 
+    # Batches combine plaintext by plaintext. A custom input first used with a batch is a batch of copies of itself,
+    # as many as the batch has in a ciphertext (see Tracer._serialize_leaf_op), and the result keeps the larger batch.
+    batches = [input for input in inputs if input.batch_size is not None]
+    if batches and (len(batches) < len(inputs) or any(input.n_batch != batches[0].n_batch for input in batches)):
+        raise ValueError("A batch combines only with a batch packed alike, or with a custom input in the op that "
+                         "first uses it; got values packed as (batch_size, n_batch) = "
+                         f"{[(input.batch_size, input.n_batch) for input in inputs]}.")
+    batch_size = max((input.batch_size for input in batches), default=None)
+
     if inputs[0].n_axis is None:
-        return inputs[0].make_copy(tensor_shape=output_shape)
+        return inputs[0].make_copy(tensor_shape=output_shape, batch_size=batch_size)
 
     # n_axis_neg is identical for the input and output shapes.
     n_axis_neg = to_neg_axis(inputs[0].n_axis, inputs[0].tensor_shape)
@@ -75,7 +84,7 @@ def infer_broadcast_output_shape(*inputs: Sequence[HomValue], dims: TensorShape 
                              f"but got {input.tensor_shape[input_n_axis_neg]} and "
                              f"{inputs[0].tensor_shape[n_axis_neg]}.")
 
-    return inputs[0].make_copy(tensor_shape=output_shape, n_axis=n_axis_neg)
+    return inputs[0].make_copy(tensor_shape=output_shape, n_axis=n_axis_neg, batch_size=batch_size)
 
 def infer_constant_packing_n_slots(input: HomValue, dims: TensorShape, internal_n: int | None) -> int | None:
     """The period of `input` combined with a constant of shape `dims` (ConstAdd, ConstMul, a MatMul on another

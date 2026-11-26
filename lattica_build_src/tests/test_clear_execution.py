@@ -8,6 +8,7 @@ from unittest import SkipTest
 import torch
 import pytest
 
+from lattica_build.base_classes.hom_op import HomOp
 from lattica_build.base_classes.hom_op_tracer import Tracer
 from lattica_build.base_classes.hom_value import HomValue
 from lattica_build.base_classes.hom_pipeline import HomomorphicPipeline
@@ -142,6 +143,26 @@ def test_clear_expand_of_a_batch_fills_its_plaintexts_slots():
                        pt_scale=2**30, num_special_primes=1, n_slots=8, batch_size=4)
     x = torch.arange(32.).reshape(4, 8)
     torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), x[:, None, :].repeat(1, 32, 1))
+
+
+class _BatchTimesScaledCustomInput(HomOp):
+    def __init__(self):
+        super().__init__()
+        self.scale = HomConstMul((1,)).set_data(torch.full((1,), 0.5))
+        self.mul = HomMul()
+
+    def forward(self, x, y):
+        return self.mul(x, self.scale(y))
+
+
+def test_a_batch_meets_a_custom_input_only_where_the_input_is_first_used():
+    """A custom input first used on its own is one plaintext, which a batch does not combine with."""
+    pipeline = HomomorphicPipeline(hom=_BatchTimesScaledCustomInput(), input_shape={'x': (8,), 'y': (8,)},
+                                   custom_n_slots={'y': 8})
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=8, batch_size=4)
+    with pytest.raises(ValueError, match="custom input in the op that first uses it"):
+        pipeline.serialize(params)
 
 
 def test_expand_then_matmul_clear_matches_the_ciphertext_layout():

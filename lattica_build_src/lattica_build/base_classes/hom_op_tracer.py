@@ -81,9 +81,14 @@ class Tracer:
                 # If there's no other input, initialize on the maximal state.
                 for other_input in inputs:
                     if other_input.id != input.id:
+                        # Used with a batch, the custom input is a batch of copies of itself, one in each of the
+                        # batch's n_batch places in a ciphertext.
+                        packing = {} if other_input.batch_size is None else dict(
+                            n_batch=other_input.n_batch, batch_size=other_input.n_batch)
                         input = input.make_copy(
                             active_rows=copy.deepcopy(other_input.active_rows),
                             active_cols=copy.deepcopy(other_input.active_cols),
+                            **packing,
                         )
                         break
 
