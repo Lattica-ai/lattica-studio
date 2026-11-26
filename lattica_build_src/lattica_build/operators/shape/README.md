@@ -10,6 +10,7 @@ This folder contains tensor-shape transformation operators for `HomValue` metada
 | `HomSlice` | base single-axis slice/index op (`OP_TYPE = HomOpType.Slice`) |
 | `HomSqueeze` | base size-1 axis removal op (`OP_TYPE = HomOpType.Squeeze`) |
 | `HomUnsqueeze` | base singleton axis insertion op (`OP_TYPE = HomOpType.Unsqueeze`) |
+| `HomBatchPermute` | moves values between the plaintexts of a batch: reshape and permute the batch as one tensor (`OP_TYPE = HomOpType.BatchPermute`) |
 
 ## Packed-axis (`n_axis`) behavior
 
