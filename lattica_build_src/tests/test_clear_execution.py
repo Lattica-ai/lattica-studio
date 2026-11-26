@@ -22,6 +22,7 @@ from lattica_build.operators.fhe.h_ring_switch import HomRingSwitch
 from lattica_build.operators.ml.h_conv import HomConv
 from lattica_build.operators.polynomials.h_poly_eval_base import HomPolyEvalBase
 from lattica_build.operators.polynomials.h_poly_indicator import HomHermiteIndicator
+from lattica_build.operators.shape.h_batch_permute import HomBatchPermute
 from lattica_build.operators.shape.h_reshape import HomReshape
 from lattica_build.operators.shape.h_slice import HomSlice
 from lattica_build.operators.shape.h_squeeze import HomSqueeze
@@ -142,6 +143,20 @@ def test_clear_expand_of_a_batch_fills_its_plaintexts_slots():
                        pt_scale=2**30, num_special_primes=1, n_slots=8, batch_size=4)
     x = torch.arange(32.).reshape(4, 8)
     torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), x[:, None, :].repeat(1, 32, 1))
+
+
+def test_clear_batch_permute_between_per_plaintext_ops():
+    """A batch of 8 tokens of 2 heads x 2 values, each scaled by its own constant, becomes a batch of 2 heads of a
+    2 x 8 matrix each, which a constant of 16 values then scales."""
+    first = HomConstMul(dims=(4,)).set_data(torch.tensor([1., 2., 3., 4.]))
+    second = HomConstMul(dims=(16,)).set_data(torch.arange(16.) + 1)
+    pipeline = HomomorphicPipeline(hom=SequentialHomOp(first, HomBatchPermute((8, 2, 2), (2, 1, 0)), second),
+                                   input_shape=(4,))
+    params = HomParams(n=256, full_q_list_precision=((60,),) * 4,
+                       pt_scale=2**30, num_special_primes=1, n_slots=4, batch_size=8)
+    x = torch.arange(32, dtype=torch.float64).reshape(8, 4)
+    expected = (x * first.data).reshape(8, 2, 2).permute(2, 1, 0).reshape(2, 16) * second.data
+    torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), expected)
 
 
 def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
