@@ -161,6 +161,8 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
   - derives `g_base_bits` from special-prime count: the toolkit splits the ciphertext primes of the whole chain
     into digits of at most `g_base_bits` bits, filled along the order the pipeline consumes them, and each key
     switch uses only the special primes its own largest digit needs.
+  - With a bootstrap the chain is in the order its rescales consume the primes (`BootstrappingParams.chain_sections`):
+    CtS, EvalMod, StC, the pipeline's, then q0 (SLIM: the pipeline's before StC's).
 
 Pick decomposition settings with your backend performance profile in mind.
 
