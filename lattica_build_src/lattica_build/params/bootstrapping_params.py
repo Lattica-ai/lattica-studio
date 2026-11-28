@@ -13,8 +13,7 @@ BOOT_CONFIGURATION = {
     # encapsulates, so it must be nonzero.
     'sparse_secret_hw' : 32,
     # Bound on the ModRaise wrap count |I|. With the H=32 ephemeral secret, K=16 fails with
-    # probability 2^-138.7 for 2^15 slots (eprint 2022/024). Han-Ki's cosine
-    # needs degree 2K-2 = 30, the largest even degree in 5 levels.
+    # probability 2^-138.7 for 2^15 slots (eprint 2022/024).
     'k' : 16,
 
     # SLIM's headroom q0/|m| (its EvalMod sees the slots, and no StC sums its noise): 12 is the best at
@@ -60,9 +59,8 @@ BOOT_PARAMS_PER_N_SLOTS = {
 }
 
 
-# The most terms (key products) a level-conserving first CtS level takes. The level runs as one kernel that keeps each
-# term's source indices in 48 KB of shared memory, 256 bytes per term. In a sparse bootstrap the level also computes
-# the SubSum trace, so its terms are the first CtS factor's diagonals times the N / (2 n_slots) trace rotations.
+# The most terms the level-conserving first CtS level sums. A term is one diagonal of the first CtS factor, taken once
+# per rotation of the SubSum trace in a sparse bootstrap.
 LCR_MAX_TERMS = 192
 # The most bits of log QP any key may have for 128-bit security under the secret key (hamming weight 1024), by ring
 # dimension. 2**15: the lattice estimator crosses 128 bits at 866, less 2 bits of margin. 2**16: the cheapest attack
@@ -154,34 +152,39 @@ class BootstrappingParams:
         return tuple((scale,) for _ in range(levels))
 
     @classmethod
-    def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int | None = None,
+    def for_slot_counts(cls, real_boot: bool, slim_boot: bool, slot_counts, n: int,
                         special_bits: int = 0, precision: str = "full") -> "BootstrappingParams":
         """The chain for bootstraps of these slot counts (each needs an entry in the precision's per_n_slots): as
         many CtS and StC levels as the deepest split, and CtS primes as wide as the widest need.
         A bootstrap with a shallower split skips the levels it does not use.
-        The chain gets one CtS prime fewer, and lcr_first_cts is set, when every bootstrap can run its first CtS level
-        level-conserving. That needs the ring dimension n, special primes of more than the precision's
-        lcr_min_special_bits in all (special_bits, which is 0 under BV), and a level that fits the kernel for every
-        slot count (lcr_first_cts_fits)."""
+
+        A DFT level is one of the matrix factors that CtS and StC are each split into. A regular one consumes one
+        prime.
+
+        When every bootstrap can run its first CtS DFT level level-conserving, which consumes no prime, the chain gets
+        one CtS prime fewer and lcr_first_cts is set. The pipeline has one chain, so one bootstrap that cannot is
+        enough to keep the prime. The conditions are:
+        - the special primes have more than the precision's lcr_min_special_bits bits in all (special_bits, which is
+          0 under BV);
+        - the chain has at least two DFT levels, so that one CtS prime remains;
+        - every slot count's split has all of the chain's DFT levels: a bootstrap with fewer uses only part of a chain
+          row, and the level-conserving level's keys are generated on whole rows;
+        - every slot count's first CtS level has at most LCR_MAX_TERMS terms: 2**s diagonals for a first CtS factor of
+          s stages, times the n / (2 n_slots) rotations of the SubSum trace, where n is the ring dimension."""
         slot_counts = list(slot_counts)
         entries = [cls._n_slots_entry(n_slots, precision) for n_slots in slot_counts]
         dft_levels = max(len(entry[0]) for entry in entries)
         cts_scale = max(entry[1] for entry in entries)
         params = cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, precision=precision)
-        if (n is None or special_bits <= params.lcr_min_special_bits
-                or not all(params.lcr_first_cts_fits(n_slots, n) for n_slots in slot_counts)):
+        if special_bits <= params.lcr_min_special_bits or dft_levels == 1:
             return params
+        for n_slots in slot_counts:
+            split = params.dft_split(n_slots)
+            trace_rotations = n // (2 * n_slots)
+            if len(split) < dft_levels or 2 ** split[-1] * trace_rotations > LCR_MAX_TERMS:
+                return params
         return cls(real_boot, slim_boot, dft_levels=dft_levels, cts_scale=cts_scale, lcr_first_cts=True,
                    precision=precision)
-
-    def lcr_first_cts_fits(self, n_slots: int, n: int) -> bool:
-        """Returns whether an n_slots bootstrap in a ring of dimension n can run its first CtS level level-conserving.
-        Its DFT split must have another CtS level after that one, and the level's terms must fit the kernel
-        (LCR_MAX_TERMS). The first CtS factor combines the last s stages of the split, so it has 2**s diagonals. In a
-        sparse bootstrap the level uses each diagonal once per rotation of the SubSum trace, and there are
-        N / (2 n_slots) of those."""
-        split = self.dft_split(n_slots)
-        return len(split) > 1 and 2 ** split[-1] * (n // 2 // n_slots) <= LCR_MAX_TERMS
 
     def one_digit_relin_key(self, chain_sections, num_special_primes: int, special_prime_bits: int,
                             n: int) -> tuple[int, int] | None:
@@ -275,8 +278,7 @@ class BootstrappingParams:
         at the bottom of the chain, then ModRaise, CtS and EvalMod. dft_levels, cts_scale:
         the CtS and StC level count and the CtS prime size; for_slot_counts picks them.
         lcr_first_cts: the first CtS level is level-conserving, so it consumes no prime and the chain has one CtS
-        prime fewer; for_slot_counts picks it. A one-level split keeps its prime: its single factor has every
-        diagonal. precision: the BOOT_PRECISIONS profile."""
+        prime fewer; for_slot_counts picks it. precision: the BOOT_PRECISIONS profile."""
         for name, value in (("dft_levels", dft_levels), ("cts_scale", cts_scale)):
             if not isinstance(value, int) or value < 1:
                 raise ValueError(
@@ -297,7 +299,7 @@ class BootstrappingParams:
         self.arcsine_correction = BOOT_CONFIGURATION['n_arcsine_levels'] > 0
 
         self.dft_levels = dft_levels
-        self.lcr_first_cts = lcr_first_cts and dft_levels > 1
+        self.lcr_first_cts = lcr_first_cts
         self.n_cosine_levels = BOOT_CONFIGURATION['n_cosine_levels']
         self.n_arcsine_levels = BOOT_CONFIGURATION['n_arcsine_levels']
         self.cts_q_list_precision = self.get_q_list_precision(self.cts_scale, self.dft_levels - self.lcr_first_cts)
@@ -330,10 +332,6 @@ class BootstrappingParams:
             self.base_row_precision = (profile.base_host_bits + self.q_base_precision, self.q_base_precision)
         # The tree evaluates degree d in ceil(log2(d + 1)) levels: n levels fit degree 2^n - 1.
         # The cosine is even (in y = x - 1/(4K), evaluated through z = T_2(y)), so its top degree is 2^n - 2.
-        self.cosine_deg = 2 ** self.n_cosine_levels - 2
-        # Han-Ki silently raises a lower degree to 2K-2, deeper than provisioned.
-        if 2 * self.k - 2 > self.cosine_deg:
-            raise ValueError(
-                f"k={self.k} needs a cosine of degree {2 * self.k - 2}; "
-                f"n_cosine_levels={self.n_cosine_levels} gives degree {self.cosine_deg}.")
+        # Degree 2^n - 8 (24 at 5 levels) takes the same levels with fewer ciphertext products.
+        self.cosine_deg = 2 ** self.n_cosine_levels - 8
         self.arcsine_deg = 2 ** self.n_arcsine_levels - 1   # 0 without an arcsine
