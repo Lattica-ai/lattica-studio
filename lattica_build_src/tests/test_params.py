@@ -19,7 +19,7 @@ def test_chain_serves_the_slot_counts_the_pipeline_bootstraps():
     pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomSumSlots(nb_cols=32), Bootstrap()), input_shape=(2 ** 15,))
     params = HomParams(n=2 ** 16, full_q_list_precision=((60,),) * 4, pt_scale=2 ** 40, num_special_primes=7)
     pipeline.serialize(params)
-    expected = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {32})
+    expected = BootstrappingParams.for_slot_counts(params.real_boot, params.slim_boot, {32}, n=params.n)
     loaded = HomParams.from_dict(params.to_dict())
     assert (loaded.boot_params.dft_levels, loaded.boot_params.cts_scale) == (expected.dft_levels, expected.cts_scale)
 
@@ -37,24 +37,22 @@ def test_serialize_records_the_consumption_order_with_row_budgets():
     assert HomParams.from_dict(params.to_dict()).consumption_order == params.consumption_order
 
 
-@pytest.mark.parametrize("slot_counts, special_bits, lcr", [
-    ({2 ** 15}, 3 * 61, True),
-    ({2 ** 14, 2 ** 13, 2 ** 12}, 3 * 61, True),     # ResNet-20's bootstraps: 32 to 64 terms
-    ({2 ** 14, 2 ** 11}, 3 * 61, False),             # 2**11: 32 diagonals x 16 trace rotations
-    ({2 ** 15}, 2 * 61, False),                      # two special primes: the keys' noise is too large
-], ids=["full", "resnet", "too-sparse", "two-special-primes"])
-def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(slot_counts, special_bits, lcr):
+@pytest.mark.parametrize("n, slot_counts, special_bits, lcr", [
+    (2 ** 16, {2 ** 15}, 3 * 61, True),
+    (2 ** 16, {2 ** 14, 2 ** 13, 2 ** 12}, 3 * 61, True),     # sparse: 32 to 64 terms
+    (2 ** 16, {2 ** 14, 2 ** 11}, 3 * 61, False),             # 2**11: 32 diagonals x 16 trace rotations
+    (2 ** 16, {2 ** 15}, 2 * 61, False),                      # two special primes: the keys' noise is too large
+    (2 ** 13, {2 ** 12, 2 ** 11}, 3 * 61, False),             # few enough terms, but 2**11 has one DFT level fewer
+], ids=["full", "sparse", "too-sparse", "two-special-primes", "mixed-depths"])
+def test_lcr_first_cts_chain_drops_a_cts_prime_when_every_bootstrap_has_it(n, slot_counts, special_bits, lcr):
     """for_slot_counts drops one CtS prime only if the special primes are wide enough for the level-conserving first
-    CtS level's keys and every slot count's level (its diagonals times the SubSum trace's rotations) fits the kernel,
-    and to_dict carries the choice."""
-    n = 2 ** 16
-    plain = BootstrappingParams.for_slot_counts(True, False, slot_counts)
+    CtS level's keys, every slot count's split has the chain's number of DFT levels, and every slot count's first CtS
+    level has at most LCR_MAX_TERMS terms (its diagonals times the SubSum trace's rotations). to_dict carries the
+    choice."""
+    plain = BootstrappingParams.for_slot_counts(True, False, slot_counts, n=n)
     boot = BootstrappingParams.for_slot_counts(True, False, slot_counts, n=n, special_bits=special_bits)
     assert boot.lcr_first_cts == lcr and not plain.lcr_first_cts
     assert len(boot.cts_q_list_precision) == len(plain.cts_q_list_precision) - int(lcr)
-    # 16, 32, 64 and 64 terms fit; 2**11's 32 diagonals x 16 trace rotations do not
-    assert [boot.lcr_first_cts_fits(s, n) for s in (2 ** 15, 2 ** 14, 2 ** 13, 2 ** 12, 2 ** 11)] == \
-        [True, True, True, True, False]
     params = HomParams(n=n, full_q_list_precision=((30,),) + ((60, 30),) * 3, pt_scale=2 ** 30, num_special_primes=3,
                        n_slots=min(slot_counts))
     params.boot_params = boot

@@ -7,7 +7,9 @@ This folder contains operations that act on ciphertext slot structure and slot-w
 | Operator | Operational intent                                                                                                                                             |
 | --- |----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `HomConj` | Conjugates every slot with one key switch. Adding the input back (`x + HomConj()(x)`) gives `2 * Re(x)`, e.g. to get a real result from complex-packed inputs. |
-| `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces `k` ciphertext outputs, each carrying the same value across all slots.       |
+| `HomCombineRealImag` | Packs the two halves of an axis into one, as the real and imaginary parts: `[x, y] -> x + i * y`. The axis is the first with more than one entry, and must not be the slot axis. Of `m` entries it keeps `ceil(m/2)`, or goes when that is 1; with an odd `m` the last one of the first half stays real. Linear ops with real constants (a convolution, a rotation sum) then run on both halves for the price of one. |
+| `HomSplitRealImag` | Takes a complex value apart: `z -> [2 * Re(z), 2 * Im(z)]` on a new first axis. |
+| `HomExpand` | Assumes an input pattern of length `k` repeated `internal_n // k` times. Produces one ciphertext output per value of the pattern (padding excluded), each carrying the same value across all slots. |
 | `HomRotateSum` | Applies configured rotations and either sums rotated views or returns stacked rotated outputs, depending on operator configuration.                            |
 | `HomRotateSumElementwise` | Rotates each ciphertext on `elements_axis` by its corresponding offset along the traced slot axis and sums the elements axis. No implicit identity is added. |
 | `HomRunningSum` | Performs staged cumulative aggregation over consecutive `k` elements, simultaneously across all `n_slots // k` groups (columns) of each period of the slot layout. |
@@ -36,19 +38,21 @@ traces it with `hom_params`) gives each slot operator its input's traced value
 run outside a traced pipeline (called on its own on tensors) raises
 `RuntimeError`: without a trace, its slot axis and ring size are unknown.
 
-The slot operators take no zero padding: the slot axis holds `n_slots`
-values, or whole rings when `n_slots` is `internal_n`, or tracing raises
-`ValueError`. `HomSumSlots` is the exception: the padding adds nothing to its
-sums.
+The slot operators `HomSumSlots`, `HomExpand`, `HomRunningSum`, take a
+zero-padded slot axis. `HomRotateSum` and `HomRotateSumElementwise` are the
+exceptions: they don't allow padding, their slot axis holds `n_slots` values,
+or whole rings when `n_slots` is `internal_n`.
 
 Per operator:
 
 - `HomExpand` puts value `i` of the slot axis in every slot of the ring of
   output `i`: the values go on a new axis inserted at `expand_axis` (in the
   input's axes; -1 inserts before the last one), and the slot axis has
-  `internal_n` slots. The slot axis must hold exactly `n_slots` values, or
-  tracing raises `ValueError`. An `expand_axis` outside `[-(rank + 1), rank]`
-  raises `ValueError`.
+  `internal_n` slots. The slot axis holds `L <= n_slots` values, or tracing
+  raises `ValueError`: the stages expand the whole period of `n_slots` slots,
+  and output `i` reads slot `i` only, so the outputs of the padding are dropped
+  and the values axis has `L` entries. An `expand_axis` outside
+  `[-(rank + 1), rank]` raises `ValueError`.
 - `HomRunningSum` along `cumsum_axis`, when it is not the slot axis, is a
   cumulative sum. Along the slot axis, each period of `n_slots` slots is `k`
   rows of `n_slots / k` columns (`k` defaults to `n_slots`), and the sum runs
@@ -56,7 +60,9 @@ Per operator:
   blocks are the rings of the slot axis, or the entries of
   `blocks_axis_external`. `k` must be a power of 2 dividing `n_slots`. The ring
   repeats the period, so every repeat gets the same sums and the output keeps
-  the input's shape and `n_slots`.
+  the input's shape and `n_slots`. The slot axis holds at most `n_slots`
+  values, or whole rings when `n_slots` is `internal_n`, or tracing raises
+  `ValueError`; its zero padding stays zero in the output.
 - `HomSumSlots` adds, in each period of `n_slots` slots, the `n_slots / nb_cols`
   slots `nb_cols` apart: slot `j` gets `x[j] + x[j + nb_cols] + ...`, and the
   output's period is `nb_cols`. `nb_cols` (by default 1, the sum of the period)
@@ -72,8 +78,9 @@ Per operator:
 
 `k` is the workload span in slots:
 
-- In `HomExpand`, `k` is how many expanded outputs are produced per input slot
-  pattern (conceptually, you can think of this as creating `k` copies/positions).
+- In `HomExpand`, `k = n_slots` is how many slots the stages expand per input
+  slot pattern (conceptually, you can think of this as creating `k`
+  copies/positions); the outputs of the `L` values of the slot axis are kept.
 - In `HomSumSlots`, `k = n_slots / nb_cols` is how many slot elements are reduced
   into a sum.
 - In `HomRunningSum`, `k` is how many slot elements are aggregated in the
@@ -90,6 +97,8 @@ binary-style schedules, this is typically completed in `log2(k)` stages.
 - `HomSumSlots` is rotation/addition-only in this model and does not consume
   levels.
 - `HomConj` is a single key switch and does not consume levels.
+- `HomCombineRealImag` is exact and free: no key switch, no level. `HomSplitRealImag` does not
+  consume levels; its outputs are twice the parts, at the input's scale.
 - `HomRotateSumElementwise` does not consume levels or change scale. Its
   rotations list has one entry per input element; an explicit identity may
   appear first, including the identity-only case. The slot axis must hold
