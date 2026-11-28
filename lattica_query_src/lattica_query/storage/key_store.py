@@ -191,6 +191,12 @@ def load_key_bundle(path: str | Path) -> StoredKey:
         return record
 
 
+def key_file_paths(path: str | Path) -> tuple[Path, Path]:
+    """The secret and evaluation key files of a key bundle."""
+    bundle_path = _resolve_current_bundle(Path(path))
+    return bundle_path / _SECRET_KEY, bundle_path / _EVALUATION_KEY
+
+
 def _storage_home() -> Path:
     return Path(os.getenv("LATTICA_HOME", "~/.lattica")).expanduser()
 

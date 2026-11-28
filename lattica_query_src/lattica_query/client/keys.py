@@ -10,6 +10,7 @@ from ..storage.key_store import (
     StoredKey,
     get_key_path,
     key_bundle_exists,
+    key_file_paths,
     key_lock,
     load_key_bundle,
     mark_key_uploaded,
@@ -104,6 +105,14 @@ class KeysAPI:
         with key_lock(resolved_path):
             return self._load_bundle(resolved_path).key
 
+    def secret_key_path(self, path: str | Path | None = None) -> Path:
+        """The file of a local key's secret key, found without loading the key."""
+        return key_file_paths(path if path is not None else get_key_path(self._token.require_identity()))[0]
+
+    def evaluation_key_path(self, path: str | Path | None = None) -> Path:
+        """The file of a local key's evaluation key, the part registration uploads."""
+        return key_file_paths(path if path is not None else get_key_path(self._token.require_identity()))[1]
+
     def _load_bundle(self, resolved_path: Path) -> StoredKey:
         identity = self._token.require_identity()
         record = load_key_bundle(resolved_path)
@@ -118,7 +127,10 @@ class KeysAPI:
 
     def _fetch_client_data(self) -> QueryInitialization:
         with OperationLog("retrieving initialization data", theme=QUERY_THEME):
-            return QueryInitialization.from_bytes(self._worker.fetch_initialization())
+            data = self._worker.fetch_initialization()
+            log_size_info("initialization data", len(data))
+            # Rebuild the lookup tables of the initialization data.
+            return QueryInitialization.from_bytes(fhe_core.expand_client_data(data, include_keygen=True))
 
     def _upload_evaluation_key(self, evaluation_key_path: Path) -> None:
         evaluation_key_size = evaluation_key_path.stat().st_size
