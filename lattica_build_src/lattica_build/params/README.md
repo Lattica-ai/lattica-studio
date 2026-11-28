@@ -163,6 +163,9 @@ Practical consequence: that optional step can preserve net `pt_scale` while stil
     switch uses only the special primes its own largest digit needs.
   - With a bootstrap the chain is in the order its rescales consume the primes (`BootstrappingParams.chain_sections`):
     CtS, EvalMod, StC, the pipeline's, then q0 (SLIM: the pipeline's before StC's).
+  - With a bootstrap at a ring dimension with a known 128-bit bound, EvalMod's lower levels relinearize with a
+    one-digit key of their own, whose extra special primes the chain adds after the others
+    (`BootstrappingParams.one_digit_relin_key`).
 
 Pick decomposition settings with your backend performance profile in mind.
 
