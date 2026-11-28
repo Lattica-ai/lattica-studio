@@ -28,6 +28,7 @@ from lattica_build.operators.shape.h_squeeze import HomSqueeze
 from lattica_build.operators.shape.h_unsqueeze import HomUnsqueeze
 from lattica_build.operators.slots.h_conj import HomConj
 from lattica_build.operators.slots.h_expand import HomExpand
+from lattica_build.operators.slots.h_real_imag import HomCombineRealImag, HomSplitRealImag
 from lattica_build.operators.slots.h_rotate_sum import HomRotateSum
 from lattica_build.operators.slots.h_rotate_sum_elementwise import HomRotateSumElementwise
 from lattica_build.operators.slots.h_running_sum import HomRunningSum
@@ -146,6 +147,13 @@ def test_expand_then_matmul_clear_matches_the_ciphertext_layout():
     pipeline = HomomorphicPipeline(hom=SequentialHomOp(HomExpand(expand_axis=1), matmul), input_shape=(8,))
     x = torch.randn(8, dtype=torch.float64, generator=torch.Generator().manual_seed(1))
     torch.testing.assert_close(pipeline.forward_clear(x, hom_params=params), db @ x)
+
+
+def test_running_sum_clear_takes_a_padded_slot_axis():
+    """3 values in a period of 4: the running sum of the 3 values."""
+    x = torch.tensor([2., 3., 5.])
+    result, _ = _slot_op_clear(HomRunningSum(), x, 4)
+    torch.testing.assert_close(result, x.cumsum(-1))
 
 
 def test_running_sum_clear_uses_only_the_logical_axis():
@@ -479,6 +487,69 @@ def test_resnet_composite_example_matches_pretrained_model(module):
     )
 
 
+@pytest.mark.parametrize("batch", [(), (2,), (4, 2)])
+def test_mux_conv_output_shape_keeps_a_batch(batch):
+    """Axes before the slots are a batch of maps, one ciphertext each: they pass through."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1)
+    in_slots, out_slots = MuxLayout(4, 4, 4).period, MuxLayout(8, *conv.output_hw).period
+    output = conv.infer_output_shape(HomValue(tensor_shape=(*batch, in_slots), n_axis=-1), internal_n=4096)
+    assert tuple(output.tensor_shape) == (*batch, out_slots)
+    assert output.n_slots == out_slots
+
+
+def test_mux_conv_rejects_slots_before_a_batch():
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1)
+    value = HomValue(tensor_shape=(MuxLayout(4, 4, 4).period, 2), n_axis=0)
+    with pytest.raises(ValueError, match=r"mux conv needs the slots on the last axis; got \(64, 2\) with slots on axis 0"):
+        conv.infer_output_shape(value, internal_n=4096)
+
+
+def test_mux_conv_clear_keeps_the_gap():
+    """With keep_gap a strided conv keeps the gap its stride opens: the output's rows are twice as far apart,
+    the rows between empty, at the input's period; a conv after it takes that layout."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    generator = torch.Generator().manual_seed(0)
+    x = torch.rand(4, 4, 4, generator=generator, dtype=torch.float64)
+    weight1 = torch.rand(8, 4, 3, 3, generator=generator, dtype=torch.float64) - 0.5
+    weight2 = torch.rand(8, 8, 3, 3, generator=generator, dtype=torch.float64) - 0.5
+    strided = HomMuxConv((8, 4, 3, 3), (4, 4), stride=2, padding=1, keep_gap=True).set_data(weight1)
+    after = HomMuxConv((8, 8, 3, 3), (2, 2), padding=1, row_gap=2, keep_gap=True).set_data(weight2)
+    layout, spread = MuxLayout(4, 4, 4), MuxLayout(8, 2, 2, row_gap=2)
+    assert spread.period == layout.period == 64
+    assert strided.infer_output_shape(HomValue(tensor_shape=(64,), n_axis=-1), internal_n=4096).n_slots == 64
+
+    y = strided(layout.pack(x))
+    expected = torch.nn.functional.conv2d(x[None], weight1, stride=2, padding=1)
+    torch.testing.assert_close(spread.unpack(y), expected[0])
+    assert torch.count_nonzero(y) == expected.numel()
+    torch.testing.assert_close(spread.unpack(after(y)), torch.nn.functional.conv2d(expected, weight2, padding=1)[0])
+
+
+def test_mux_conv_keep_gap_needs_the_channels_to_grow_by_the_stride():
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv
+
+    with pytest.raises(ValueError, match=r"C_out must be stride \* C_in = 8, got 4"):
+        HomMuxConv((4, 4, 3, 3), (4, 4), stride=2, padding=1, keep_gap=True)
+    with pytest.raises(ValueError, match=r"keep_gap needs a square stride, got \(2, 1\)"):
+        HomMuxConv((8, 4, 3, 3), (4, 4), stride=(2, 1), padding=1, keep_gap=True)
+
+
+def test_mux_layout_pack_channels():
+    """A per-channel vector lands at every pixel of its channel; the slots outside the map stay zero."""
+    from lattica_build.operators.ml.h_mux_conv import MuxLayout
+
+    layout = MuxLayout(3, 2, 3, 64)
+    values = torch.tensor([2., 3., 5.], dtype=torch.float64)
+    slots = layout.pack_channels(values)
+    torch.testing.assert_close(layout.unpack(slots), values[:, None, None].expand(3, 2, 3))
+    assert slots.sum() == values.sum() * 2 * 3
+
+
 def test_mux_layout_packs_each_channel_at_its_slot():
     """Sides that are not powers of 2: the width pads to 8."""
     from lattica_build.operators.ml.h_mux_conv import MuxLayout
@@ -489,3 +560,33 @@ def test_mux_layout_packs_each_channel_at_its_slot():
         assert vec[(i * 8 + j) * 4 + c] == x[c, i, j]
     assert int((vec != 0).sum()) == x.numel()
 
+
+def test_real_imag_clear_packs_two_values_and_takes_them_apart():
+    x, y = torch.arange(8, dtype=torch.float64), torch.arange(8, dtype=torch.float64) / -4
+    z = HomCombineRealImag()(torch.stack((x, y)))
+    assert torch.equal(z, torch.complex(x, y))
+    assert torch.equal(HomSplitRealImag()(z), 2 * torch.stack((x, y)))
+    # the first axis with more than one entry: a leading 1 stays
+    assert torch.equal(HomCombineRealImag()(torch.stack((x, y))[None]), z[None])
+    with pytest.raises(ValueError, match="ahead of the slot values"):
+        HomCombineRealImag().infer_output_shape(HomValue(tensor_shape=(1, 8), n_axis=1))
+    # a slot axis of one value: an axis after it pairs
+    assert HomCombineRealImag().infer_output_shape(HomValue(tensor_shape=(1, 4), n_axis=0)).tensor_shape == (1, 2)
+    # an odd first axis: its halves pair up, the last entry of the first half stays real
+    assert torch.equal(HomCombineRealImag()(torch.stack((x, y, -x))), torch.stack((torch.complex(x, -x), y + 0j)))
+
+
+@pytest.mark.parametrize('stride', [1, 2])
+def test_mux_conv_clear_convolves_both_halves_of_complex_slots(stride):
+    """The weights are real, so two maps packed as the real and imaginary parts each get torch's conv2d."""
+    from lattica_build.operators.ml.h_mux_conv import HomMuxConv, MuxLayout
+
+    generator = torch.Generator().manual_seed(0)
+    maps = torch.rand(2, 4, 4, 4, generator=generator, dtype=torch.float64)
+    weight = torch.rand(8, 4, 3, 3, generator=generator, dtype=torch.float64) - 0.5
+    conv = HomMuxConv((8, 4, 3, 3), (4, 4), stride=stride, padding=1).set_data(weight)
+    layout, out_layout = MuxLayout(4, 4, 4), MuxLayout(8, 4 // stride, 4 // stride)
+    packed = HomCombineRealImag()(torch.stack([layout.pack(image) for image in maps]))
+    halves = HomSplitRealImag()(conv(packed))
+    expected = torch.nn.functional.conv2d(maps, weight, stride=stride, padding=1)
+    torch.testing.assert_close(out_layout.unpack(halves), 2 * expected)

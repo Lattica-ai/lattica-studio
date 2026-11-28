@@ -132,6 +132,8 @@ def test_generate_without_registration_then_ensure_registers(monkeypatch, tmp_pa
     assert key == QueryKey(context=b"context", secret_key=b"secret:context", client_model=b"model")
     assert not backend.uploads
     assert not load_key_bundle(path).evaluation_key_uploaded
+    assert keys.secret_key_path(path).read_bytes() == b"secret:context"
+    assert keys.evaluation_key_path(path).read_bytes() == b"evaluation"
 
     assert keys.ensure(path) == key
     assert backend.uploads == ["api/token/get_pk_upload_url"] and backend.preprocessed == 1
